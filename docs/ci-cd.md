@@ -20,28 +20,17 @@ The usual flow is push (or merge) into `dev`, which deploys to development, then
 
 ## What a deploy does
 
-CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on the one branch it was installed for (`main` on the production server, `dev` on the development one), builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
+CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on the branch it was installed for (`main` on the production server, `dev` on the dev server), builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
 
 CI sends no image and no files, only the commit hash. The server needs Docker and git, not Rust.
 
 CI also builds the image on every PR and runs it with the production hardening (read-only filesystem, no capabilities, fresh data volume), and a separate end-to-end job installs the deploy program, deploys twice with real Docker while requesting the site continuously, and checks that not one request failed during the switch.
 
-## Environments
-
-`production` and `development` are separate GitHub environments (Settings, Environments), each with its own copy of the secrets below, and each accepts deploys only from its own branch. Give them separate servers. The deploy program is installed once per machine, with fixed container names and one state directory, so two environments cannot share one. Install each with its own branch:
-
-```bash
-# production server
-deploy/bluegreen/install-system.sh --user deploy --repo https://github.com/urashyl/necropsy --branch main
-# development server
-deploy/bluegreen/install-system.sh --user deploy --repo https://github.com/urashyl/necropsy --branch dev
-```
-
-The branch lives in the root-owned `/etc/necropsy/deploy.env`, so a deploy user cannot make the production server build anything but `main`.
-
 ## Secrets
 
-Create these on each environment. Environment secrets are only given to the deploy job, and the environment is where you can add required reviewers if you want a manual approval before each deploy.
+Each environment, `production` and `development` (Settings, Environments), has its own copy of these. Environment secrets are only given to the deploy job, each environment only accepts deploys from its own branch, and the environment is where you can add required reviewers if you want a manual approval before each deploy.
+
+The dev server is a separate host with its own install of the deploy program, set up with `--branch dev` so it builds only commits on `dev` (see [docker.md](docker.md)). The program's paths and sudo rule are per host, so production and dev cannot share one server.
 
 | Secret | Required | Value |
 | --- | --- | --- |
@@ -67,7 +56,7 @@ Use a key made only for this. On your own machine:
 ssh-keygen -t ed25519 -N '' -C necropsy-deploy -f necropsy_deploy
 ```
 
-Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to the deploy user's `~/.ssh/authorized_keys` on the server. The `restrict` prefix turns off forwarding and other extras:
+Do this once per environment. Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to the deploy user's `~/.ssh/authorized_keys` on the server. The `restrict` prefix turns off forwarding and other extras:
 
 ```text
 restrict ssh-ed25519 AAAA... necropsy-deploy
@@ -92,6 +81,6 @@ Set the server up once as described in [docker.md](docker.md): Docker with the c
 - **Host key verification failed:** `DEPLOY_KNOWN_HOSTS` does not match the server, or the port is wrong. Regenerate it with `ssh-keyscan`.
 - **Permission denied:** the public key is not in the deploy user's `authorized_keys`, or `DEPLOY_USER` is wrong.
 - **"sudo: a password is required":** the sudo rule is missing or does not match. Re-run the installer as root, and check that `DEPLOY_USER` is the user it was given in `--user`.
-- **"commit ... is not on <branch>" or "not in the repository":** the commit is not on the branch this server was installed for, or the branch was rewritten. Check `NECROPSY_BRANCH` in `/etc/necropsy/deploy.env`.
+- **"commit ... is not on main":** the commit was pushed to another branch, or `main` was rewritten. Only commits on `main` are built.
 - **"did not become healthy":** the new version failed to start. The log run prints its last lines. The old version is still serving.
 - **Build errors:** shown in the deploy step of the run log. The live version keeps serving.

@@ -93,8 +93,10 @@ check "settings file is private" test "$(stat -c %a "$conf/necropsy.env")" = 600
 check "sudo rule is read-only" test "$(stat -c %a "$root/sudoers.d/necropsy-deploy")" = 440
 check "program has its paths baked in" grep -q "STATEDIR='$root/var'" "$bin"
 check "the template placeholders are gone" bash -c "! grep -q \"='@\" '$bin'"
-check "deploy.env names the branch (main by default)" grep -qx 'NECROPSY_BRANCH=main' "$conf/deploy.env"
 check "deploy.env names the repository" grep -q "^NECROPSY_REPO=file://$work/origin.git" "$conf/deploy.env"
+check "deploy.env builds main by default" grep -qx "NECROPSY_BRANCH=main" "$conf/deploy.env"
+check "a branch name that is not plain is refused" bash -c "! '$installer' --user nobody --repo https://example.com/x --branch 'a..b' --prefix $work/r5/usr --sysconfdir $work/r5/etc --statedir $work/r5/var --sudoers-dir $work/r5/s --unsafe-for-tests"
+check "a branch name that looks like an option is refused" bash -c "! '$installer' --user nobody --repo https://example.com/x --branch '-x' --prefix $work/r6/usr --sysconfdir $work/r6/etc --statedir $work/r6/var --sudoers-dir $work/r6/s --unsafe-for-tests"
 rule="$root/sudoers.d/necropsy-deploy"
 check "sudo rule names the user and only the program" grep -qx "nobody ALL=(root) NOPASSWD: $bin" "$rule"
 check "sudo rule grants exactly one command" bash -c "[ \$(grep -vc '^#' '$rule') -eq 1 ]"
@@ -115,6 +117,7 @@ echo "NECROPSY_PORT=8099" >> "$conf/deploy.env"
 install_at t --unsafe-for-tests
 check "reinstalling keeps the app settings" grep -q '^keep$' "$conf/necropsy.env"
 check "reinstalling keeps deploy options" grep -q '^NECROPSY_PORT=8099$' "$conf/deploy.env"
+check "reinstalling keeps the branch" grep -qx "NECROPSY_BRANCH=main" "$conf/deploy.env"
 sed -i '/^NECROPSY_PORT=8099$/d' "$conf/deploy.env"
 
 echo "# arguments"
@@ -135,7 +138,7 @@ check "nothing was deployed by those" test ! -e "$state/active"
 echo "# commits"
 run deploy "$sha_side"
 check "a commit that is not on main is refused" test $? -ne 0
-check "and says why" out_has "not on main\|not in the repository"
+check "and says why" out_has "not on main"
 check "and nothing was built" test ! -d "$FAKE_DIR/builds"
 
 run deploy "$sha_a"
@@ -168,6 +171,7 @@ FAKE_BUILD_FAIL=1 run deploy "$sha_a"
 check "a failing build fails the deploy" test $? -ne 0
 check "traffic stays on green" equals "$(active)" green
 check "green is still running" running necropsy-green
+
 
 echo "# switching, rollback, failures"
 cp "$state/images.env" "$work/images.before"
@@ -212,21 +216,6 @@ check "green is live" equals "$(active)" green
 check "images no longer needed were pruned" bash -c "! test -e '$FAKE_DIR/images/$tag_b'"
 check "--status names the live color" bash -c "'$bin' status | grep -q '^live:    green'"
 
-echo "# the configured branch is the only one built"
-sed -i 's/^NECROPSY_BRANCH=.*/NECROPSY_BRANCH=side/' "$conf/deploy.env"
-run deploy "$sha_b"
-check "a commit on main is refused when only side is configured" test $? -ne 0
-check "and says which branch" out_has "not on side"
-run deploy "$sha_side"
-check "a commit on the configured branch is built" test $? -eq 0
-sed -i 's/^NECROPSY_BRANCH=.*/NECROPSY_BRANCH=main/' "$conf/deploy.env"
-run deploy "$sha_side"
-check "the same commit is refused once main is configured again" test $? -ne 0
-sed -i 's/^NECROPSY_BRANCH=.*/NECROPSY_BRANCH=bad..name/' "$conf/deploy.env"
-run status
-check "an invalid branch name is refused" test $? -ne 0
-sed -i 's/^NECROPSY_BRANCH=.*/NECROPSY_BRANCH=main/' "$conf/deploy.env"
-
 echo "# settings file"
 printf 'NECROPSY_PORT=9191\nFOO=$(touch %s/pwned)\nNECROPSY_EDGE_TRUSTED=10.9.9.9\n' "$work" >> "$conf/deploy.env"
 release necropsy:t4
@@ -240,12 +229,23 @@ printf "NECROPSY_EDGE_TRUSTED=1.2.3.4;rm\n" >> "$conf/deploy.env"
 run status;                      check "an address list that is not addresses is refused" test $? -ne 0
 sed -i '/^NECROPSY_EDGE_TRUSTED=/d' "$conf/deploy.env"
 
-echo "# installing for another branch"
-install_at b --unsafe-for-tests --branch dev
-check "--branch is written to deploy.env" grep -qx 'NECROPSY_BRANCH=dev' "$work/b/etc/necropsy/deploy.env"
-install_at b --unsafe-for-tests
-check "reinstalling keeps the branch" grep -qx 'NECROPSY_BRANCH=dev' "$work/b/etc/necropsy/deploy.env"
-check "an invalid --branch is refused" bash -c "! '$installer' --user nobody --repo https://example.com/x --branch '../x' --prefix $work/b2/usr --sysconfdir $work/b2/etc --statedir $work/b2/var --sudoers-dir $work/b2/s --unsafe-for-tests"
+echo "# a dev server (installed for another branch)"
+rm -rf "$FAKE_DIR/c" "$FAKE_DIR/builds"
+droot="$work/d"
+install_at d --unsafe-for-tests --branch side
+dbin="$droot/usr/bin/necropsy-deploy"
+check "--branch is written to deploy.env" grep -qx "NECROPSY_BRANCH=side" "$droot/etc/necropsy/deploy.env"
+printf 'DRAIN_SECONDS=0\nHEALTH_TIMEOUT=3\n' >> "$droot/etc/necropsy/deploy.env"
+"$dbin" deploy "$sha_b" > "$work/out" 2>&1
+check "a commit only on main is refused when installed for another branch" test $? -ne 0
+check "and says which branch" out_has "not on side"
+"$dbin" deploy "$sha_side" > "$work/out" 2>&1
+check "a commit on the configured branch is built" grep -q "^arg=GIT_SHA=$sha_side" "$FAKE_DIR/builds/necropsy:${sha_side:0:12}"
+install_at d --unsafe-for-tests
+check "reinstalling without --branch keeps it" grep -qx "NECROPSY_BRANCH=side" "$droot/etc/necropsy/deploy.env"
+sed -i 's/^NECROPSY_BRANCH=.*/NECROPSY_BRANCH=a..b/' "$droot/etc/necropsy/deploy.env"
+"$dbin" deploy "$sha_side" > "$work/out" 2>&1
+check "an invalid branch in deploy.env is refused" out_has "not a valid branch name"
 
 echo "# uninstall"
 "$installer" --uninstall --prefix "$root/usr" --sysconfdir "$root/etc" --statedir "$root/var" --sudoers-dir "$root/sudoers.d" >/dev/null 2>&1
