@@ -10,20 +10,15 @@ ARG RUST_VERSION=1.100
 FROM rust:${RUST_VERSION}-bookworm AS build
 WORKDIR /src
 
-# Build dependencies first so a source-only change reuses their layer.
+# A plain build of the real sources. (Pre-building dependencies from stub
+# sources is faster to rebuild but easy to get wrong: Cargo decides what is
+# stale by file times, and a stub binary can end up in the image.) CI caches
+# the layers, and the registry cache mount saves re-downloading crates.
 COPY Cargo.toml Cargo.lock ./
-COPY crates/necropsy-pack/Cargo.toml crates/necropsy-pack/Cargo.toml
-COPY crates/necropsy-web/Cargo.toml crates/necropsy-web/Cargo.toml
-RUN mkdir -p crates/necropsy-pack/src/bin crates/necropsy-web/src \
- && echo '' > crates/necropsy-pack/src/lib.rs \
- && echo 'fn main() {}' > crates/necropsy-pack/src/bin/pack-tool.rs \
- && echo 'fn main() {}' > crates/necropsy-web/src/main.rs \
- && cargo build --release --locked -p necropsy-web \
- && rm -rf crates/*/src target/release/necropsy-web target/release/deps/necropsy* target/release/.fingerprint/necropsy*
-
 COPY crates crates
 COPY docs docs
-RUN cargo build --release --locked -p necropsy-web \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo build --release --locked -p necropsy-web \
  && mkdir /data
 
 # Distroless: no shell or package manager in the final image. The base image

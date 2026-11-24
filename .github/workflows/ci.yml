@@ -90,6 +90,8 @@ jobs:
           done
           if [ "$status" != healthy ]; then
             echo "::error::container is $status"
+            docker ps -a
+            docker inspect -f '{{json .State}}' smoke
             docker logs smoke
             exit 1
           fi
