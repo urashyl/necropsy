@@ -38,6 +38,8 @@ A shell from `su` or `sudo -u` is not a login, so `systemctl --user` fails with 
 - as root, run `loginctl enable-linger <user>`, then run the installer again
 - as root, run `machinectl shell <user>@` and run the installer in that shell
 
+After installing from such a shell, your own `systemctl --user` commands still fail until you run `export XDG_RUNTIME_DIR=/run/user/$(id -u)` (or add it to `~/.bashrc`). The installer prints this when it had to work around it.
+
 ## First-run admin credentials
 
 The first start generates an admin account and prints its credentials once, to the journal:

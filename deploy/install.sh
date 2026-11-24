@@ -26,7 +26,7 @@ usage() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
 
-linger=1 start=1 systemd=1 uninstall=0
+linger=1 start=1 systemd=1 uninstall=0 fixed_runtime_dir=0
 for arg in "$@"; do
   case "$arg" in
     --no-linger) linger=0 ;;
@@ -77,6 +77,7 @@ connect_user_bus() {
   local rd="/run/user/$(id -u)"
   if [ -d "$rd" ] && [ -O "$rd" ] && { [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -O "$XDG_RUNTIME_DIR" ]; }; then
     export XDG_RUNTIME_DIR="$rd"
+    fixed_runtime_dir=1
   fi
   if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
     export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
@@ -208,6 +209,17 @@ if [ "$systemd" -eq 1 ]; then
       journalctl --user -u necropsy.service -n 20 --no-pager >&2 || true
       exit 1
     fi
+  fi
+
+  if [ "$fixed_runtime_dir" -eq 1 ]; then
+    cat <<MSG
+
+Note: this shell did not point at your own user manager (it came from su or
+sudo), so plain systemctl --user commands will fail here. The installer worked
+around it. For your shell, run:
+  export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+or add that line to ~/.bashrc, or log in directly (ssh) instead of using su.
+MSG
   fi
 
   cat <<MSG
