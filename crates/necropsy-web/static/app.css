@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* necropsy. Design tokens and layout follow urashyl.dev. */
 
 :root {
@@ -823,4 +824,150 @@ pre {
 
 .pager a:hover {
   color: var(--ink);
+}
+
+/* Header account links */
+
+.user-link {
+  margin-right: 0.75rem;
+  color: var(--muted);
+  font-size: var(--step--1);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.user-link:hover,
+.user-link[aria-current="page"] {
+  color: var(--ink);
+}
+
+/* Account forms */
+
+.auth {
+  max-width: 26rem;
+}
+
+.auth > * + * {
+  margin-top: 1rem;
+}
+
+.auth h2 {
+  margin-top: 2.5rem;
+  font-size: var(--step-1);
+}
+
+.field + .field {
+  margin-top: 1rem;
+}
+
+.field label,
+.inline-form label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.field input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field-hint {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: var(--step--1);
+}
+
+.auth form > .button {
+  margin-top: 1.25rem;
+}
+
+.auth-links {
+  color: var(--muted);
+  font-size: var(--step--1);
+}
+
+.form-error,
+.form-ok {
+  padding: 0.65rem 0.9rem;
+  border-left: 3px solid var(--down);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--surface);
+}
+
+.form-ok {
+  border-left-color: var(--up);
+}
+
+.button-danger {
+  border-color: var(--down);
+  background: transparent;
+  color: var(--down);
+}
+
+.button-danger:hover {
+  filter: none;
+  background: var(--surface-2);
+}
+
+/* Admin */
+
+.admin-h {
+  margin: 2.5rem 0 0.75rem;
+  font-size: var(--step-1);
+}
+
+.admin-h:first-of-type {
+  margin-top: 0;
+}
+
+.admin-facts {
+  max-width: 26rem;
+}
+
+.inline-form {
+  max-width: 26rem;
+  margin-top: 1rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--step--1);
+}
+
+.table th,
+.table td {
+  padding: 0.6rem 1rem 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 550;
+}
+
+.row-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.row-actions form {
+  margin: 0;
+}
+
+.auth form.logout {
+  margin-top: 2.5rem;
 }

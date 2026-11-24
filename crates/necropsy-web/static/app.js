@@ -1,5 +1,10 @@
-// necropsy client script. No accounts: everything the player accumulates
-// (solves, hints, time, streak) lives in this browser's localStorage.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// necropsy client script.
+//
+// Progress (solves, hints, active time) is kept in this browser's
+// localStorage. When someone is signed in, solves are also saved on the
+// server (the answer endpoint does that), and this script merges the two so
+// progress follows the account to other devices.
 (() => {
   "use strict";
 
@@ -7,9 +12,9 @@
   const DAY_MS = 86400000;
   const utcDay = () => Math.floor(Date.now() / DAY_MS);
 
-  // ---- storage -----------------------------------------------------------
+  // ---- local storage -------------------------------------------------------
 
-  const empty = () => ({ solved: {}, hints: {}, time: {}, streak: 0, lastDay: null });
+  const empty = () => ({ solved: {}, hints: {}, time: {} });
 
   function load() {
     try {
@@ -25,17 +30,63 @@
     } catch {}
   }
 
-  /** Streak shown to the player: zero once a whole day has been missed. */
-  function currentStreak(state) {
-    if (state.lastDay == null) return 0;
-    return utcDay() - state.lastDay <= 1 ? state.streak : 0;
+  const state = load();
+
+  // ---- server progress (signed-in users) -----------------------------------
+
+  const server = { user: null, solved: {} };
+
+  async function loadProgress() {
+    try {
+      const r = await fetch("/api/me/progress", { credentials: "same-origin" });
+      if (!r.ok) return;
+      const p = await r.json();
+      server.user = p.user;
+      server.solved = Object.fromEntries(p.solves.map((s) => [s.id, s]));
+    } catch {}
   }
 
-  function recordSolveDay(state) {
-    const today = utcDay();
-    if (state.lastDay === today) return;
-    state.streak = state.lastDay === today - 1 ? state.streak + 1 : 1;
-    state.lastDay = today;
+  async function postAnswer(id, answer, seconds, hints) {
+    const res = await fetch(`/api/p/${encodeURIComponent(id)}/answer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answer, seconds, hints }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    return res.json();
+  }
+
+  /** On sign-in, upload solves that only exist in this browser. */
+  async function importLocal() {
+    if (!server.user) return;
+    for (const [id, s] of Object.entries(state.solved)) {
+      if (server.solved[id] || typeof s.answer !== "string") continue;
+      try {
+        const r = await postAnswer(id, s.answer, s.seconds || 0, s.hints || 0);
+        if (r.correct) {
+          server.solved[id] = { id, day: s.day ?? utcDay(), seconds: s.seconds || 0, hints: s.hints || 0 };
+        }
+      } catch {}
+    }
+  }
+
+  const isSolved = (id) => !!(state.solved[id] || server.solved[id]);
+
+  // ---- streak ----------------------------------------------------------------
+
+  /** Consecutive UTC days with a solve, ending today or yesterday. */
+  function currentStreak() {
+    const days = new Set();
+    for (const s of Object.values(state.solved)) if (typeof s.day === "number") days.add(s.day);
+    for (const s of Object.values(server.solved)) days.add(s.day);
+    let d = utcDay();
+    if (!days.has(d)) d -= 1;
+    let n = 0;
+    while (days.has(d)) {
+      n += 1;
+      d -= 1;
+    }
+    return n;
   }
 
   function formatTime(seconds) {
@@ -67,24 +118,28 @@
     });
   }
 
-  // ---- header streak -------------------------------------------------------
+  // ---- header and archive --------------------------------------------------
 
-  const state = load();
   const chip = document.getElementById("streak-chip");
   function renderStreak() {
     if (!chip) return;
-    const n = currentStreak(state);
+    const n = currentStreak();
     chip.classList.toggle("hidden", n < 1);
     chip.textContent = `${n} day streak`;
   }
+
+  function renderArchive() {
+    document.querySelectorAll(".archive-link").forEach((a) => {
+      a.querySelector(".solved-mark")?.classList.toggle("hidden", !isSolved(a.dataset.packId));
+    });
+  }
+
   renderStreak();
-
-  // ---- archive -------------------------------------------------------------
-
-  document.querySelectorAll(".archive-link").forEach((a) => {
-    if (state.solved[a.dataset.packId]) {
-      a.querySelector(".solved-mark")?.classList.remove("hidden");
-    }
+  renderArchive();
+  const ready = loadProgress().then(importLocal);
+  ready.then(() => {
+    renderStreak();
+    renderArchive();
   });
 
   // ---- puzzle page ---------------------------------------------------------
@@ -111,15 +166,14 @@
   const shareMsg = document.getElementById("share-msg");
 
   let solved = !!state.solved[id];
-  let seconds = state.time[id] || 0;
-  let hintsShown = state.hints[id] || 0;
+  let seconds = state.solved[id]?.seconds ?? state.time[id] ?? 0;
+  let hintsShown = state.solved[id]?.hints ?? state.hints[id] ?? 0;
 
   function renderHints() {
     hintItems.forEach((li, i) => li.classList.toggle("hidden", i >= hintsShown));
     if (hintsEl) hintsEl.textContent = String(hintsShown);
     if (hintBtn) {
-      const left = hintTotal - hintsShown;
-      hintBtn.classList.toggle("hidden", left <= 0 || solved);
+      hintBtn.classList.toggle("hidden", hintTotal - hintsShown <= 0 || solved);
       hintBtn.textContent = hintsShown ? "Show another hint" : "Show a hint";
     }
   }
@@ -136,29 +190,33 @@
     input.readOnly = true;
     form.querySelector("button[type=submit]").disabled = true;
     renderHints();
-  }
-
-  async function check(answer) {
-    const res = await fetch(`/api/p/${encodeURIComponent(id)}/answer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answer }),
-    });
-    if (!res.ok) throw new Error(String(res.status));
-    return res.json();
+    renderTime();
   }
 
   renderHints();
   renderTime();
 
-  // A returning player who already solved this gets the explainer back
-  // without retyping: the answer they entered is kept locally.
-  if (solved && typeof state.solved[id].answer === "string") {
-    input.value = state.solved[id].answer;
-    check(state.solved[id].answer)
+  // A returning player gets the explainer back without retyping. On this
+  // device the answer they entered is kept locally; on another device a
+  // signed-in user's server record is enough.
+  const local = state.solved[id];
+  if (local && typeof local.answer === "string") {
+    input.value = local.answer;
+    postAnswer(id, local.answer, local.seconds || 0, local.hints || 0)
       .then((r) => r.correct && showSolved(r.explainer_html))
       .catch(() => {});
   }
+  ready.then(async () => {
+    const s = server.solved[id];
+    if (solved || !s) return;
+    try {
+      const res = await fetch(`/api/p/${encodeURIComponent(id)}/explainer`, { credentials: "same-origin" });
+      if (!res.ok) return;
+      seconds = s.seconds;
+      hintsShown = s.hints;
+      showSolved((await res.json()).explainer_html);
+    } catch {}
+  });
 
   if (hintBtn) {
     hintBtn.addEventListener("click", () => {
@@ -180,11 +238,10 @@
     msg.textContent = "";
     msg.classList.remove("err-text");
     try {
-      const r = await check(answer);
+      const r = await postAnswer(id, answer, seconds, hintsShown);
       if (r.correct) {
         state.solved[id] = { answer, seconds, hints: hintsShown, day: utcDay() };
         state.time[id] = seconds;
-        recordSolveDay(state);
         save(state);
         renderStreak();
         msg.textContent = "Correct.";
@@ -224,7 +281,7 @@
 
   if (shareBtn) {
     shareBtn.addEventListener("click", async () => {
-      const s = state.solved[id] || {};
+      const s = state.solved[id] || server.solved[id] || {};
       const parts = [`necropsy #${number}`, `solved in ${formatTimeWords(s.seconds ?? seconds)}`];
       if (s.hints) parts.push(`${s.hints} hint${s.hints === 1 ? "" : "s"}`);
       const text = `${parts.join(" · ")}\n${shareUrl}`;

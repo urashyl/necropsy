@@ -1,11 +1,18 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! necropsy web front end.
 //!
-//! Server-rendered pages over a directory of packs (see `docs/web.md`).
-//! There are no accounts. The server keeps no per-player state: solves,
-//! streaks and timers live in the browser's localStorage. The only thing the
-//! server decides is whether a submitted answer is right, so the explainer is
-//! not sent until it is.
+//! Server-rendered pages over a directory of packs, plus accounts (see
+//! `docs/web.md` and `docs/accounts.md`). Visitors can solve puzzles without
+//! an account; their progress then lives in the browser's localStorage. A
+//! signed-in user's solves are also stored on the server. The server decides
+//! whether a submitted answer is right, so the explainer is not sent until it
+//! is.
 
+mod accounts;
+mod admin;
+mod auth;
+mod db;
+mod mail;
 mod markdown;
 mod pages;
 mod state;
@@ -14,17 +21,21 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Path, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tower_http::compression::CompressionLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
-use crate::state::AppState;
+use crate::auth::{ClientIp, MaybeUser, AUTH_WINDOW};
+use crate::db::Db;
+use crate::mail::Mailer;
+use crate::state::{AppState, Config};
 
 #[tokio::main]
 async fn main() {
@@ -39,37 +50,79 @@ async fn main() {
         .parse()
         .expect("NECROPSY_ADDR must be host:port");
     let packs_dir = PathBuf::from(env_or("NECROPSY_PACKS", "packs"));
-    let base_url = env_or("NECROPSY_BASE_URL", "https://necropsy.urashyl.dev");
+    let db_path = env_or("NECROPSY_DB", "necropsy.db");
+    let config = Config {
+        base_url: env_or("NECROPSY_BASE_URL", "https://necropsy.urashyl.dev"),
+        trust_proxy: env_or("NECROPSY_TRUST_PROXY", "0") == "1",
+    };
 
     let packs = match necropsy_pack::load_all(&packs_dir) {
         Ok(p) => p,
-        Err(e) => {
-            eprintln!("cannot load packs from {}: {e}", packs_dir.display());
-            std::process::exit(1);
-        }
+        Err(e) => fail(&format!(
+            "cannot load packs from {}: {e}",
+            packs_dir.display()
+        )),
     };
     tracing::info!("loaded {} packs from {}", packs.len(), packs_dir.display());
 
-    let state = Arc::new(AppState::new(packs, base_url));
+    let db = Db::open(&db_path)
+        .unwrap_or_else(|e| fail(&format!("cannot open database {db_path}: {e}")));
+    let mailer = Mailer::from_env().unwrap_or_else(|e| fail(&e));
+    tracing::info!("email: {}", mailer.describe());
+
+    // First run: there is no default admin. One is generated here and its
+    // credentials are printed once, below, and never stored in plaintext.
+    match auth::bootstrap_admin(&db).await {
+        Ok(Some((username, password))) => tracing::warn!(
+            "first run: created the admin account. These credentials are shown once and cannot be recovered.\n\
+             \n    username: {username}\n    password: {password}\n\n\
+             Log in at /login, then change the password at /account."
+        ),
+        Ok(None) => {}
+        Err(e) => fail(&e),
+    }
+
+    let state = Arc::new(AppState::new(packs, config, db, mailer));
+    spawn_housekeeping(state.clone());
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .unwrap_or_else(|e| {
-            eprintln!("cannot bind {addr}: {e}");
-            std::process::exit(1);
-        });
+        .unwrap_or_else(|e| fail(&format!("cannot bind {addr}: {e}")));
     tracing::info!("listening on http://{addr}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await
-        .expect("server error");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await
+    .expect("server error");
+}
+
+fn fail(msg: &str) -> ! {
+    eprintln!("{msg}");
+    std::process::exit(1)
 }
 
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_owned())
+}
+
+/// Hourly cleanup of expired sessions and tokens, accounts that never
+/// verified, and stale rate-limit entries.
+fn spawn_housekeeping(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(accounts::PURGE_INTERVAL);
+        loop {
+            tick.tick().await;
+            if let Err(e) = state.db.purge_expired().await {
+                tracing::error!("purge failed: {e}");
+            }
+            state.limiter.prune(AUTH_WINDOW);
+        }
+    });
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -79,27 +132,61 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
         .route("/archive", get(pages::archive))
         .route("/format", get(pages::format))
+        // accounts
+        .route("/register", get(accounts::register_get).post(accounts::register_post))
+        .route("/verify", get(accounts::verify_get))
+        .route("/login", get(accounts::login_get).post(accounts::login_post))
+        .route("/logout", post(accounts::logout_post))
+        .route("/forgot", get(accounts::forgot_get).post(accounts::forgot_post))
+        .route("/reset", get(accounts::reset_get).post(accounts::reset_post))
+        .route("/account", get(accounts::account_get))
+        .route("/account/password", post(accounts::account_password_post))
+        .route("/account/email", post(accounts::account_email_post))
+        .route("/account/delete", post(accounts::account_delete_post))
+        .route("/email/confirm", get(accounts::email_confirm_get))
+        // admin
+        .route("/admin", get(admin::admin_get))
+        .route("/admin/test-email", post(admin::test_email_post))
+        .route(
+            "/admin/users/{id}/delete",
+            get(admin::delete_confirm_get).post(admin::delete_post),
+        )
+        .route("/admin/users/{id}/{action}", post(admin::user_action_post))
+        // json api used by app.js
         .route(
             "/api/p/{id}/answer",
             // Answers are short; a small cap keeps the endpoint cheap.
             post(check_answer).layer(DefaultBodyLimit::max(2 * 1024)),
         )
+        .route("/api/p/{id}/explainer", get(explainer))
+        .route("/api/me/progress", get(progress))
         .route("/healthz", get(|| async { "ok" }))
         .route("/static/app.css", get(pages::static_css))
         .route("/static/app.js", get(pages::static_js))
         .route("/static/theme.js", get(pages::static_theme_js))
         .route("/favicon.svg", get(pages::favicon))
         .fallback(pages::not_found)
+        .layer(middleware::from_fn_with_state(state.clone(), origin_check))
+        .layer(middleware::from_fn_with_state(state.clone(), client_ip_layer))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            // Log the method and path only. Query strings carry one-time
+            // tokens (email links) and must not reach the log.
+            TraceLayer::new_for_http()
+                .make_span_with(|req: &Request| {
+                    tracing::info_span!("http", method = %req.method(), path = %req.uri().path())
+                })
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
         .with_state(state)
 }
 
 /// Headers for every response. The CSP allows only our own scripts plus the
 /// Google Fonts stylesheet and font files, which is why no page has an inline
-/// script or inline style.
-async fn security_headers(req: axum::extract::Request, next: Next) -> Response {
+/// script or inline style. Pages are not cached, since they can differ per
+/// signed-in user; static assets set their own caching.
+async fn security_headers(req: Request, next: Next) -> Response {
     let mut res = next.run(req).await;
     let h = res.headers_mut();
     h.insert(
@@ -114,17 +201,91 @@ async fn security_headers(req: axum::extract::Request, next: Next) -> Response {
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
+    // Email links carry one-time tokens in the query string, so never send
+    // the URL to another origin (the font hosts, for example).
     h.insert(
         header::REFERRER_POLICY,
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
+        HeaderValue::from_static("same-origin"),
     );
     h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    if !h.contains_key(header::CACHE_CONTROL) {
+        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
     res
 }
+
+/// Sets the [`ClientIp`] used for rate limiting. Behind a reverse proxy
+/// (`NECROPSY_TRUST_PROXY=1`) this is the last `X-Forwarded-For` entry, which
+/// is the one the proxy itself appended; earlier entries are client-supplied.
+async fn client_ip_layer(
+    State(state): State<Arc<AppState>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|c| c.0.ip().to_string());
+    let forwarded = state
+        .trust_proxy
+        .then(|| {
+            req.headers()
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.rsplit(',').next())
+                .map(|s| s.trim().to_owned())
+                .filter(|s| !s.is_empty())
+        })
+        .flatten();
+    let ip = forwarded.or(peer).unwrap_or_else(|| "unknown".into());
+    req.extensions_mut().insert(ClientIp(ip));
+    next.run(req).await
+}
+
+/// Rejects cross-site form posts. State-changing requests must come from our
+/// own origin; the session cookie is also `SameSite=Lax`. Requests with
+/// neither `Origin` nor `Sec-Fetch-Site` are not browsers submitting a form
+/// and cannot be a CSRF attack, so they pass.
+async fn origin_check(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
+    let safe = matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
+    if !safe && !same_origin(req.headers(), &state.base_url) {
+        return (StatusCode::FORBIDDEN, "Cross-site request blocked.").into_response();
+    }
+    next.run(req).await
+}
+
+fn same_origin(headers: &HeaderMap, base_url: &str) -> bool {
+    let text = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    if let Some(origin) = text("origin") {
+        let Some((_, host)) = origin.split_once("://") else {
+            return false; // "null" and anything malformed
+        };
+        let host = host.to_ascii_lowercase();
+        let base_host = base_url
+            .split_once("://")
+            .map(|(_, h)| h.to_ascii_lowercase())
+            .unwrap_or_default();
+        let request_host = text("host")
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_default();
+        return host == base_host || host == request_host;
+    }
+    match text("sec-fetch-site") {
+        Some(site) => matches!(site, "same-origin" | "none"),
+        None => true,
+    }
+}
+
+// ---------------------------------------------------------------- json api
 
 #[derive(Deserialize)]
 struct AnswerReq {
     answer: String,
+    /// Reported by the browser for the signed-in user's own history.
+    #[serde(default)]
+    seconds: i64,
+    #[serde(default)]
+    hints: i64,
 }
 
 #[derive(Serialize)]
@@ -137,6 +298,7 @@ struct AnswerRes {
 
 async fn check_answer(
     State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
     Path(id): Path<String>,
     Json(req): Json<AnswerReq>,
 ) -> Response {
@@ -152,6 +314,15 @@ async fn check_answer(
         .into_response();
     }
     let correct = p.pack.check(&req.answer);
+    if correct {
+        if let Some(user) = viewer {
+            let seconds = req.seconds.clamp(0, 7 * 86_400);
+            let hints = req.hints.clamp(0, p.pack.meta.hints.len() as i64);
+            if let Err(e) = state.db.record_solve(user.id, id, seconds, hints).await {
+                tracing::error!("recording solve failed: {e}");
+            }
+        }
+    }
     Json(AnswerRes {
         correct,
         explainer_html: correct.then(|| p.explainer_html.clone()),
@@ -159,118 +330,71 @@ async fn check_answer(
     .into_response()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::body::Body;
-    use axum::http::Request;
-    use tower::ServiceExt;
-
-    fn app() -> Router {
-        let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../packs"
-        )))
-        .unwrap();
-        router(Arc::new(AppState::new(
-            packs,
-            "https://example.test".into(),
-        )))
-    }
-
-    async fn get_body(path: &str) -> (StatusCode, String) {
-        let res = app()
-            .oneshot(Request::get(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let status = res.status();
-        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
-            .await
-            .unwrap();
-        (status, String::from_utf8_lossy(&bytes).into_owned())
-    }
-
-    async fn post_answer(id: &str, answer: &str) -> (StatusCode, String) {
-        let body = serde_json_lite(answer);
-        let res = app()
-            .oneshot(
-                Request::post(format!("/api/p/{id}/answer"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let status = res.status();
-        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
-            .await
-            .unwrap();
-        (status, String::from_utf8_lossy(&bytes).into_owned())
-    }
-
-    fn serde_json_lite(answer: &str) -> String {
-        format!(
-            "{{\"answer\":\"{}\"}}",
-            answer.replace('\\', "\\\\").replace('"', "\\\"")
-        )
-    }
-
-    #[tokio::test]
-    async fn pages_render() {
-        for path in ["/", "/archive", "/format", "/p/phone-home", "/p/peanuts"] {
-            let (status, body) = get_body(path).await;
-            assert_eq!(status, StatusCode::OK, "{path}");
-            assert!(body.contains("<title>"), "{path}");
-        }
-        assert_eq!(get_body("/p/nope").await.0, StatusCode::NOT_FOUND);
-        assert_eq!(get_body("/nope").await.0, StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn puzzle_page_never_contains_explainer_or_answer() {
-        let (_, body) = get_body("/p/phone-home").await;
-        assert!(!body.contains("sync.pagepilot-cdn.invalid</code>"));
-        assert!(!body.contains("The answer is"));
-    }
-
-    #[tokio::test]
-    async fn wrong_answer_gets_no_explainer() {
-        let (status, body) = post_answer("phone-home", "stats.pagepilot-assets.invalid").await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(body.contains("\"correct\":false"));
-        assert!(!body.contains("explainer_html"));
-    }
-
-    #[tokio::test]
-    async fn right_answer_returns_explainer() {
-        let (_, body) = post_answer("phone-home", "  Sync.PagePilot-CDN.invalid ").await;
-        assert!(body.contains("\"correct\":true"));
-        assert!(body.contains("explainer_html"));
-        let (status, _) = post_answer("nope", "x").await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn raw_files_are_limited_to_the_pack() {
-        let (status, body) = get_body("/p/peanuts/files/cookies.txt").await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(body.contains("session_token"));
-        for bad in [
-            "/p/peanuts/files/../answer",
-            "/p/peanuts/files/%2e%2e/answer",
-            "/p/peanuts/files/missing.txt",
-        ] {
-            assert_eq!(get_body(bad).await.0, StatusCode::NOT_FOUND, "{bad}");
-        }
-    }
-
-    #[tokio::test]
-    async fn security_headers_present() {
-        let res = app()
-            .oneshot(Request::get("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert!(res.headers().contains_key(header::CONTENT_SECURITY_POLICY));
-        assert_eq!(res.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+/// The explainer for a puzzle the signed-in user has already solved, so a
+/// returning user on a new device gets it back without the answer.
+async fn explainer(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+    Path(id): Path<String>,
+) -> Response {
+    let (Some(p), Some(user)) = (state.get(&id), viewer) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match state.db.has_solved(user.id, id).await {
+        Ok(true) => Json(AnswerRes {
+            correct: true,
+            explainer_html: Some(p.explainer_html.clone()),
+        })
+        .into_response(),
+        _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
+
+#[derive(Serialize)]
+struct SolveOut {
+    id: String,
+    /// Days since 1970-01-01 UTC, used for streaks.
+    day: i64,
+    seconds: i64,
+    hints: i64,
+}
+
+#[derive(Serialize)]
+struct Progress {
+    /// `null` when nobody is signed in.
+    user: Option<String>,
+    solves: Vec<SolveOut>,
+}
+
+/// The signed-in user's own solves. Contains no email address.
+async fn progress(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Response {
+    let Some(user) = viewer else {
+        return Json(Progress {
+            user: None,
+            solves: Vec::new(),
+        })
+        .into_response();
+    };
+    match state.db.solves_of(user.id).await {
+        Ok(rows) => Json(Progress {
+            user: Some(user.username),
+            solves: rows
+                .into_iter()
+                .map(|s| SolveOut {
+                    id: s.pack_id,
+                    day: s.solved_at.div_euclid(86_400),
+                    seconds: s.seconds,
+                    hints: s.hints,
+                })
+                .collect(),
+        })
+        .into_response(),
+        Err(e) => {
+            tracing::error!("loading progress failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

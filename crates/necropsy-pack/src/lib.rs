@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! The necropsy puzzle pack format, shared by every front end.
 //!
 //! A pack is a plain directory (see `docs/pack-format.md`):

@@ -5,7 +5,14 @@ members = ["crates/necropsy-pack", "crates/necropsy-web"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# Argon2 is deliberately slow; unoptimized it makes the test suite crawl.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

@@ -3,6 +3,7 @@ name = "necropsy-web"
 description = "Web front end for necropsy puzzle packs"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 publish.workspace = true
 
 [lints]
@@ -16,10 +17,14 @@ pulldown-cmark = { version = "0.13", default-features = false, features = ["html
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 syntect = { version = "5", default-features = false, features = ["html", "parsing", "default-syntaxes", "regex-fancy"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
 tower-http = { version = "0.6", features = ["compression-gzip", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+argon2 = "0.6.0"
+getrandom = "0.4.3"
+lettre = { version = "0.11.24", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

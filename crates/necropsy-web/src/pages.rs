@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Page handlers and HTML. Pages are built with `maud`, which escapes every
 //! interpolated value; the only `PreEscaped` content is HTML we rendered from
 //! pack markdown (raw HTML stripped) or from syntect (escaped).
@@ -9,6 +10,8 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
+use crate::auth::MaybeUser;
+use crate::db::User;
 use crate::markdown::render_markdown;
 use crate::state::{AppState, RenderedPack};
 
@@ -21,30 +24,41 @@ const FORMAT_DOC: &str = include_str!("../../../docs/pack-format.md");
 const FONTS: &str = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500&display=swap";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Nav {
+pub enum Nav {
     Today,
     Archive,
     Format,
+    Account,
+    Admin,
     None,
 }
 
 // ---------------------------------------------------------------- handlers
 
-pub async fn today(State(state): State<Arc<AppState>>) -> Markup {
+pub async fn today(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
     let i = state.today_index();
-    puzzle_page(&state, &state.packs[i], true)
+    puzzle_page(&state, viewer.as_ref(), &state.packs[i], true)
 }
 
-pub async fn puzzle(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
+pub async fn puzzle(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+    Path(id): Path<String>,
+) -> Response {
+    let v = viewer.as_ref();
     match state.get(&id) {
-        Some(p) => {
-            puzzle_page(&state, p, state.position(&id) == Some(state.today_index())).into_response()
-        }
-        None => not_found_page(&state).into_response(),
+        Some(p) => puzzle_page(
+            &state,
+            v,
+            p,
+            state.position(&id) == Some(state.today_index()),
+        )
+        .into_response(),
+        None => not_found_page(&state, v).into_response(),
     }
 }
 
-pub async fn archive(State(state): State<Arc<AppState>>) -> Markup {
+pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
     let today = state.today_index();
     let body = html! {
         section.wrap.page-head {
@@ -71,6 +85,7 @@ pub async fn archive(State(state): State<Arc<AppState>>) -> Markup {
     };
     layout(
         &state,
+        viewer.as_ref(),
         "Archive",
         "All necropsy puzzles.",
         Nav::Archive,
@@ -79,7 +94,7 @@ pub async fn archive(State(state): State<Arc<AppState>>) -> Markup {
     )
 }
 
-pub async fn format(State(state): State<Arc<AppState>>) -> Markup {
+pub async fn format(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
     let body = html! {
         section.wrap.page-head {
             h1 { "Pack format" }
@@ -90,6 +105,7 @@ pub async fn format(State(state): State<Arc<AppState>>) -> Markup {
     };
     layout(
         &state,
+        viewer.as_ref(),
         "Pack format",
         "How necropsy puzzle packs are structured.",
         Nav::Format,
@@ -124,11 +140,14 @@ pub async fn raw_file(
     }
 }
 
-pub async fn not_found(State(state): State<Arc<AppState>>) -> Response {
-    not_found_page(&state).into_response()
+pub async fn not_found(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+) -> Response {
+    not_found_page(&state, viewer.as_ref()).into_response()
 }
 
-fn not_found_page(state: &AppState) -> (StatusCode, Markup) {
+fn not_found_page(state: &AppState, viewer: Option<&User>) -> (StatusCode, Markup) {
     let body = html! {
         section.wrap.page-head {
             h1 { "Not found" }
@@ -137,7 +156,15 @@ fn not_found_page(state: &AppState) -> (StatusCode, Markup) {
     };
     (
         StatusCode::NOT_FOUND,
-        layout(state, "Not found", "Page not found.", Nav::None, "/", body),
+        layout(
+            state,
+            viewer,
+            "Not found",
+            "Page not found.",
+            Nav::None,
+            "/",
+            body,
+        ),
     )
 }
 
@@ -167,7 +194,12 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 
 // ---------------------------------------------------------------- puzzle
 
-fn puzzle_page(state: &AppState, rp: &RenderedPack, is_today: bool) -> Markup {
+fn puzzle_page(
+    state: &AppState,
+    viewer: Option<&User>,
+    rp: &RenderedPack,
+    is_today: bool,
+) -> Markup {
     let m = &rp.pack.meta;
     let pos = state.position(&m.id).unwrap_or(0);
     let prev = pos.checked_sub(1).map(|i| &state.packs[i]);
@@ -271,6 +303,7 @@ fn puzzle_page(state: &AppState, rp: &RenderedPack, is_today: bool) -> Markup {
 
     layout(
         state,
+        viewer,
         &m.title,
         &format!("necropsy puzzle #{}: {}", m.number, m.title),
         Nav::None,
@@ -289,8 +322,9 @@ fn difficulty(d: u8) -> Markup {
 
 // ---------------------------------------------------------------- layout
 
-fn layout(
+pub fn layout(
     state: &AppState,
+    viewer: Option<&User>,
     title: &str,
     description: &str,
     nav: Nav,
@@ -342,6 +376,14 @@ fn layout(
                             a href="/format" aria-current=[current(Nav::Format)] { "Format" }
                         }
                         div.header-tools {
+                            @if let Some(u) = viewer {
+                                a.user-link href="/account" aria-current=[current(Nav::Account)] { (u.username) }
+                                @if u.is_admin {
+                                    a.user-link href="/admin" aria-current=[current(Nav::Admin)] { "Admin" }
+                                }
+                            } @else {
+                                a.user-link href="/login" { "Log in" }
+                            }
                             a #streak-chip.streak.hidden href="/archive" title="Days in a row with a solved puzzle" {}
                             button #theme-toggle.icon-btn type="button"
                                 aria-label="Switch color theme" title="Switch color theme" {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Shared, read-only server state: packs rendered once at startup.
 
 use std::collections::HashMap;
@@ -6,6 +7,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use necropsy_pack::Pack;
 use sha2::{Digest, Sha256};
 
+use crate::auth::{hash_password_blocking, RateLimiter};
+use crate::db::Db;
+use crate::mail::Mailer;
 use crate::markdown::{line_count, render_markdown, Highlighter};
 
 /// Files larger than this are offered as downloads instead of being rendered
@@ -26,11 +30,28 @@ pub struct RenderedPack {
     pub files: Vec<RenderedFile>,
 }
 
+/// Deployment settings read from the environment in `main`.
+pub struct Config {
+    /// Public origin used in links and share text, without a trailing slash.
+    pub base_url: String,
+    /// Trust `X-Forwarded-For` for the client address. Only enable behind a
+    /// reverse proxy that sets it, or clients can spoof their rate-limit key.
+    pub trust_proxy: bool,
+}
+
 pub struct AppState {
     pub packs: Vec<RenderedPack>,
     index: HashMap<String, usize>,
-    /// Public origin used in share links, without a trailing slash.
     pub base_url: String,
+    /// Cookies get the `Secure` attribute when the site is served over https.
+    pub secure_cookies: bool,
+    pub trust_proxy: bool,
+    pub db: Db,
+    pub mailer: Mailer,
+    pub limiter: RateLimiter,
+    /// Verified against when a login names an unknown user, so that case
+    /// takes as long as a wrong password.
+    pub dummy_hash: String,
     /// Short content hashes used to cache-bust static assets.
     pub css_v: String,
     pub js_v: String,
@@ -38,7 +59,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(packs: Vec<Pack>, base_url: String) -> Self {
+    pub fn new(packs: Vec<Pack>, config: Config, db: Db, mailer: Mailer) -> Self {
         let hl = Highlighter::new();
         let packs: Vec<RenderedPack> = packs
             .into_iter()
@@ -71,7 +92,14 @@ impl AppState {
         Self {
             packs,
             index,
-            base_url: base_url.trim_end_matches('/').to_owned(),
+            secure_cookies: config.base_url.starts_with("https://"),
+            base_url: config.base_url.trim_end_matches('/').to_owned(),
+            trust_proxy: config.trust_proxy,
+            db,
+            mailer,
+            limiter: RateLimiter::default(),
+            dummy_hash: hash_password_blocking("necropsy dummy password")
+                .expect("argon2 hashing failed"),
             css_v: short_hash(crate::pages::CSS),
             js_v: short_hash(crate::pages::JS),
             theme_v: short_hash(crate::pages::THEME_JS),

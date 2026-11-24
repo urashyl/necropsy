@@ -8,7 +8,7 @@ Demo site: <https://necropsy.urashyl.dev>
 cargo run -p necropsy-web
 ```
 
-Then open <http://127.0.0.1:8080>.
+Then open <http://127.0.0.1:8080>. On first run the server creates an admin account and prints its generated username and password to the log, once.
 
 ## Layout
 
@@ -19,6 +19,7 @@ Then open <http://127.0.0.1:8080>.
 | `crates/necropsy-web` | Web front end. |
 | `docs/pack-format.md` | The pack format. |
 | `docs/web.md` | Running and operating the web front end. |
+| `docs/accounts.md` | Accounts, email, admin, and the security design. |
 
 The packs contain answer hashes and explainers, so spoilers are in this repository.
 
@@ -37,3 +38,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+## License
+
+[GNU AGPL v3 or later](LICENSE). You can use, change and share this software, but anything you distribute, or run as a public network service, must be released under the same license with its source.

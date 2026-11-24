@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //! Markdown and code rendering for pack content.
 
 use pulldown_cmark::{html, Event, Options, Parser};
