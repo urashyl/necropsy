@@ -1,0 +1,11 @@
+id = "intro-powershell"
+track = "intro"
+number = 2
+title = "Encoded command"
+difficulty = 1
+modes = ["web"]
+tags = ["windows", "powershell", "base64"]
+hints = [
+  "Find the process that should not have started another one. A document has no business launching PowerShell.",
+  "The long string after `-EncodedCommand` is base64. If the result looks like letters with gaps between them, it is UTF-16.",
+]

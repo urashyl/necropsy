@@ -16,7 +16,9 @@ phone-home/
 | Key | Type | Notes |
 | --- | --- | --- |
 | `id` | string | Slug, unique. Lowercase letters, digits and `-`, at most 40 characters. Used in URLs. |
-| `number` | integer | Display number and archive order. Unique. |
+| `track` | string | `intro` or `daily`, see below. Required. |
+| `date` | string | `YYYY-MM-DD` (UTC) release date. Required for `daily`, not allowed for `intro`. Unique among dailies. |
+| `number` | integer | Display number and order within its track. Unique within the track. |
 | `title` | string | |
 | `difficulty` | integer | 1 (easy) to 5 (hard). |
 | `modes` | list | `web`, `cli`. Defaults to `["web"]`. |
@@ -24,6 +26,15 @@ phone-home/
 | `hints` | list | Revealed one at a time, in order. |
 
 Unknown keys are rejected.
+
+### Tracks
+
+There are two tracks of puzzles.
+
+- **`intro`** stages are always available, in order. They teach the techniques the dailies assume, and the last one leads on to today's puzzle.
+- **`daily`** puzzles have a release `date`. The latest one released is today's puzzle, earlier ones stay playable from the archive, and later ones are hidden everywhere: their page, files, answer check and explainer all answer "not found" until their day, so nothing can be read early. To add a daily, give it a date after the last one.
+
+Streaks count only dailies solved on their own release day, so replaying old puzzles or the intro stages does not extend one.
 
 ### answer
 
@@ -41,7 +52,11 @@ The hash is stored in a public repository, so it only protects against casual sp
 
 ### files/
 
-Everything under `files/` is shown or handed to the player. Files are text or data only and are never executed. The loader rejects:
+Everything under `files/` is shown or handed to the player. Files are text or data only and are never executed.
+
+**Packs never contain working malware.** A puzzle about a real sample uses what an analyst works from: file and registry activity logs, notes, message headers, decoded strings and indicators, or a short defanged snippet. Hosts use the reserved `.invalid` domain. When an artifact is rebuilt from published analyses rather than captured, its first lines say so and name the sources, and the explainer links them.
+
+The loader rejects:
 
 - symlinks and special files
 - path components other than plain names, so no `..`, no absolute paths and no backslashes

@@ -1,0 +1,30 @@
+Nov 20 01:58:12 web1 sshd[2100]: Accepted publickey for mitch from 198.51.100.20 port 40222 ssh2: ED25519 SHA256:u3Jx0kQ1c2mWm8m9e1pVwq3b8YtqT5oJp0nQ8Vh2d4s
+Nov 20 01:58:12 web1 sshd[2101]: pam_unix(sshd:session): session opened for user mitch(uid=1000) by (uid=0)
+Nov 20 02:11:03 web1 sshd[2102]: Failed password for root from 192.0.2.15 port 50210 ssh2
+Nov 20 02:11:05 web1 sshd[2103]: Failed password for root from 192.0.2.15 port 50211 ssh2
+Nov 20 02:11:09 web1 sshd[2104]: Failed password for invalid user admin from 192.0.2.15 port 50212 ssh2
+Nov 20 02:11:12 web1 sshd[2105]: Failed password for root from 192.0.2.15 port 50213 ssh2
+Nov 20 02:11:20 web1 sshd[2106]: Failed password for invalid user test from 192.0.2.15 port 50214 ssh2
+Nov 20 02:11:21 web1 sshd[2107]: Failed password for root from 192.0.2.15 port 50215 ssh2
+Nov 20 02:11:30 web1 sshd[2108]: Failed password for invalid user ubuntu from 192.0.2.15 port 50216 ssh2
+Nov 20 02:11:33 web1 sshd[2109]: Failed password for root from 192.0.2.15 port 50217 ssh2
+Nov 20 02:11:41 web1 sshd[2110]: Failed password for invalid user oracle from 192.0.2.15 port 50218 ssh2
+Nov 20 02:11:44 web1 sshd[2111]: Failed password for root from 192.0.2.15 port 50219 ssh2
+Nov 20 02:11:52 web1 sshd[2112]: Failed password for root from 192.0.2.15 port 50220 ssh2
+Nov 20 02:11:58 web1 sshd[2113]: Failed password for invalid user admin from 192.0.2.15 port 50221 ssh2
+Nov 20 02:12:30 web1 sshd[2114]: Invalid user postgres from 203.0.113.77 port 51540
+Nov 20 02:12:31 web1 sshd[2115]: Failed password for invalid user postgres from 203.0.113.77 port 51540 ssh2
+Nov 20 02:12:36 web1 sshd[2116]: Failed password for invalid user admin from 203.0.113.77 port 51544 ssh2
+Nov 20 02:12:41 web1 sshd[2117]: Failed password for root from 203.0.113.77 port 51545 ssh2
+Nov 20 02:12:47 web1 sshd[2118]: Failed password for invalid user test from 203.0.113.77 port 51546 ssh2
+Nov 20 02:12:55 web1 sshd[2119]: Failed password for invalid user git from 203.0.113.77 port 51547 ssh2
+Nov 20 02:13:02 web1 sshd[2120]: Failed password for invalid user ftp from 203.0.113.77 port 51548 ssh2
+Nov 20 02:13:10 web1 sshd[2121]: Failed password for invalid user oracle from 203.0.113.77 port 51549 ssh2
+Nov 20 02:13:19 web1 sshd[2122]: Failed password for invalid user ubuntu from 203.0.113.77 port 51550 ssh2
+Nov 20 02:13:25 web1 sshd[2123]: Failed password for deploy from 203.0.113.77 port 51551 ssh2
+Nov 20 02:13:44 web1 sshd[2124]: Accepted password for deploy from 203.0.113.77 port 51561 ssh2
+Nov 20 02:13:44 web1 sshd[2125]: pam_unix(sshd:session): session opened for user deploy(uid=1001) by (uid=0)
+Nov 20 02:14:20 web1 sshd[2126]: Connection closed by authenticating user root 192.0.2.15 port 50222 [preauth]
+Nov 20 02:41:09 web1 sshd[2127]: pam_unix(sshd:session): session closed for user deploy
+Nov 20 03:02:00 web1 sshd[2128]: Received disconnect from 198.51.100.20 port 40222:11: disconnected by user
+Nov 20 03:02:00 web1 sshd[2129]: pam_unix(sshd:session): session closed for user mitch

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use necropsy_pack::Pack;
+use necropsy_pack::{Pack, Track};
 use sha2::{Digest, Sha256};
 
 use crate::auth::{hash_password_blocking, RateLimiter};
@@ -43,9 +43,31 @@ pub struct Config {
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
 }
 
+impl RenderedPack {
+    /// "Intro #2" or "Daily #3".
+    pub fn label(&self) -> String {
+        let m = &self.pack.meta;
+        match m.track {
+            Track::Intro => format!("Intro #{}", m.number),
+            Track::Daily => format!("Daily #{}", m.number),
+        }
+    }
+}
+
+/// A link to another puzzle, for the previous and next buttons.
+pub struct Neighbor {
+    pub href: String,
+    pub label: String,
+}
+
 pub struct AppState {
-    pub packs: Vec<RenderedPack>,
+    /// Every pack, intro stages first and dailies by date. Private: callers go
+    /// through the methods below, which hide dailies that are not released yet.
+    all: Vec<RenderedPack>,
     index: HashMap<String, usize>,
+    /// Treat this day (days since 1970-01-01 UTC) as today instead of reading
+    /// the clock. For tests.
+    pub today_override: Option<i64>,
     pub base_url: String,
     /// Cookies get the `Secure` attribute when the site is served over https.
     pub secure_cookies: bool,
@@ -95,8 +117,9 @@ impl AppState {
             .map(|(i, p)| (p.pack.meta.id.clone(), i))
             .collect();
         Self {
-            packs,
+            all: packs,
             index,
+            today_override: None,
             secure_cookies: config.base_url.starts_with("https://"),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             client_ip_header: config.client_ip_header,
@@ -112,21 +135,93 @@ impl AppState {
         }
     }
 
+    /// Today as days since 1970-01-01 UTC.
+    pub fn today_days(&self) -> i64 {
+        self.today_override.unwrap_or_else(|| {
+            let secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            (secs / 86_400) as i64
+        })
+    }
+
+    /// Intro stages are always visible. A daily is visible from its release
+    /// day on. Every lookup goes through this, so an unreleased puzzle cannot
+    /// be read by its page, its files, its answer check or its explainer.
+    fn is_visible(&self, p: &RenderedPack) -> bool {
+        match p.pack.meta.track {
+            Track::Intro => true,
+            Track::Daily => p
+                .pack
+                .meta
+                .release_day()
+                .is_some_and(|d| d <= self.today_days()),
+        }
+    }
+
+    /// A visible pack by id.
     pub fn get(&self, id: &str) -> Option<&RenderedPack> {
-        self.index.get(id).map(|&i| &self.packs[i])
+        self.index
+            .get(id)
+            .map(|&i| &self.all[i])
+            .filter(|p| self.is_visible(p))
     }
 
-    pub fn position(&self, id: &str) -> Option<usize> {
-        self.index.get(id).copied()
+    /// Intro stages, in order.
+    pub fn intros(&self) -> Vec<&RenderedPack> {
+        self.all
+            .iter()
+            .filter(|p| p.pack.meta.track == Track::Intro)
+            .collect()
     }
 
-    /// Today's pack. The packs cycle in order, one per UTC day.
-    pub fn today_index(&self) -> usize {
-        let secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        ((secs / 86_400) % self.packs.len() as u64) as usize
+    /// Released dailies, oldest first.
+    pub fn released_dailies(&self) -> Vec<&RenderedPack> {
+        self.all
+            .iter()
+            .filter(|p| p.pack.meta.track == Track::Daily && self.is_visible(p))
+            .collect()
+    }
+
+    /// The latest released daily, which is today's puzzle when one is dated today.
+    pub fn today_daily(&self) -> Option<&RenderedPack> {
+        self.released_dailies().pop()
+    }
+
+    /// Whether this daily is dated today.
+    pub fn is_today(&self, p: &RenderedPack) -> bool {
+        p.pack.meta.track == Track::Daily && p.pack.meta.release_day() == Some(self.today_days())
+    }
+
+    pub fn visible_count(&self) -> usize {
+        self.all.iter().filter(|p| self.is_visible(p)).count()
+    }
+
+    /// Previous and next puzzle in the same track. The last intro stage leads
+    /// on to today's daily.
+    pub fn neighbors(&self, p: &RenderedPack) -> (Option<Neighbor>, Option<Neighbor>) {
+        let link = |q: &RenderedPack| Neighbor {
+            href: format!("/p/{}", q.pack.meta.id),
+            label: format!("{} {}", q.label(), q.pack.meta.title),
+        };
+        let list = match p.pack.meta.track {
+            Track::Intro => self.intros(),
+            Track::Daily => self.released_dailies(),
+        };
+        let Some(pos) = list.iter().position(|q| q.pack.meta.id == p.pack.meta.id) else {
+            return (None, None);
+        };
+        let prev = pos.checked_sub(1).map(|i| link(list[i]));
+        let next = match list.get(pos + 1) {
+            Some(q) => Some(link(q)),
+            None if p.pack.meta.track == Track::Intro => self.today_daily().map(|d| Neighbor {
+                href: "/".into(),
+                label: format!("Today's puzzle: {}", d.pack.meta.title),
+            }),
+            None => None,
+        };
+        (prev, next)
     }
 }
 

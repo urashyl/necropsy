@@ -1,0 +1,11 @@
+id = "intro-log"
+track = "intro"
+number = 1
+title = "Who got in?"
+difficulty = 1
+modes = ["web"]
+tags = ["logs", "ssh"]
+hints = [
+  "A successful login says `Accepted`. Not every `Accepted` line is a problem.",
+  "You want an address that failed again and again and then got in. Compare how each one logged in: a key, or a guessed password.",
+]

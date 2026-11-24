@@ -195,6 +195,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(pages::today))
         .route("/p/{id}", get(pages::puzzle))
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
+        .route("/learn", get(pages::learn))
         .route("/archive", get(pages::archive))
         .route("/format", get(pages::format))
         // accounts
@@ -429,8 +430,11 @@ async fn explainer(
 #[derive(Serialize)]
 struct SolveOut {
     id: String,
-    /// Days since 1970-01-01 UTC, used for streaks.
+    /// Days since 1970-01-01 UTC the puzzle was solved.
     day: i64,
+    /// A daily solved on its own release day. Only these count for streaks, so
+    /// replaying old puzzles cannot extend one.
+    ontime: bool,
     seconds: i64,
     hints: i64,
 }
@@ -456,11 +460,18 @@ async fn progress(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUs
             user: Some(user.username),
             solves: rows
                 .into_iter()
-                .map(|s| SolveOut {
-                    id: s.pack_id,
-                    day: s.solved_at.div_euclid(86_400),
-                    seconds: s.seconds,
-                    hints: s.hints,
+                .map(|s| {
+                    let day = s.solved_at.div_euclid(86_400);
+                    let ontime = state
+                        .get(&s.pack_id)
+                        .is_some_and(|p| p.pack.meta.release_day() == Some(day));
+                    SolveOut {
+                        id: s.pack_id,
+                        day,
+                        ontime,
+                        seconds: s.seconds,
+                        hints: s.hints,
+                    }
                 })
                 .collect(),
         })

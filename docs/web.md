@@ -26,10 +26,11 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 
 | Route | |
 | --- | --- |
-| `/` | Today's puzzle. Packs cycle in order, one per UTC day. |
-| `/p/{id}` | A puzzle by id. |
+| `/` | Today's puzzle: the latest daily released by today (UTC). Goes to `/learn` if none is out yet. |
+| `/learn` | The intro stages, in order. |
+| `/p/{id}` | A puzzle by id. Unreleased dailies are "not found". |
 | `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. |
-| `/archive` | All puzzles. |
+| `/archive` | Released dailies, newest first. |
 | `/format` | Renders `docs/pack-format.md`. |
 | `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the reported time and hints clamped to sane ranges. |
 | `/register`, `/verify`, `/login`, `/logout`, `/forgot`, `/reset`, `/account`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |

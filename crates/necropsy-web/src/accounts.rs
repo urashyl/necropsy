@@ -715,7 +715,7 @@ pub async fn account_page(
                 dl.facts {
                     div { dt { "Username" } dd { (user.username) } }
                     div { dt { "Joined" } dd { (ymd(user.created_at)) } }
-                    div { dt { "Solved" } dd { (solved) " of " (state.packs.len()) } }
+                    div { dt { "Solved" } dd { (solved) " of " (state.visible_count()) } }
                 }
                 @if user.is_admin {
                     p.auth-links { a href="/admin" { "Admin" } }

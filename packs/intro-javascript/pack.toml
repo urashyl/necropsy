@@ -1,0 +1,11 @@
+id = "intro-javascript"
+track = "intro"
+number = 3
+title = "Hidden in numbers"
+difficulty = 1
+modes = ["web"]
+tags = ["javascript", "obfuscation"]
+hints = [
+  "Skip the cookie banner and the analytics. Look at what is built up in `u`, and where it ends up.",
+  "`String.fromCharCode` turns a number into a letter. Run it on the whole list in the browser console, or use `chr()` in Python.",
+]

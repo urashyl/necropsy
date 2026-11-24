@@ -1,0 +1,30 @@
+# Reconstructed from published descriptions of VBS/LoveLetter ("ILOVEYOU", May 2000).
+# F-Secure and Wikipedia give the file names and where they land.
+# An illustration for the puzzle, not a capture from a live run.
+#
+# Windows 98 layout: C:\WINDOWS is the Windows directory, and
+# C:\WINDOWS\SYSTEM is the System directory inside it.
+#
+# time          process        operation   path
+10:02:08.101  explorer.exe   ReadFile    C:\WINDOWS\WIN.INI
+10:02:08.240  explorer.exe   ReadFile    C:\WINDOWS\SYSTEM\SHELL32.DLL
+10:02:09.015  OUTLOOK.EXE    ReadFile    C:\WINDOWS\SYSTEM\MAPI32.DLL
+10:02:09.870  OUTLOOK.EXE    CreateFile  C:\WINDOWS\TEMP\~OL0001.tmp
+10:02:10.340  scandisk.exe   CreateFile  C:\WINDOWS\SCANDISK.LOG
+10:02:10.912  explorer.exe   CreateFile  C:\WINDOWS\RECENT\Attachments.lnk
+10:02:11.730  OUTLOOK.EXE    CreateFile  C:\WINDOWS\TEMP\LOVE-LETTER-FOR-YOU.TXT.vbs
+10:02:11.988  explorer.exe   ReadFile    C:\WINDOWS\SYSTEM\WSCRIPT.EXE
+10:02:12.004  wscript.exe    ReadFile    C:\WINDOWS\TEMP\LOVE-LETTER-FOR-YOU.TXT.vbs
+10:02:12.120  wscript.exe    ReadFile    C:\WINDOWS\SYSTEM\VBSCRIPT.DLL
+10:02:12.310  wscript.exe    CreateFile  C:\WINDOWS\SYSTEM\MSKernel32.vbs
+10:02:12.318  wscript.exe    CreateFile  C:\WINDOWS\SYSTEM\LOVE-LETTER-FOR-YOU.TXT.vbs
+10:02:12.327  wscript.exe    CreateFile  C:\WINDOWS\Win32DLL.vbs
+10:02:12.401  wscript.exe    WriteFile   C:\WINDOWS\Win32DLL.vbs
+10:02:12.455  wscript.exe    CreateFile  C:\WINDOWS\SYSTEM\LOVE-LETTER-FOR-YOU.HTM
+10:02:12.601  wscript.exe    ReadFile    C:\WINDOWS\SYSTEM\MSKernel32.vbs
+10:02:13.020  explorer.exe   ReadFile    C:\WINDOWS\SYSTEM\USER.EXE
+10:02:13.511  winword.exe    CreateFile  C:\WINDOWS\TEMP\~WRD0003.tmp
+10:02:14.093  msgsrv32.exe   ReadFile    C:\WINDOWS\SYSTEM\MSGSRV32.EXE
+10:02:14.730  explorer.exe   ReadFile    C:\WINDOWS\SYSTEM\Win32s.dll
+10:02:15.002  setup.exe      CreateFile  C:\WINDOWS\WININIT.INI
+10:02:15.480  explorer.exe   ReadFile    C:\WINDOWS\WINFILE.EXE

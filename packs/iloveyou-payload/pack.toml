@@ -1,0 +1,12 @@
+id = "iloveyou-payload"
+track = "daily"
+date = "2026-11-26"
+number = 3
+title = "ILOVEYOU: the password stealer"
+difficulty = 3
+modes = ["web"]
+tags = ["worm", "trojan", "persistence"]
+hints = [
+  "Two different names appear for two different jobs: the one it arrives as, and the one it installs itself as. You want the second.",
+  "The installed name is the copy that the Run entry starts at boot. Ignore the names that appear in the download directory.",
+]

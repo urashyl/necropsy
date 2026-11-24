@@ -33,7 +33,7 @@ async fn admin_page(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let total = state.packs.len();
+    let total = state.visible_count();
     let body: Markup = html! {
         section.wrap.page-head { h1 { "Admin" } }
         section.wrap.section-tight {

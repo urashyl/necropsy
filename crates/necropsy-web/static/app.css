@@ -971,3 +971,23 @@ pre {
 .auth form.logout {
   margin-top: 2.5rem;
 }
+
+/* Learn and archive lists */
+
+.work-desc .date {
+  font-variant-numeric: tabular-nums;
+}
+
+.after-list {
+  margin-top: 1.25rem;
+}
+
+/* A short hint above the puzzle */
+
+.notice {
+  padding: 0.65rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--surface);
+  color: var(--ink-soft);
+}

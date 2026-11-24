@@ -1,6 +1,6 @@
 # necropsy
 
-Short puzzles built from real findings, such as malware, browser extensions and decrypted profile data. Each puzzle is a pack: a brief, some files, an answer and an explainer.
+Short puzzles built from real findings, such as malware, browser extensions and decrypted profile data. Each puzzle is a pack: a brief, some files, an answer and an explainer. A few intro stages teach the basics, then a new daily puzzle is released each day and the old ones stay playable.
 
 Demo site: <https://necropsy.urashyl.dev>
 
@@ -32,7 +32,7 @@ The packs contain answer hashes and explainers, so spoilers are in this reposito
 
 ## Adding a puzzle
 
-1. Create `packs/<id>/` with `pack.toml`, `brief.md`, `files/` and `explainer.md`.
+1. Create `packs/<id>/` with `pack.toml`, `brief.md`, `files/` and `explainer.md`. Set `track` to `intro`, or to `daily` with a release `date` after the last daily.
 2. Generate the answer file: `cargo run -q -p necropsy-pack --bin pack-tool -- hash <id> '<answer>' > packs/<id>/answer`
 3. Check it loads: `cargo run -q -p necropsy-pack --bin pack-tool -- validate packs`
 
