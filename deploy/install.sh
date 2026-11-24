@@ -68,10 +68,50 @@ done
 
 ctl() { systemctl --user "$@"; }
 
+# Reaches this user's systemd manager. Getting a shell with `su` or `sudo -u`
+# is not a login: it leaves the previous user's XDG_RUNTIME_DIR in place (so
+# systemctl talks to root's bus and is refused) and may not start a user
+# manager at all. Point at our own runtime directory when it exists.
+connect_user_bus() {
+  ctl show-environment >/dev/null 2>&1 && return 0
+  local rd="/run/user/$(id -u)"
+  if [ -d "$rd" ] && [ -O "$rd" ] && { [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -O "$XDG_RUNTIME_DIR" ]; }; then
+    export XDG_RUNTIME_DIR="$rd"
+  fi
+  if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  fi
+  ctl show-environment >/dev/null 2>&1
+}
+
+# With lingering on, systemd starts this user's manager at boot and keeps it
+# running, which is also what makes a non-login shell able to reach it.
+enable_linger() {
+  loginctl enable-linger "$(id -un)" 2>/dev/null
+}
+
 need_systemd() {
   command -v systemctl >/dev/null || die "systemctl not found (use --files-only to skip systemd)"
-  ctl show-environment >/dev/null 2>&1 \
-    || die "cannot reach your systemd user manager (is this a login session? use --files-only to skip systemd)"
+  connect_user_bus && return 0
+  # No user manager yet: lingering starts one. Give it a moment to come up.
+  if [ "$linger" -eq 1 ] && enable_linger; then
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      connect_user_bus && return 0
+      sleep 1
+    done
+  fi
+  cat >&2 <<MSG
+error: cannot reach your systemd user manager.
+
+This usually means you got here with su or sudo instead of logging in. Any of:
+  - log in as $(id -un) directly (ssh $(id -un)@this-host) and run this again
+  - as root run:  loginctl enable-linger $(id -un)
+    then run this again (it finds the user manager by itself)
+  - as root run:  machinectl shell $(id -un)@   and run this in that shell
+
+To only copy files and set up systemd yourself later, use --files-only.
+MSG
+  exit 1
 }
 
 if [ "$uninstall" -eq 1 ]; then
@@ -148,7 +188,7 @@ if [ "$systemd" -eq 1 ]; then
   ctl enable necropsy.service
 
   if [ "$linger" -eq 1 ]; then
-    if loginctl enable-linger "$(id -un)" 2>/dev/null; then
+    if enable_linger; then
       info "lingering enabled: the service starts at boot and keeps running after you log out"
     else
       echo "warning: could not enable lingering. The service will only run while you are logged in." >&2

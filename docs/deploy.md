@@ -30,6 +30,14 @@ systemctl --user restart necropsy
 
 A user service normally stops when you log out. The installer runs `loginctl enable-linger` so it starts at boot and keeps running. If that is not allowed for your user, it warns and the service only runs while you are logged in. Skip lingering with `--no-linger`.
 
+## "cannot reach your systemd user manager"
+
+A shell from `su` or `sudo -u` is not a login, so `systemctl --user` fails with "Operation not permitted". The installer looks for your user manager and starts one through lingering, but if that is not permitted, use one of:
+
+- log in as the service user directly (`ssh user@host`) and run the installer
+- as root, run `loginctl enable-linger <user>`, then run the installer again
+- as root, run `machinectl shell <user>@` and run the installer in that shell
+
 ## First-run admin credentials
 
 The first start generates an admin account and prints its credentials once, to the journal:
