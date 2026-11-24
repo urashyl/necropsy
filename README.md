@@ -22,6 +22,8 @@ Then open <http://127.0.0.1:8080>. On first run the server creates an admin acco
 | `docs/deploy.md` | Installing as a systemd user service. |
 | `.env.example` | Every setting, documented. Copy to `.env` for local runs. |
 | `deploy/` | Service unit template and `install.sh`. |
+| `docs/ci-cd.md` | GitHub Actions: checks, and deploying to the server over SSH. |
+| `.github/workflows/` | `ci.yml` and `deploy.yml`. |
 | `docs/accounts.md` | Accounts, email, admin, and the security design. |
 
 The packs contain answer hashes and explainers, so spoilers are in this repository.

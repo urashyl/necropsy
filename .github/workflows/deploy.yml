@@ -1,0 +1,115 @@
+# Deploys main to the server over SSH once the checks pass. The server builds
+# and installs it with deploy/install.sh, the same way as a manual install.
+#
+# Needs the secrets listed in docs/ci-cd.md, stored on the "production"
+# environment. Nothing about the server is written in this file.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one that is already running.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: check
+    # A manual run from another branch must not deploy it.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Check configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=""
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing secrets:$missing. See docs/ci-cd.md."
+            exit 1
+          fi
+          if ! [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]] || [ "$DEPLOY_PORT" -lt 1 ] || [ "$DEPLOY_PORT" -gt 65535 ]; then
+            echo "::error::DEPLOY_PORT must be a number from 1 to 65535."
+            exit 1
+          fi
+          # Values that start with - would be read as ssh options.
+          for v in "$DEPLOY_HOST" "$DEPLOY_USER"; do
+            case "$v" in -*) echo "::error::DEPLOY_HOST and DEPLOY_USER must not start with '-'."; exit 1 ;; esac
+          done
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts_deploy
+
+      - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          # Where the checkout lives on the server, relative to the deploy
+          # user's home unless absolute. Optional.
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SHA: ${{ github.sha }}
+        run: |
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts_deploy" \
+            -o ConnectTimeout=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            bash -s -- "$SHA" "${DEPLOY_PATH:-necropsy}" <<'REMOTE'
+          set -euo pipefail
+          sha=$1
+          dir=$2
+          # A non-interactive SSH command does not read the profile that puts
+          # cargo on PATH.
+          if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+          cd "$dir"
+          git fetch --quiet origin main "$sha"
+          git checkout --quiet main
+          git reset --quiet --hard "$sha"
+          echo "Deploying $(git rev-parse --short HEAD)"
+          deploy/install.sh
+          REMOTE
+
+      - name: Health check
+        if: vars.DEPLOY_HEALTHCHECK_URL != ''
+        env:
+          URL: ${{ vars.DEPLOY_HEALTHCHECK_URL }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 10 "$URL" >/dev/null; then
+              echo "healthy: $URL"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::$URL did not return success after deploying."
+          exit 1
