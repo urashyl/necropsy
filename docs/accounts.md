@@ -17,7 +17,12 @@ WARN necropsy_web: first run: created the admin account. These credentials are s
 
 Only an Argon2id hash is stored. If the credentials are lost, delete the database to start over, or add a new admin directly in SQLite. Log in at `/login` and change the password at `/account`.
 
-The admin has no email address, so password reset by email does not apply to it. The admin account cannot be disabled, deleted, or self-deleted from the UI.
+The admin starts with no email address. At `/account` the admin can:
+
+- **Change the username** to anything that fits the format, including names regular users cannot register (`admin`, for example). Regular users cannot change their username.
+- **Add an email address** (when SMTP is configured), confirmed by a link like any email change. Once it is set, password reset by email works for the admin too, which is the way back in if the password is lost. Like every address it is never displayed.
+
+The admin account cannot be disabled, deleted, or self-deleted from the UI.
 
 ## Email
 
@@ -49,10 +54,10 @@ Registration and password reset answer the same way whether or not an address is
 - **Register:** username, email, password. The account is created unverified and a link is emailed. It expires in 48 hours, and unverified accounts are deleted after 48 hours, which frees the username.
 - **Login:** username and password. Unverified and disabled accounts cannot sign in. Wrong password and unknown user give the same answer, and an unknown user costs the same time as a wrong password.
 - **Password reset:** a one-hour, one-time link emailed to the address. Resetting or changing a password signs the account out everywhere.
-- **Change email:** needs the password. A 24-hour link goes to the new address, and the old address gets a notice when it takes effect.
+- **Change email:** needs the password. Available to the admin as well. A 24-hour link goes to the new address, and the old address gets a notice when it takes effect.
 - **Delete account:** needs the password. Removes the user and their solves.
 
-Rules: usernames are 3 to 24 characters of letters, digits, `-` and `_`, case-insensitively unique, and names starting with `admin`, `root`, `necropsy`, `system`, `support`, `staff` or `moderator` are reserved. Passwords are 10 to 128 bytes. There are no composition rules.
+Rules: usernames are 3 to 24 characters of letters, digits, `-` and `_`, case-insensitively unique, and, for registration, names starting with `admin`, `root`, `necropsy`, `system`, `support`, `staff` or `moderator` are reserved. Passwords are 10 to 128 bytes. There are no composition rules.
 
 ## Sessions and tokens
 

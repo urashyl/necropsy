@@ -172,6 +172,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/reset", get(accounts::reset_get).post(accounts::reset_post))
         .route("/account", get(accounts::account_get))
         .route("/account/password", post(accounts::account_password_post))
+        .route("/account/username", post(accounts::account_username_post))
         .route("/account/email", post(accounts::account_email_post))
         .route("/account/delete", post(accounts::account_delete_post))
         .route("/email/confirm", get(accounts::email_confirm_get))

@@ -111,7 +111,8 @@ const RESERVED_PREFIXES: &[&str] = &[
     "moderator",
 ];
 
-pub fn validate_username(u: &str) -> Result<(), &'static str> {
+/// Length and character rules, which apply to everyone.
+pub fn validate_username_format(u: &str) -> Result<(), &'static str> {
     if !(3..=24).contains(&u.len()) {
         return Err("Username must be 3 to 24 characters.");
     }
@@ -124,6 +125,14 @@ pub fn validate_username(u: &str) -> Result<(), &'static str> {
     if !u.as_bytes()[0].is_ascii_alphanumeric() {
         return Err("Username must start with a letter or number.");
     }
+    Ok(())
+}
+
+/// Rules for registering: the format, plus reserved names. The admin can
+/// choose a reserved name for their own account (see `account_username_post`)
+/// because registration is the only way anyone else could take it.
+pub fn validate_username(u: &str) -> Result<(), &'static str> {
+    validate_username_format(u)?;
     let lower = u.to_ascii_lowercase();
     if RESERVED_PREFIXES.iter().any(|p| lower.starts_with(p)) {
         return Err("That username is reserved.");
@@ -323,6 +332,8 @@ mod tests {
         assert!(validate_username("-leading").is_err());
         assert!(validate_username("Admin-x").is_err());
         assert!(validate_username("rootkit").is_err());
+        assert!(validate_username_format("admin").is_ok());
+        assert!(validate_username_format("a b").is_err());
         assert!(validate_username(&"a".repeat(25)).is_err());
     }
 

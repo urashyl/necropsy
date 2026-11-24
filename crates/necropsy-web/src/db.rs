@@ -271,6 +271,18 @@ impl Db {
         .map_err(classify_unique)
     }
 
+    pub async fn set_username(&self, id: i64, username: String) -> Result<(), CreateError> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE users SET username = ?1 WHERE id = ?2",
+                params![username, id],
+            )
+            .map(|_| ())
+        })
+        .await
+        .map_err(classify_unique)
+    }
+
     pub async fn set_disabled(&self, id: i64, disabled: bool) -> rusqlite::Result<()> {
         self.run(move |c| {
             let tx = c.transaction()?;

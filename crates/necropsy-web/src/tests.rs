@@ -1113,3 +1113,160 @@ async fn untrusted_when_the_peer_is_unknown() {
         .await;
     assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
 }
+
+// ---------------------------------------------------------------- admin identity
+
+#[tokio::test]
+async fn admin_can_rename_themselves_even_to_a_reserved_name() {
+    let s = site().await;
+    let (generated, pass) = auth::bootstrap_admin(&s.state.db).await.unwrap().unwrap();
+    let cookie = s.login(&generated, &pass).await.cookie().unwrap();
+
+    // Password required, format enforced.
+    let wrong = s
+        .post(
+            "/account/username",
+            &[("username", "admin"), ("password", "nope")],
+            Some(&cookie),
+        )
+        .await;
+    assert_eq!(wrong.status, StatusCode::FORBIDDEN);
+    let bad = s
+        .post(
+            "/account/username",
+            &[("username", "no spaces"), ("password", pass.as_str())],
+            Some(&cookie),
+        )
+        .await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+
+    let ok = s
+        .post(
+            "/account/username",
+            &[("username", "admin"), ("password", pass.as_str())],
+            Some(&cookie),
+        )
+        .await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+    assert!(ok.body.contains("Username changed"));
+    // The session carries over, and only the new name signs in.
+    let page = s.get("/account", Some(&cookie)).await;
+    assert!(
+        page.body.contains(">admin<"),
+        "header and account show the new name"
+    );
+    assert_eq!(
+        s.login(&generated, &pass).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(s.login("admin", &pass).await.status, StatusCode::SEE_OTHER);
+
+    // Regular users still cannot register it.
+    let r = s
+        .post(
+            "/register",
+            &[
+                ("username", "admin"),
+                ("email", "x@example.org"),
+                ("password", PASSWORD),
+            ],
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn admin_username_cannot_collide_and_others_cannot_rename() {
+    let s = site().await;
+    s.register_verified("alice", SECRET_EMAIL).await;
+    let alice = s.login_cookie("alice").await;
+    let (user, pass) = auth::bootstrap_admin(&s.state.db).await.unwrap().unwrap();
+    let admin = s.login(&user, &pass).await.cookie().unwrap();
+
+    let taken = s
+        .post(
+            "/account/username",
+            &[("username", "ALICE"), ("password", pass.as_str())],
+            Some(&admin),
+        )
+        .await;
+    assert_eq!(taken.status, StatusCode::CONFLICT);
+    let r = s
+        .post(
+            "/account/username",
+            &[("username", "alice2"), ("password", PASSWORD)],
+            Some(&alice),
+        )
+        .await;
+    assert_eq!(
+        r.status,
+        StatusCode::NOT_FOUND,
+        "usernames are fixed for regular users"
+    );
+    assert!(!s
+        .get("/account", Some(&alice))
+        .await
+        .body
+        .contains("Change username"));
+    assert!(s
+        .get("/account", Some(&admin))
+        .await
+        .body
+        .contains("Change username"));
+}
+
+#[tokio::test]
+async fn admin_can_add_an_email_that_is_never_shown_and_enables_reset() {
+    let s = site().await;
+    let (user, _) = auth::bootstrap_admin(&s.state.db).await.unwrap().unwrap();
+    // Replace the generated password with a known one, so the form can be used.
+    let id = s
+        .state
+        .db
+        .user_for_login(user.clone())
+        .await
+        .unwrap()
+        .unwrap()
+        .0
+        .id;
+    let hash = auth::hash_password(PASSWORD.into()).await.unwrap();
+    s.state.db.set_password(id, hash).await.unwrap();
+    let admin = s.login_cookie(&user).await;
+
+    // No address yet, so reset does nothing, and the form is offered.
+    let before = s.mail_count();
+    s.post("/forgot", &[("email", "boss@example.org")], None)
+        .await;
+    assert_eq!(s.mail_count(), before);
+    assert!(s
+        .get("/account", Some(&admin))
+        .await
+        .body
+        .contains("Change email"));
+
+    let r = s
+        .post(
+            "/account/email",
+            &[("email", "boss@example.org"), ("password", PASSWORD)],
+            Some(&admin),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(!r.body.contains("boss@"));
+    let link = s.last_link("/email/confirm?token=");
+    assert_eq!(s.get(&link, Some(&admin)).await.status, StatusCode::OK);
+
+    // Now reset works for the admin, and nothing displays the address.
+    let before = s.mail_count();
+    s.post("/forgot", &[("email", "boss@example.org")], None)
+        .await;
+    assert_eq!(s.mail_count(), before + 1);
+    for body in [
+        s.get("/account", Some(&admin)).await.body,
+        s.get("/admin", Some(&admin)).await.body,
+        s.get("/api/me/progress", Some(&admin)).await.body,
+    ] {
+        assert!(!body.contains("boss@") && !body.contains("example.org"));
+    }
+}

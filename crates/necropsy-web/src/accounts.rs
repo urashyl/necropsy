@@ -719,6 +719,14 @@ pub async fn account_page(
                 }
                 @if user.is_admin {
                     p.auth-links { a href="/admin" { "Admin" } }
+
+                    h2 { "Change username" }
+                    form method="post" action="/account/username" {
+                        (field("New username", "username", "text", "username",
+                            Some("3 to 24 letters, numbers, - and _.")))
+                        (field("Password", "password", "password", "current-password", None))
+                        button.button.button-quiet type="submit" { "Change username" }
+                    }
                 }
 
                 h2 { "Change password" }
@@ -728,7 +736,7 @@ pub async fn account_page(
                     button.button.button-quiet type="submit" { "Change password" }
                 }
 
-                @if state.mailer.enabled() && !user.is_admin {
+                @if state.mailer.enabled() {
                     h2 { "Change email" }
                     form method="post" action="/account/email" {
                         (field("New email", "email", "email", "email",
@@ -864,6 +872,59 @@ pub async fn account_password_post(
 }
 
 #[derive(Deserialize)]
+pub struct UsernameForm {
+    username: String,
+    password: String,
+}
+
+/// Admin only. The generated `admin-xxxxxx` name is replaced with one the
+/// admin chooses, and unlike registration this allows reserved names.
+pub async fn account_username_post(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+    Form(f): Form<UsernameForm>,
+) -> Response {
+    let Some(mut user) = viewer else {
+        return Redirect::to("/login").into_response();
+    };
+    if !user.is_admin {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if let Err(r) = confirm_password(&state, &user, f.password).await {
+        return r;
+    }
+    let name = f.username.trim().to_owned();
+    if let Err(e) = validate_username_format(&name) {
+        return account_page(&state, &user, Some((false, e)), StatusCode::BAD_REQUEST).await;
+    }
+    match state.db.set_username(user.id, name.clone()).await {
+        Ok(()) => {
+            user.username = name;
+            account_page(
+                &state,
+                &user,
+                Some((true, "Username changed.")),
+                StatusCode::OK,
+            )
+            .await
+        }
+        Err(CreateError::UsernameTaken) => {
+            account_page(
+                &state,
+                &user,
+                Some((false, "That username is taken.")),
+                StatusCode::CONFLICT,
+            )
+            .await
+        }
+        Err(e) => {
+            tracing::error!("username change failed: {e:?}");
+            server_error(&state, Some(&user))
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct EmailChangeForm {
     email: String,
     password: String,
@@ -877,7 +938,7 @@ pub async fn account_email_post(
     let Some(user) = viewer else {
         return Redirect::to("/login").into_response();
     };
-    if !state.mailer.enabled() || user.is_admin {
+    if !state.mailer.enabled() {
         return StatusCode::NOT_FOUND.into_response();
     }
     if let Err(r) = confirm_password(&state, &user, f.password).await {
