@@ -1,13 +1,13 @@
 # Checks that must pass before anything is deployed: formatting, lints, tests.
-# Runs on pull requests and on pushes to every branch except main. Pushes to
-# main run it through deploy.yml instead, which calls this workflow and then
-# deploys.
+# Runs on pull requests and on pushes to every branch except main and dev.
+# Pushes to those run it through deploy.yml instead, which calls this workflow
+# and then deploys.
 name: CI
 
 on:
   pull_request:
   push:
-    branches-ignore: [main]
+    branches-ignore: [main, dev]
   workflow_call:
 
 permissions:
