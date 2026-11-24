@@ -1388,7 +1388,7 @@ async fn unreleased_dailies_are_hidden_everywhere() {
 async fn today_is_the_latest_released_daily() {
     let s = site_on("2026-11-24").await;
     let home = s.get("/", None).await.body;
-    assert!(home.contains("ILOVEYOU: the dropped files"));
+    assert!(home.contains("ILOVEYOU: the source"));
     assert!(home.contains("Daily #1"));
     assert!(
         home.contains(r#"class="badge">Today<"#),
@@ -1454,7 +1454,7 @@ async fn learn_lists_the_intro_stages_in_order() {
 async fn archive_lists_released_dailies_newest_first_with_dates() {
     let body = site().await.get("/archive", None).await.body;
     let newest = body.find("Second stage").unwrap();
-    let oldest = body.find("ILOVEYOU: the dropped files").unwrap();
+    let oldest = body.find("ILOVEYOU: the source").unwrap();
     assert!(newest < oldest);
     assert!(body.contains("2026-11-24") && body.contains("2026-11-28"));
     assert!(

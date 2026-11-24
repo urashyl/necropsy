@@ -2,11 +2,11 @@ id = "iloveyou-dropped"
 track = "daily"
 date = "2026-11-24"
 number = 1
-title = "ILOVEYOU: the dropped files"
+title = "ILOVEYOU: the source"
 difficulty = 2
 modes = ["web"]
 tags = ["worm", "vbscript", "2000"]
 hints = [
-  "Only `wscript.exe` is running the worm. Look at what it creates, not what other programs do.",
-  "Three of the files it creates are copies of itself. Two are in the System directory. The Windows directory is `C:\\WINDOWS` itself, with nothing after it but the file name.",
+  "Read `main()`. It copies itself three times. Two go to one folder, one goes to another.",
+  "The folder each copy lands in is a `GetSpecialFolder(...)` call. `0` is the Windows folder, `1` is the System folder inside it, `2` is Temp.",
 ]
