@@ -788,18 +788,24 @@ pub async fn account_get(
 
 /// Re-checks the current password for settings changes, with its own limit
 /// so a stolen session cannot be used to guess the password.
-async fn confirm_password(state: &AppState, user: &User, password: String) -> Result<(), Response> {
+async fn confirm_password(
+    state: &AppState,
+    user: &User,
+    password: String,
+) -> Result<(), Box<Response>> {
     if !state
         .limiter
         .allow(&format!("confirm:{}", user.id), 10, AUTH_WINDOW)
     {
-        return Err(account_page(
-            state,
-            user,
-            Some((false, "Too many attempts. Wait a few minutes.")),
-            StatusCode::TOO_MANY_REQUESTS,
-        )
-        .await);
+        return Err(Box::new(
+            account_page(
+                state,
+                user,
+                Some((false, "Too many attempts. Wait a few minutes.")),
+                StatusCode::TOO_MANY_REQUESTS,
+            )
+            .await,
+        ));
     }
     let hash = state.db.password_hash_of(user.id).await.ok().flatten();
     let ok = match hash {
@@ -808,13 +814,15 @@ async fn confirm_password(state: &AppState, user: &User, password: String) -> Re
     };
     match ok {
         true => Ok(()),
-        false => Err(account_page(
-            state,
-            user,
-            Some((false, "Wrong password.")),
-            StatusCode::FORBIDDEN,
-        )
-        .await),
+        false => Err(Box::new(
+            account_page(
+                state,
+                user,
+                Some((false, "Wrong password.")),
+                StatusCode::FORBIDDEN,
+            )
+            .await,
+        )),
     }
 }
 
@@ -833,7 +841,7 @@ pub async fn account_password_post(
         return Redirect::to("/login").into_response();
     };
     if let Err(r) = confirm_password(&state, &user, f.current).await {
-        return r;
+        return *r;
     }
     if let Err(e) = validate_password(&f.password) {
         return account_page(&state, &user, Some((false, e)), StatusCode::BAD_REQUEST).await;
@@ -891,7 +899,7 @@ pub async fn account_username_post(
         return StatusCode::NOT_FOUND.into_response();
     }
     if let Err(r) = confirm_password(&state, &user, f.password).await {
-        return r;
+        return *r;
     }
     let name = f.username.trim().to_owned();
     if let Err(e) = validate_username_format(&name) {
@@ -942,7 +950,7 @@ pub async fn account_email_post(
         return StatusCode::NOT_FOUND.into_response();
     }
     if let Err(r) = confirm_password(&state, &user, f.password).await {
-        return r;
+        return *r;
     }
     let Some(email) = normalize_email(&f.email) else {
         return account_page(
@@ -1079,7 +1087,7 @@ pub async fn account_delete_post(
         return StatusCode::NOT_FOUND.into_response();
     }
     if let Err(r) = confirm_password(&state, &user, f.password).await {
-        return r;
+        return *r;
     }
     if state.db.delete_user(user.id).await.is_err() {
         return server_error(&state, Some(&user));
