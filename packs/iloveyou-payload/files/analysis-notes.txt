@@ -1,0 +1,24 @@
+# Analyst notes, reconstructed from F-Secure's description of Email-Worm:VBS/LoveLetter
+# and from Wikipedia. An illustration for the puzzle, not output from a live run.
+#
+# The worm ran as a script. It also fetched a second program, a password stealer.
+# These notes follow that second program. Windows 98 layout as before.
+
+Stage 1: the script (LOVE-LETTER-FOR-YOU.TXT.vbs)
+  - points the Internet Explorer start page at a download of WIN-BUGSFIX.exe
+    (the file is saved in the IE download directory)
+
+Stage 2: the downloaded program (saved as WIN-BUGSFIX.EXE)
+  - checks for a subkey named WinFAT32 under
+        HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run
+  - if that subkey is not there:
+        copies itself into the Windows System directory under a different name
+        adds an entry under Run so that copy starts when the machine boots
+  - removes some keys under ...\Policies\Network
+  - collects saved passwords and sends them by email to a recipient it has built in
+  - when it finishes, resets the Internet Explorer start page to about:blank
+
+Files an analyst finds on a cleaned machine
+  C:\WINDOWS\SYSTEM\WINFAT32.EXE        <- placed in the System directory
+  <IE download directory>\WIN-BUGSFIX.EXE  <- the file that was downloaded
+  <IE download directory>\WINFAT32.EXE

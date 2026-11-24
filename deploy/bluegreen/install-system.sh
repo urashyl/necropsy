@@ -2,7 +2,7 @@
 # Installs the blue-green deploy program as a root-owned command and lets one
 # unprivileged user run it through sudo, without a password and for nothing else.
 #
-#   sudo install-system.sh --user <name> --repo <https url>
+#   sudo install-system.sh --user <name> --repo <https url> [--branch <name>]
 #   sudo install-system.sh --uninstall
 #
 # After this, <name> can run exactly one program as root, and it accepts only:
@@ -19,6 +19,9 @@
 #                      since that would hand it root anyway
 #   --repo URL         https URL of the repository to build from (required the
 #                      first time; kept in the settings afterwards)
+#   --branch NAME      the only branch whose commits are built: main for
+#                      production, dev for a dev server (main the first time;
+#                      kept in the settings afterwards)
 #   --prefix DIR       programs go in DIR/bin and DIR/lib/necropsy   (/usr/local)
 #   --sysconfdir DIR   settings go in DIR/necropsy                   (/etc)
 #   --statedir DIR     state goes in DIR/necropsy                    (/var/lib)
@@ -32,15 +35,16 @@ set -euo pipefail
 
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
-usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
-user="" repo="" prefix=/usr/local sysconfdir=/etc statedir=/var/lib sudoers_dir=/etc/sudoers.d
+user="" repo="" branch="" prefix=/usr/local sysconfdir=/etc statedir=/var/lib sudoers_dir=/etc/sudoers.d
 allow_docker_group=0 uninstall=0 safe_mode=1 extra_path=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --user) user="${2:?--user needs a name}"; shift 2 ;;
     --repo) repo="${2:?--repo needs a URL}"; shift 2 ;;
+    --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
     --prefix) prefix="${2:?}"; shift 2 ;;
     --sysconfdir) sysconfdir="${2:?}"; shift 2 ;;
     --statedir) statedir="${2:?}"; shift 2 ;;
@@ -107,10 +111,15 @@ if [ "$safe_mode" = 1 ]; then
   command -v visudo >/dev/null || die "visudo not found (install sudo)"
 fi
 
-existing_repo=""
+existing_repo="" existing_branch=""
 if [ -f "$conf_dir/deploy.env" ]; then
   existing_repo="$({ grep '^NECROPSY_REPO=' "$conf_dir/deploy.env" || true; } | tail -n 1 | cut -d= -f2-)"
+  existing_branch="$({ grep '^NECROPSY_BRANCH=' "$conf_dir/deploy.env" || true; } | tail -n 1 | cut -d= -f2-)"
 fi
+branch="${branch:-${existing_branch:-main}}"
+[[ "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] && [[ "$branch" != *..* ]] \
+  && git check-ref-format "refs/heads/$branch" \
+  || die "--branch must be a plain branch name like main or dev"
 repo="${repo:-$existing_repo}"
 [ -n "$repo" ] || die "--repo is required the first time"
 if [ "$safe_mode" = 1 ]; then
@@ -148,12 +157,17 @@ sed \
 chmod 755 "$program.new"
 mv -f "$program.new" "$program"
 
-# Settings: deploy.env is rewritten only for the repository, keeping anything
-# the admin added. necropsy.env is created once and never overwritten.
+# Settings: deploy.env is rewritten only for the repository and branch, keeping
+# anything the admin added. necropsy.env is created once and never overwritten.
 if [ -f "$conf_dir/deploy.env" ] && grep -q '^NECROPSY_REPO=' "$conf_dir/deploy.env"; then
   sed "s|^NECROPSY_REPO=.*|NECROPSY_REPO=$repo|" "$conf_dir/deploy.env" > "$conf_dir/deploy.env.new"
 else
   { echo "NECROPSY_REPO=$repo"; [ ! -f "$conf_dir/deploy.env" ] || cat "$conf_dir/deploy.env"; } > "$conf_dir/deploy.env.new"
+fi
+if grep -q '^NECROPSY_BRANCH=' "$conf_dir/deploy.env.new"; then
+  sed -i "s|^NECROPSY_BRANCH=.*|NECROPSY_BRANCH=$branch|" "$conf_dir/deploy.env.new"
+else
+  sed -i "1a NECROPSY_BRANCH=$branch" "$conf_dir/deploy.env.new"
 fi
 chmod 644 "$conf_dir/deploy.env.new"
 mv -f "$conf_dir/deploy.env.new" "$conf_dir/deploy.env"
@@ -193,7 +207,7 @@ Installed.
   sudo rule  $sudoers_file
 
 $user may now run, as root and without a password, this one program:
-  sudo necropsy-deploy deploy <40-hex commit on main>
+  sudo necropsy-deploy deploy <40-hex commit on $branch>
   sudo necropsy-deploy rollback
   sudo necropsy-deploy status
 It accepts nothing else, and the user has no other passwordless sudo.

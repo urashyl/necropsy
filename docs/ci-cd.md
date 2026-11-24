@@ -4,14 +4,23 @@ Two GitHub Actions workflows live in `.github/workflows/`.
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| `ci.yml` | pull requests, pushes to any branch except `main` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, pack validation, installer syntax check |
-| `deploy.yml` | pushes to `main`, manual run | runs `ci.yml`, then deploys over SSH only if it passed |
+| `ci.yml` | pull requests, pushes to any branch except `main` and `dev` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, pack validation, installer syntax check |
+| `deploy.yml` | pushes to `main` or `dev`, manual run | runs `ci.yml`, then deploys over SSH only if it passed: `main` to the `production` environment, `dev` to `development` |
 
-Deploys never overlap: a second push waits for the running one instead of cancelling it. A manual run from a branch other than `main` does nothing.
+Deploys of the same branch never overlap: a second push waits for the running one instead of cancelling it. A manual run from a branch other than `main` or `dev` does nothing.
+
+## Branches
+
+Two repository rulesets, with nobody on the bypass list, admins included:
+
+- **`main`:** changes land only through a pull request. Direct pushes, force pushes and deleting the branch are blocked. The CI `check` and `image` jobs must pass, and review threads must be resolved, before merging. No approving review is required, since GitHub does not let you approve your own pull request. Raise it in the ruleset once someone else reviews.
+- **`dev`:** ordinary pushes are allowed. Force pushes and deleting the branch are blocked.
+
+The usual flow is push (or merge) into `dev`, which deploys to development, then a PR from `dev` into `main`, which deploys to production.
 
 ## What a deploy does
 
-CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on `main`, builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
+CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on the branch it was installed for (`main` on the production server, `dev` on the dev server), builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
 
 CI sends no image and no files, only the commit hash. The server needs Docker and git, not Rust.
 
@@ -19,7 +28,9 @@ CI also builds the image on every PR and runs it with the production hardening (
 
 ## Secrets
 
-Create these in the repository under Settings, Environments, `production` (create the environment first). Environment secrets are only given to the deploy job, and the environment is where you can add required reviewers if you want a manual approval before each deploy.
+Each environment, `production` and `development` (Settings, Environments), has its own copy of these. Environment secrets are only given to the deploy job, each environment only accepts deploys from its own branch, and the environment is where you can add required reviewers if you want a manual approval before each deploy.
+
+The dev server is a separate host with its own install of the deploy program, set up with `--branch dev` so it builds only commits on `dev` (see [docker.md](docker.md)). The program's paths and sudo rule are per host, so production and dev cannot share one server.
 
 | Secret | Required | Value |
 | --- | --- | --- |
@@ -29,7 +40,7 @@ Create these in the repository under Settings, Environments, `production` (creat
 | `DEPLOY_SSH_KEY` | yes | The private key, including the `-----BEGIN` and `-----END` lines |
 | `DEPLOY_KNOWN_HOSTS` | yes | The server's host key line(s), see below |
 
-Optional repository **variable** (not a secret), under Settings, Secrets and variables, Actions, Variables:
+Optional **variable** (not a secret). Set it on each environment (Settings, Environments, Environment variables) so each checks its own site:
 
 | Variable | Value |
 | --- | --- |
@@ -45,7 +56,7 @@ Use a key made only for this. On your own machine:
 ssh-keygen -t ed25519 -N '' -C necropsy-deploy -f necropsy_deploy
 ```
 
-Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to the deploy user's `~/.ssh/authorized_keys` on the server. The `restrict` prefix turns off forwarding and other extras:
+Do this once per environment. Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to the deploy user's `~/.ssh/authorized_keys` on the server. The `restrict` prefix turns off forwarding and other extras:
 
 ```text
 restrict ssh-ed25519 AAAA... necropsy-deploy

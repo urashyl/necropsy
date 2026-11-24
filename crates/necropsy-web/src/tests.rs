@@ -46,10 +46,23 @@ async fn build(mailer: Option<Mailer>, client_ip_header: Option<&str>) -> Site {
     build_trusting(mailer, client_ip_header, &[]).await
 }
 
+/// Every daily puzzle is released by this day.
+const ALL_RELEASED: &str = "2026-12-01";
+
 async fn build_trusting(
     mailer: Option<Mailer>,
     client_ip_header: Option<&str>,
     trusted: &[&str],
+) -> Site {
+    build_on(mailer, client_ip_header, trusted, ALL_RELEASED).await
+}
+
+/// A site whose clock says it is `today` (YYYY-MM-DD).
+async fn build_on(
+    mailer: Option<Mailer>,
+    client_ip_header: Option<&str>,
+    trusted: &[&str],
+    today: &str,
 ) -> Site {
     let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -58,7 +71,7 @@ async fn build_trusting(
     .unwrap();
     let mail = Arc::new(Mutex::new(Vec::new()));
     let mailer = mailer.unwrap_or_else(|| Mailer::Memory(mail.clone()));
-    let state = Arc::new(AppState::new(
+    let mut state = AppState::new(
         packs,
         Config {
             base_url: ORIGIN.into(),
@@ -67,12 +80,18 @@ async fn build_trusting(
         },
         Db::open(":memory:").unwrap(),
         mailer,
-    ));
+    );
+    state.today_override = Some(necropsy_pack::parse_date(today).unwrap());
+    let state = Arc::new(state);
     Site {
         app: router(state.clone()),
         state,
         mail,
     }
+}
+
+async fn site_on(today: &str) -> Site {
+    build_on(None, None, &[], today).await
 }
 
 async fn site() -> Site {
@@ -214,10 +233,11 @@ async fn pages_render() {
     for path in [
         "/",
         "/archive",
+        "/learn",
         "/format",
         "/login",
         "/register",
-        "/p/phone-home",
+        "/p/intro-log",
         "/p/peanuts",
     ] {
         let r = s.get(path, None).await;
@@ -230,8 +250,7 @@ async fn pages_render() {
 
 #[tokio::test]
 async fn puzzle_page_never_contains_explainer_or_answer() {
-    let r = site().await.get("/p/phone-home", None).await;
-    assert!(!r.body.contains("sync.pagepilot-cdn.invalid</code>"));
+    let r = site().await.get("/p/intro-log", None).await;
     assert!(!r.body.contains("The answer is"));
 }
 
@@ -240,16 +259,16 @@ async fn wrong_answer_gets_no_explainer_and_right_answer_does() {
     let s = site().await;
     let r = s
         .post_json(
-            "/api/p/phone-home/answer",
-            r#"{"answer":"stats.pagepilot-assets.invalid"}"#,
+            "/api/p/intro-log/answer",
+            r#"{"answer":"192.0.2.15"}"#,
             None,
         )
         .await;
     assert!(r.body.contains("\"correct\":false") && !r.body.contains("explainer_html"));
     let r = s
         .post_json(
-            "/api/p/phone-home/answer",
-            r#"{"answer":"  Sync.PagePilot-CDN.invalid "}"#,
+            "/api/p/intro-log/answer",
+            r#"{"answer":"  203.0.113.77 "}"#,
             None,
         )
         .await;
@@ -739,7 +758,7 @@ async fn solves_are_recorded_for_signed_in_users() {
         StatusCode::OK
     );
     assert_eq!(
-        s.get("/api/p/phone-home/explainer", Some(&cookie))
+        s.get("/api/p/intro-log/explainer", Some(&cookie))
             .await
             .status,
         StatusCode::NOT_FOUND
@@ -1306,4 +1325,216 @@ async fn healthcheck_passes_against_a_running_server_and_fails_without_one() {
 fn healthcheck_checks_a_wildcard_address_through_loopback() {
     // Port 9 (discard) is closed; the point is that 0.0.0.0 does not panic or hang.
     assert!(!crate::healthcheck("0.0.0.0:9".parse().unwrap()));
+}
+
+// ---------------------------------------------------------------- intro and daily tracks
+
+#[tokio::test]
+async fn unreleased_dailies_are_hidden_everywhere() {
+    // On 2026-11-25 the first two ILOVEYOU dailies are out; the third is not.
+    let s = site_on("2026-11-25").await;
+    for path in ["/p/iloveyou-dropped", "/p/iloveyou-attachment"] {
+        assert_eq!(s.get(path, None).await.status, StatusCode::OK, "{path}");
+    }
+    let hidden = "iloveyou-payload";
+    assert_eq!(
+        s.get(&format!("/p/{hidden}"), None).await.status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        s.get(&format!("/p/{hidden}/files/analysis-notes.txt"), None)
+            .await
+            .status,
+        StatusCode::NOT_FOUND,
+        "its files are hidden too"
+    );
+    let r = s
+        .post_json(
+            &format!("/api/p/{hidden}/answer"),
+            r#"{"answer":"winfat32.exe"}"#,
+            None,
+        )
+        .await;
+    assert_eq!(
+        r.status,
+        StatusCode::NOT_FOUND,
+        "its answer cannot be checked early"
+    );
+    assert!(!r.body.contains("explainer_html"));
+    for later in ["peanuts", "second-stage"] {
+        assert_eq!(
+            s.get(&format!("/p/{later}"), None).await.status,
+            StatusCode::NOT_FOUND,
+            "{later}"
+        );
+    }
+    let archive = s.get("/archive", None).await.body;
+    assert!(archive.contains("iloveyou-dropped") && archive.contains("iloveyou-attachment"));
+    assert!(
+        !archive.contains(hidden) && !archive.contains("Peanuts"),
+        "not listed either"
+    );
+
+    // A signed-in solver cannot reach it through the explainer endpoint either.
+    s.register_verified("alice", SECRET_EMAIL).await;
+    let cookie = s.login_cookie("alice").await;
+    let r = s
+        .get(&format!("/api/p/{hidden}/explainer"), Some(&cookie))
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn today_is_the_latest_released_daily() {
+    let s = site_on("2026-11-24").await;
+    let home = s.get("/", None).await.body;
+    assert!(home.contains("ILOVEYOU: the dropped files"));
+    assert!(home.contains("Daily #1"));
+    assert!(
+        home.contains(r#"class="badge">Today<"#),
+        "dated today, so it is badged"
+    );
+
+    let s = site_on("2026-11-26").await;
+    assert!(s
+        .get("/", None)
+        .await
+        .body
+        .contains("ILOVEYOU: the password stealer"));
+
+    // After the last daily, the latest one stays up but is no longer "Today".
+    let s = site_on("2026-12-05").await;
+    let home = s.get("/", None).await.body;
+    assert!(home.contains("Second stage"));
+    assert!(
+        !home.contains(r#"class="badge">Today<"#),
+        "not dated today, so no badge"
+    );
+}
+
+#[tokio::test]
+async fn before_any_daily_the_home_page_goes_to_the_intro_stages() {
+    let s = site_on("2020-01-01").await;
+    let r = s.get("/", None).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert_eq!(r.headers[header::LOCATION], "/learn");
+    assert_eq!(
+        s.get("/p/intro-log", None).await.status,
+        StatusCode::OK,
+        "intros are always open"
+    );
+    assert!(!s.get("/archive", None).await.body.contains("ILOVEYOU"));
+}
+
+#[tokio::test]
+async fn learn_lists_the_intro_stages_in_order() {
+    let body = site().await.get("/learn", None).await.body;
+    let order = [
+        "Who got in?",
+        "Encoded command",
+        "Hidden in numbers",
+        "Follow the chain",
+    ];
+    let mut last = 0;
+    for title in order {
+        let at = body
+            .find(title)
+            .unwrap_or_else(|| panic!("{title} missing"));
+        assert!(at > last, "{title} is out of order");
+        last = at;
+    }
+    assert!(
+        !body.contains("ILOVEYOU"),
+        "dailies are not on the learn page"
+    );
+    assert!(body.contains("Then: today"));
+}
+
+#[tokio::test]
+async fn archive_lists_released_dailies_newest_first_with_dates() {
+    let body = site().await.get("/archive", None).await.body;
+    let newest = body.find("Second stage").unwrap();
+    let oldest = body.find("ILOVEYOU: the dropped files").unwrap();
+    assert!(newest < oldest);
+    assert!(body.contains("2026-11-24") && body.contains("2026-11-28"));
+    assert!(
+        !body.contains("Who got in?"),
+        "intro stages are not in the archive"
+    );
+}
+
+#[tokio::test]
+async fn the_pager_stays_in_its_track_and_the_last_intro_leads_to_today() {
+    let s = site().await;
+    let first = s.get("/p/intro-log", None).await.body;
+    assert!(first.contains("Intro 1 of 4"));
+    assert!(first.contains("/p/intro-powershell"), "next intro");
+    assert!(!first.contains("← "), "no previous before the first");
+
+    let last = s.get("/p/intro-redirects", None).await.body;
+    assert!(
+        last.contains("Today&#39;s puzzle: Second stage")
+            || last.contains("Today's puzzle: Second stage")
+    );
+    assert!(last.contains(r#"href="/""#));
+
+    let daily = s.get("/p/iloveyou-attachment", None).await.body;
+    assert!(daily.contains("Daily #2") && daily.contains("2026-11-25"));
+    assert!(daily.contains("/p/iloveyou-dropped") && daily.contains("/p/iloveyou-payload"));
+    assert!(
+        daily.contains("intro-banner"),
+        "daily pages offer the intro stages"
+    );
+    assert!(!first.contains("intro-banner"));
+}
+
+#[tokio::test]
+async fn only_dailies_solved_on_their_release_day_count_for_streaks() {
+    let s = site().await;
+    s.register_verified("alice", SECRET_EMAIL).await;
+    let cookie = s.login_cookie("alice").await;
+    let day = necropsy_pack::parse_date("2026-11-27").unwrap(); // peanuts
+
+    s.post_json(
+        "/api/p/peanuts/answer",
+        r#"{"answer":"sess_9f2c41ab77e0"}"#,
+        Some(&cookie),
+    )
+    .await;
+    s.post_json(
+        "/api/p/intro-log/answer",
+        r#"{"answer":"203.0.113.77"}"#,
+        Some(&cookie),
+    )
+    .await;
+    let set_day = |d: i64| {
+        let db = s.state.db.clone();
+        async move {
+            db.run(move |c| {
+                c.execute(
+                    "UPDATE solves SET solved_at = ?1 WHERE pack_id = 'peanuts'",
+                    [d * 86_400 + 100],
+                )
+            })
+            .await
+            .unwrap();
+        }
+    };
+
+    set_day(day).await;
+    let p = s.get("/api/me/progress", Some(&cookie)).await.body;
+    assert!(
+        p.contains(r#""id":"peanuts","day":20784,"ontime":true"#),
+        "{p}"
+    );
+    set_day(day + 3).await;
+    let p = s.get("/api/me/progress", Some(&cookie)).await.body;
+    assert!(
+        p.contains(r#""id":"peanuts","day":20787,"ontime":false"#),
+        "a late solve does not count: {p}"
+    );
+    assert!(
+        p.contains(r#""id":"intro-log""#) && p.matches(r#""ontime":true"#).count() == 0,
+        "intro stages never count: {p}"
+    );
 }

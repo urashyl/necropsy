@@ -1,0 +1,11 @@
+id = "intro-redirects"
+track = "intro"
+number = 4
+title = "Follow the chain"
+difficulty = 2
+modes = ["web"]
+tags = ["network", "phishing", "redirects"]
+hints = [
+  "There are four requests. For each one, work out how the browser is sent to the next: a header, a tag, or a script.",
+  "Request 3 hides the next address with `atob`, which is base64. Decode that string to get the last step.",
+]

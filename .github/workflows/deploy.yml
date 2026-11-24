@@ -1,23 +1,25 @@
-# Deploys main to the server once the checks pass. It connects over SSH and
-# asks the server's root-owned necropsy-deploy program, through sudo, to deploy
-# this commit. The program does the rest: it builds the image and starts the
-# new version beside the old one, switching traffic only after it is healthy.
+# Deploys main (to the "production" environment) and dev (to "development")
+# once the checks pass. It connects over SSH and asks the server's root-owned
+# necropsy-deploy program, through sudo, to deploy this commit. The program does
+# the rest: it builds the image and starts the new version beside the old one,
+# switching traffic only after it is healthy.
 #
-# Needs the secrets listed in docs/ci-cd.md, stored on the "production"
-# environment. Nothing about the server is written in this file.
+# Needs the secrets listed in docs/ci-cd.md, stored on each environment. Each
+# environment only accepts deploys from its own branch. Nothing about the
+# server is written in this file.
 name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# One deploy at a time, and never cancel one that is already running.
+# One deploy at a time per branch, and never cancel one that is already running.
 concurrency:
-  group: deploy
+  group: deploy-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -27,10 +29,10 @@ jobs:
   deploy:
     needs: check
     # A manual run from another branch must not deploy it.
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    environment: production
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
     steps:
       - name: Check configuration
         env:
@@ -92,7 +94,8 @@ jobs:
       # The only thing the deploy user may run as root, without a password, is
       # the installed necropsy-deploy, and for this it takes a commit hash. The
       # server fetches the repository itself, refuses a commit that is not on
-      # main, builds the image, and switches traffic only once it is healthy.
+      # the branch it was installed for (main for production, dev for the dev
+      # server), builds the image, and switches traffic only once it is healthy.
       - name: Deploy
         env:
           SHA: ${{ github.sha }}

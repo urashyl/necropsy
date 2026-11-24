@@ -1,0 +1,12 @@
+id = "iloveyou-attachment"
+track = "daily"
+date = "2026-11-25"
+number = 2
+title = "ILOVEYOU: the attachment"
+difficulty = 2
+modes = ["web"]
+tags = ["worm", "email", "social engineering"]
+hints = [
+  "Read the attachment's `filename` closely. It has two extensions, one after the other.",
+  "By default Windows hides the extension of file types it knows, and `.vbs` is one it knows. It hides only the last one.",
+]

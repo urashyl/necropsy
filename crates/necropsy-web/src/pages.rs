@@ -7,13 +7,14 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::auth::MaybeUser;
 use crate::db::User;
 use crate::markdown::render_markdown;
 use crate::state::{AppState, RenderedPack};
+use necropsy_pack::Track;
 
 pub const CSS: &str = include_str!("../static/app.css");
 pub const JS: &str = include_str!("../static/app.js");
@@ -26,6 +27,7 @@ const FONTS: &str = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Nav {
     Today,
+    Learn,
     Archive,
     Format,
     Account,
@@ -35,9 +37,12 @@ pub enum Nav {
 
 // ---------------------------------------------------------------- handlers
 
-pub async fn today(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
-    let i = state.today_index();
-    puzzle_page(&state, viewer.as_ref(), &state.packs[i], true)
+pub async fn today(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Response {
+    match state.today_daily() {
+        Some(p) => puzzle_page(&state, viewer.as_ref(), p).into_response(),
+        // No daily has been released yet: start at the beginning.
+        None => Redirect::to("/learn").into_response(),
+    }
 }
 
 pub async fn puzzle(
@@ -47,39 +52,73 @@ pub async fn puzzle(
 ) -> Response {
     let v = viewer.as_ref();
     match state.get(&id) {
-        Some(p) => puzzle_page(
-            &state,
-            v,
-            p,
-            state.position(&id) == Some(state.today_index()),
-        )
-        .into_response(),
+        Some(p) => puzzle_page(&state, v, p).into_response(),
         None => not_found_page(&state, v).into_response(),
     }
 }
 
-pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
-    let today = state.today_index();
+fn pack_row(state: &AppState, p: &RenderedPack) -> Markup {
+    let m = &p.pack.meta;
+    html! {
+        li.work-row {
+            a.work-link.archive-link href={"/p/" (m.id)} data-pack-id=(m.id) {
+                span.work-name {
+                    span.num { "#" (m.number) } " " (m.title)
+                }
+                span.work-desc {
+                    @if let Some(d) = &m.date { span.date { (d) } " · " }
+                    (m.tags.join(", "))
+                }
+                span.work-meta {
+                    @if state.is_today(p) { span.badge { "Today" } " " }
+                    span.solved-mark.hidden { "Solved" }
+                    " " (difficulty(m.difficulty))
+                }
+            }
+        }
+    }
+}
+
+pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
     let body = html! {
         section.wrap.page-head {
-            h1 { "Archive" }
+            h1 { "Learn" }
+            p.page-lead {
+                "Four short puzzles that cover what the daily ones assume: reading a log, decoding, "
+                "deobfuscating and following a chain. Do them in order, or skip ahead."
+            }
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for (i, p) in state.packs.iter().enumerate() {
-                    @let m = &p.pack.meta;
-                    li.work-row {
-                        a.work-link.archive-link href={"/p/" (m.id)} data-pack-id=(m.id) {
-                            span.work-name { span.num { "#" (m.number) } " " (m.title) }
-                            span.work-desc { (m.tags.join(", ")) }
-                            span.work-meta {
-                                @if i == today { span.badge { "Today" } " " }
-                                span.solved-mark.hidden { "Solved" }
-                                " " (difficulty(m.difficulty))
-                            }
-                        }
-                    }
-                }
+                @for p in state.intros() { (pack_row(&state, p)) }
+            }
+            @if state.today_daily().is_some() {
+                p.after-list { a href="/" { "Then: today's puzzle →" } }
+            }
+        }
+    };
+    layout(
+        &state,
+        viewer.as_ref(),
+        "Learn",
+        "Short introductory puzzles.",
+        Nav::Learn,
+        "/learn",
+        body,
+    )
+}
+
+pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
+    let mut dailies = state.released_dailies();
+    dailies.reverse();
+    let body = html! {
+        section.wrap.page-head {
+            h1 { "Archive" }
+            p.page-lead { "Every daily puzzle so far, newest first. They stay playable." }
+        }
+        section.wrap.section-tight {
+            ul.work-list {
+                @for p in dailies { (pack_row(&state, p)) }
             }
         }
     };
@@ -87,7 +126,7 @@ pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): Mayb
         &state,
         viewer.as_ref(),
         "Archive",
-        "All necropsy puzzles.",
+        "All released daily puzzles.",
         Nav::Archive,
         "/archive",
         body,
@@ -194,30 +233,43 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 
 // ---------------------------------------------------------------- puzzle
 
-fn puzzle_page(
-    state: &AppState,
-    viewer: Option<&User>,
-    rp: &RenderedPack,
-    is_today: bool,
-) -> Markup {
+fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
     let m = &rp.pack.meta;
-    let pos = state.position(&m.id).unwrap_or(0);
-    let prev = pos.checked_sub(1).map(|i| &state.packs[i]);
-    let next = state.packs.get(pos + 1);
+    let (prev, next) = state.neighbors(rp);
     let share_url = format!("{}/p/{}", state.base_url, m.id);
+    let daily = m.track == Track::Daily;
+    let intro_ids = state
+        .intros()
+        .iter()
+        .map(|p| p.pack.meta.id.clone())
+        .collect::<Vec<_>>()
+        .join(",");
+    let release_day = m.release_day().map(|d| d.to_string()).unwrap_or_default();
 
     let body = html! {
         div #puzzle data-id=(m.id) data-number=(m.number) data-title=(m.title)
-            data-hints=(m.hints.len()) data-url=(share_url) {
+            data-hints=(m.hints.len()) data-url=(share_url)
+            data-label=(rp.label().to_lowercase()) data-day=(release_day) {
             section.wrap.page-head {
                 p.crumb {
-                    "Puzzle #" (m.number)
-                    @if is_today { " " span.badge { "Today" } }
+                    @if daily {
+                        (rp.label())
+                        @if let Some(d) = &m.date { " · " (d) }
+                        @if state.is_today(rp) { " " span.badge { "Today" } }
+                    } @else {
+                        "Intro " (m.number) " of " (state.intros().len())
+                    }
                 }
                 h1 { (m.title) }
             }
             div.wrap.case-grid {
                 div.puzzle-main {
+                    @if daily {
+                        // Shown by app.js when nothing in the intro track is solved yet.
+                        p #intro-banner.notice.hidden data-intros=(intro_ids) {
+                            "New here? " a href="/learn" { "Start with the intro puzzles" } "."
+                        }
+                    }
                     div.prose.brief { (PreEscaped(&rp.brief_html)) }
 
                     @for f in &rp.files {
@@ -271,11 +323,11 @@ fn puzzle_page(
                     }
 
                     nav.pager aria-label="Puzzles" {
-                        @if let Some(p) = prev {
-                            a href={"/p/" (p.pack.meta.id)} { "← #" (p.pack.meta.number) " " (p.pack.meta.title) }
+                        @if let Some(p) = &prev {
+                            a href=(p.href) { "← " (p.label) }
                         } @else { span {} }
-                        @if let Some(n) = next {
-                            a href={"/p/" (n.pack.meta.id)} { "#" (n.pack.meta.number) " " (n.pack.meta.title) " →" }
+                        @if let Some(n) = &next {
+                            a href=(n.href) { (n.label) " →" }
                         }
                     }
                 }
@@ -372,6 +424,7 @@ pub fn layout(
                         }
                         nav.site-nav aria-label="Main" {
                             a href="/" aria-current=[current(Nav::Today)] { "Today" }
+                            a href="/learn" aria-current=[current(Nav::Learn)] { "Learn" }
                             a href="/archive" aria-current=[current(Nav::Archive)] { "Archive" }
                             a href="/format" aria-current=[current(Nav::Format)] { "Format" }
                         }

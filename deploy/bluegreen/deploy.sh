@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # necropsy-deploy: zero-downtime (blue-green) deploys of necropsy with Docker.
 #
-#   necropsy-deploy deploy <commit>   build that commit (it must be on main),
+#   necropsy-deploy deploy <commit>   build that commit (it must be on the
+#                                     configured branch, main by default),
 #                                     start it as the idle color, switch
 #                                     traffic once it is healthy, stop the old
 #   necropsy-deploy rollback          switch back to the previous release
@@ -15,11 +16,12 @@
 # Because an unprivileged user can start it as root, it trusts nothing the
 # caller controls: not the environment, not the arguments (checked below), not
 # the files it reads (root-owned configuration only), and it builds only code
-# that is on main of the repository named in that configuration.
+# that is on the branch and repository named in that configuration.
 #
 # Settings are read from $SYSCONFDIR/necropsy/deploy.env, a plain KEY=VALUE
 # file that is parsed, never executed:
 #   NECROPSY_REPO          https URL of the repository (required)
+#   NECROPSY_BRANCH        the only branch whose commits are built  (main)
 #   NECROPSY_PORT          loopback port of the proxy container      (8080)
 #   NECROPSY_SUBNET        private subnet of the containers          (172.30.30.0/24)
 #   NECROPSY_EDGE_TRUSTED  your reverse proxy's address as the proxy container
@@ -85,7 +87,7 @@ proxy_dir="$bg_state/proxy"
 
 # ---- configuration (parsed, never sourced) -----------------------------------
 
-NECROPSY_REPO="" NECROPSY_PORT=8080 NECROPSY_SUBNET=172.30.30.0/24
+NECROPSY_REPO="" NECROPSY_BRANCH=main NECROPSY_PORT=8080 NECROPSY_SUBNET=172.30.30.0/24
 NECROPSY_EDGE_TRUSTED="" DRAIN_SECONDS=15 HEALTH_TIMEOUT=90
 
 # A file that someone other than root can write is a way to change what runs as
@@ -104,7 +106,7 @@ if [ -f "$deploy_conf" ]; then
     case "$key" in ''|'#'*) continue ;; esac
     value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
     case "$key" in
-      NECROPSY_REPO|NECROPSY_PORT|NECROPSY_SUBNET|NECROPSY_EDGE_TRUSTED|DRAIN_SECONDS|HEALTH_TIMEOUT)
+      NECROPSY_REPO|NECROPSY_BRANCH|NECROPSY_PORT|NECROPSY_SUBNET|NECROPSY_EDGE_TRUSTED|DRAIN_SECONDS|HEALTH_TIMEOUT)
         printf -v "$key" '%s' "$value" ;;
     esac
   done < "$deploy_conf"
@@ -281,7 +283,8 @@ ensure_env_file() {
 
 # ---- building a commit ------------------------------------------------------
 
-# The only code ever built is a commit on main of the configured repository,
+# The only code ever built is a commit on the configured branch of the
+# configured repository,
 # so whoever can run this command can choose among releases but not add one.
 # Sets $built_image. (Not a command substitution: errors inside one do not stop
 # the script.)
@@ -290,6 +293,11 @@ build_commit() { # full commit hash
   local sha="$1" build_dir tag
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "expected a full 40-character commit hash"
   [ -n "$NECROPSY_REPO" ] || die "NECROPSY_REPO is not set in $deploy_conf"
+  local branch="$NECROPSY_BRANCH"
+  # It ends up in git refspecs, so a plain branch name only.
+  [[ "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] && [[ "$branch" != *..* ]] \
+    && git check-ref-format "refs/heads/$branch" \
+    || die "NECROPSY_BRANCH in $deploy_conf is not a valid branch name"
   if [ "$SAFE_MODE" = 1 ]; then
     [[ "$NECROPSY_REPO" =~ ^https://[A-Za-z0-9._/-]+$ ]] || die "NECROPSY_REPO must be an https URL"
     export GIT_ALLOW_PROTOCOL=https
@@ -298,16 +306,16 @@ build_commit() { # full commit hash
   fi
   export GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 
-  log "fetching main from $NECROPSY_REPO"
+  log "fetching $branch from $NECROPSY_REPO"
   if [ ! -d "$src_dir" ]; then
-    git clone --quiet --bare --branch main -- "$NECROPSY_REPO" "$src_dir" >&2
+    git clone --quiet --bare --branch "$branch" -- "$NECROPSY_REPO" "$src_dir" >&2
   else
     git -C "$src_dir" remote set-url origin "$NECROPSY_REPO"
-    git -C "$src_dir" fetch --quiet --prune origin '+refs/heads/main:refs/heads/main' >&2
+    git -C "$src_dir" fetch --quiet --prune origin "+refs/heads/$branch:refs/heads/$branch" >&2
   fi
   git -C "$src_dir" cat-file -e "$sha^{commit}" 2>/dev/null || die "commit $sha is not in the repository"
-  git -C "$src_dir" merge-base --is-ancestor "$sha" refs/heads/main \
-    || die "commit $sha is not on main, refusing to build it"
+  git -C "$src_dir" merge-base --is-ancestor "$sha" "refs/heads/$branch" \
+    || die "commit $sha is not on $branch, refusing to build it"
 
   build_dir="$(mktemp -d "$bg_state/build.XXXXXX")"
   # shellcheck disable=SC2064

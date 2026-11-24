@@ -64,7 +64,7 @@
       try {
         const r = await postAnswer(id, s.answer, s.seconds || 0, s.hints || 0);
         if (r.correct) {
-          server.solved[id] = { id, day: s.day ?? utcDay(), seconds: s.seconds || 0, hints: s.hints || 0 };
+          server.solved[id] = { id, day: s.day ?? utcDay(), ontime: !!s.ontime, seconds: s.seconds || 0, hints: s.hints || 0 };
         }
       } catch {}
     }
@@ -74,11 +74,15 @@
 
   // ---- streak ----------------------------------------------------------------
 
-  /** Consecutive UTC days with a solve, ending today or yesterday. */
+  /**
+   * Consecutive UTC days, ending today or yesterday, on which the daily puzzle
+   * was solved on its own day. Solving an old puzzle or an intro stage does not
+   * count, so replaying cannot extend a streak.
+   */
   function currentStreak() {
     const days = new Set();
-    for (const s of Object.values(state.solved)) if (typeof s.day === "number") days.add(s.day);
-    for (const s of Object.values(server.solved)) days.add(s.day);
+    for (const s of Object.values(state.solved)) if (s.ontime && typeof s.day === "number") days.add(s.day);
+    for (const s of Object.values(server.solved)) if (s.ontime) days.add(s.day);
     let d = utcDay();
     if (!days.has(d)) d -= 1;
     let n = 0;
@@ -134,12 +138,22 @@
     });
   }
 
+  // Daily pages suggest the intro stages until one has been solved.
+  function renderBanner() {
+    const banner = document.getElementById("intro-banner");
+    if (!banner) return;
+    const ids = (banner.dataset.intros || "").split(",").filter(Boolean);
+    banner.classList.toggle("hidden", ids.length === 0 || ids.some(isSolved));
+  }
+
   renderStreak();
   renderArchive();
+  renderBanner();
   const ready = loadProgress().then(importLocal);
   ready.then(() => {
     renderStreak();
     renderArchive();
+    renderBanner();
   });
 
   // ---- puzzle page ---------------------------------------------------------
@@ -148,7 +162,9 @@
   if (!puzzle) return;
 
   const id = puzzle.dataset.id;
-  const number = puzzle.dataset.number;
+  const label = puzzle.dataset.label;
+  // The day a daily is released, as days since 1970 UTC. Empty for intro stages.
+  const releaseDay = puzzle.dataset.day === "" ? null : Number(puzzle.dataset.day);
   const shareUrl = puzzle.dataset.url;
   const hintTotal = Number(puzzle.dataset.hints) || 0;
 
@@ -240,7 +256,8 @@
     try {
       const r = await postAnswer(id, answer, seconds, hintsShown);
       if (r.correct) {
-        state.solved[id] = { answer, seconds, hints: hintsShown, day: utcDay() };
+        const ontime = releaseDay !== null && utcDay() === releaseDay;
+        state.solved[id] = { answer, seconds, hints: hintsShown, day: utcDay(), ontime };
         state.time[id] = seconds;
         save(state);
         renderStreak();
@@ -282,7 +299,7 @@
   if (shareBtn) {
     shareBtn.addEventListener("click", async () => {
       const s = state.solved[id] || server.solved[id] || {};
-      const parts = [`necropsy #${number}`, `solved in ${formatTimeWords(s.seconds ?? seconds)}`];
+      const parts = [`necropsy ${label}`, `solved in ${formatTimeWords(s.seconds ?? seconds)}`];
       if (s.hints) parts.push(`${s.hints} hint${s.hints === 1 ? "" : "s"}`);
       const text = `${parts.join(" · ")}\n${shareUrl}`;
       try {

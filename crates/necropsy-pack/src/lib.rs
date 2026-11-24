@@ -67,13 +67,28 @@ pub enum Mode {
     Cli,
 }
 
+/// Where a pack appears. Intro stages are always available, in order. Daily
+/// packs are released on their `date`: the latest released one is "today's"
+/// puzzle, earlier ones stay playable, and later ones are hidden.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Track {
+    Intro,
+    Daily,
+}
+
 /// Contents of `pack.toml`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Meta {
     /// URL-safe slug, unique across all packs: `[a-z0-9-]`, 1 to 40 chars.
     pub id: String,
-    /// Display number and order in the archive. Unique across all packs.
+    pub track: Track,
+    /// Release date (`YYYY-MM-DD`, UTC) of a daily pack. Required for daily
+    /// packs, not allowed for intro stages, and unique among daily packs.
+    #[serde(default)]
+    pub date: Option<String>,
+    /// Display number and order within the track. Unique within the track.
     pub number: u32,
     pub title: String,
     /// 1 (easy) to 5 (hard).
@@ -89,6 +104,42 @@ pub struct Meta {
 
 fn default_modes() -> Vec<Mode> {
     vec![Mode::Web]
+}
+
+impl Meta {
+    /// A daily pack's release date as days since 1970-01-01, if it has one.
+    pub fn release_day(&self) -> Option<i64> {
+        self.date.as_deref().and_then(parse_date)
+    }
+}
+
+/// `YYYY-MM-DD` as days since 1970-01-01, or `None` if it is not a real date.
+pub fn parse_date(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let y: i64 = s[0..4].parse().ok()?;
+    let m: i64 = s[5..7].parse().ok()?;
+    let d: i64 = s[8..10].parse().ok()?;
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let days_in_month = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => 28 + i64::from(leap),
+        _ => return None,
+    };
+    if !(1..=days_in_month).contains(&d) {
+        return None;
+    }
+    // Days from civil date (Howard Hinnant's algorithm).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
 }
 
 /// A file under `files/`, addressed by its path relative to `files/`
@@ -224,6 +275,27 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
     if meta.modes.is_empty() {
         return Err(invalid(&dir.join("pack.toml"), "modes must not be empty"));
     }
+    match (meta.track, &meta.date) {
+        (Track::Intro, Some(_)) => {
+            return Err(invalid(
+                &dir.join("pack.toml"),
+                "intro packs must not have a date",
+            ))
+        }
+        (Track::Daily, None) => {
+            return Err(invalid(
+                &dir.join("pack.toml"),
+                "daily packs need a date (YYYY-MM-DD)",
+            ))
+        }
+        (Track::Daily, Some(d)) if parse_date(d).is_none() => {
+            return Err(invalid(
+                &dir.join("pack.toml"),
+                format!("{d} is not a valid YYYY-MM-DD date"),
+            ))
+        }
+        _ => {}
+    }
 
     let answer_hash = text("answer")?.trim().to_owned();
     let hex_part = answer_hash.strip_prefix("sha256:").unwrap_or("");
@@ -278,14 +350,34 @@ pub fn load_all(root: &Path) -> Result<Vec<Pack>, PackError> {
         .iter()
         .map(|d| load_pack(d))
         .collect::<Result<Vec<_>, _>>()?;
-    packs.sort_by_key(|p| p.meta.number);
+    // Intro stages first, in order, then dailies by release date.
+    packs.sort_by_key(|p| {
+        (
+            p.meta.track == Track::Daily,
+            p.meta.release_day(),
+            p.meta.number,
+        )
+    });
 
-    for pair in packs.windows(2) {
-        if pair[0].meta.number == pair[1].meta.number {
-            return Err(PackError::Collection(format!(
-                "packs {} and {} share number {}",
-                pair[0].meta.id, pair[1].meta.id, pair[0].meta.number
-            )));
+    for (i, a) in packs.iter().enumerate() {
+        for b in &packs[i + 1..] {
+            if a.meta.track == b.meta.track && a.meta.number == b.meta.number {
+                return Err(PackError::Collection(format!(
+                    "packs {} and {} share number {} in the {:?} track",
+                    a.meta.id, b.meta.id, a.meta.number, a.meta.track
+                )));
+            }
+            if a.meta.track == Track::Daily
+                && b.meta.track == Track::Daily
+                && a.meta.date == b.meta.date
+            {
+                return Err(PackError::Collection(format!(
+                    "daily packs {} and {} share the date {}",
+                    a.meta.id,
+                    b.meta.id,
+                    a.meta.date.as_deref().unwrap_or("?")
+                )));
+            }
         }
     }
     for (i, a) in packs.iter().enumerate() {
@@ -417,11 +509,136 @@ mod tests {
     }
 
     #[test]
+    fn dates() {
+        assert_eq!(parse_date("1970-01-01"), Some(0));
+        assert_eq!(parse_date("1970-01-02"), Some(1));
+        assert_eq!(parse_date("2000-03-01"), Some(11017));
+        assert_eq!(parse_date("2026-11-24"), Some(20781));
+        assert!(parse_date("2024-02-29").is_some());
+        for bad in [
+            "2023-02-29",
+            "2026-13-01",
+            "2026-00-10",
+            "2026-11-31",
+            "26-11-24",
+            "2026/11/24",
+            "2026-1-24",
+            "",
+        ] {
+            assert_eq!(parse_date(bad), None, "{bad}");
+        }
+        assert_eq!(
+            parse_date("2026-11-25").unwrap() - parse_date("2026-11-24").unwrap(),
+            1
+        );
+    }
+
+    #[test]
     fn id_validation() {
         assert!(valid_id("phone-home"));
         assert!(!valid_id("Phone"));
         assert!(!valid_id("-x"));
         assert!(!valid_id("a/b"));
         assert!(!valid_id(""));
+    }
+
+    /// A throwaway directory of packs for loader tests.
+    fn packs_dir(name: &str, packs: &[(&str, &str)]) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("necropsy-pack-test-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for (id, extra) in packs {
+            let d = root.join(id);
+            fs::create_dir_all(d.join("files")).unwrap();
+            fs::write(
+                d.join("pack.toml"),
+                format!("id = \"{id}\"\ntitle = \"T\"\ndifficulty = 1\n{extra}\n"),
+            )
+            .unwrap();
+            fs::write(d.join("brief.md"), "b").unwrap();
+            fs::write(d.join("explainer.md"), "e").unwrap();
+            fs::write(d.join("files/f.txt"), "x").unwrap();
+            fs::write(d.join("answer"), hash_answer(id, "x")).unwrap();
+        }
+        root
+    }
+
+    fn load_error(name: &str, packs: &[(&str, &str)]) -> String {
+        let root = packs_dir(name, packs);
+        let err = load_all(&root)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        let _ = fs::remove_dir_all(&root);
+        err
+    }
+
+    #[test]
+    fn tracks_are_ordered_and_validated() {
+        // Intro stages come first in number order, then dailies by date.
+        let root = packs_dir(
+            "order",
+            &[
+                (
+                    "d-late",
+                    "track = \"daily\"\nnumber = 2\ndate = \"2026-02-02\"",
+                ),
+                ("i-two", "track = \"intro\"\nnumber = 2"),
+                (
+                    "d-early",
+                    "track = \"daily\"\nnumber = 1\ndate = \"2026-01-01\"",
+                ),
+                ("i-one", "track = \"intro\"\nnumber = 1"),
+            ],
+        );
+        let ids: Vec<String> = load_all(&root)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.meta.id)
+            .collect();
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(ids, ["i-one", "i-two", "d-early", "d-late"]);
+
+        assert!(load_error(
+            "a",
+            &[("x", "track = \"intro\"\nnumber = 1\ndate = \"2026-01-01\"")]
+        )
+        .contains("must not have a date"));
+        assert!(load_error("b", &[("x", "track = \"daily\"\nnumber = 1")]).contains("need a date"));
+        assert!(load_error(
+            "c",
+            &[("x", "track = \"daily\"\nnumber = 1\ndate = \"2026-02-30\"")]
+        )
+        .contains("not a valid"));
+        assert!(
+            load_error("d", &[("x", "number = 1")]).contains("track"),
+            "a track is required"
+        );
+        let dup_date = load_error(
+            "e",
+            &[
+                ("x", "track = \"daily\"\nnumber = 1\ndate = \"2026-01-01\""),
+                ("y", "track = \"daily\"\nnumber = 2\ndate = \"2026-01-01\""),
+            ],
+        );
+        assert!(dup_date.contains("share the date"), "{dup_date}");
+        let dup_number = load_error(
+            "f",
+            &[
+                ("x", "track = \"intro\"\nnumber = 1"),
+                ("y", "track = \"intro\"\nnumber = 1"),
+            ],
+        );
+        assert!(dup_number.contains("share number"), "{dup_number}");
+        // The same number in different tracks is fine.
+        let ok = packs_dir(
+            "g",
+            &[
+                ("x", "track = \"intro\"\nnumber = 1"),
+                ("y", "track = \"daily\"\nnumber = 1\ndate = \"2026-01-01\""),
+            ],
+        );
+        assert!(load_all(&ok).is_ok());
+        let _ = fs::remove_dir_all(&ok);
     }
 }

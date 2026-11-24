@@ -35,7 +35,7 @@ The deploy command is a root-owned program that one unprivileged user may run th
 
 The deploy user is **not** in the `docker` group (that group is root-equivalent). Because it can start the program as root, the program trusts none of what it controls:
 
-- **Which code:** `deploy` takes a full commit hash, and the program fetches the repository named in `/etc/necropsy/deploy.env` (https only) and refuses any commit that is not on `main`. The deploy user can choose between releases but cannot add one.
+- **Which code:** `deploy` takes a full commit hash, and the program fetches the repository named in `/etc/necropsy/deploy.env` (https only) and refuses any commit that is not on the branch named there (`NECROPSY_BRANCH`, `main` unless the server was installed with `--branch dev`). The deploy user can choose between releases but cannot add one, nor change the branch.
 - **Its arguments:** the sudo rule has no argument patterns (they differ between sudo implementations), so the program checks its own: a full 40-character hash for `deploy`, nothing for the others, and any other command is refused.
 - **Which files:** the compose file and Caddyfile come from the root-owned install, never from the caller.
 - **The environment:** it ignores the caller's environment entirely (`DOCKER_HOST`, `GIT_*`, `LD_PRELOAD` and the like) and starts again with a clean one.
@@ -50,6 +50,12 @@ You need Docker with the compose plugin, `git`, `curl` and `flock` (util-linux),
 
 ```bash
 deploy/bluegreen/install-system.sh --user deploy --repo https://github.com/urashyl/necropsy
+```
+
+That is a production server, which builds only commits on `main`. For the dev server, a separate host, add `--branch dev` so it builds only commits on `dev`:
+
+```bash
+deploy/bluegreen/install-system.sh --user deploy --repo https://github.com/urashyl/necropsy --branch dev
 ```
 
 It checks the prerequisites, installs everything above, validates the sudo rule with `visudo` before installing it, and creates `/etc/necropsy/necropsy.env` from the example. Edit that file (base URL, SMTP) as root. Settings are read when a container starts, so a deploy is also how a settings change takes effect. Run the installer again after changing anything in the repository's `deploy/bluegreen/`, with the same options (it keeps your settings).
@@ -77,11 +83,11 @@ These are fixed by the container and cannot be overridden in `necropsy.env`:
 | `NECROPSY_TRUSTED_PROXIES` | the containers' private subnet, so only the proxy container can set it |
 | `NECROPSY_PACKS`, `NECROPSY_DB` | the packs baked into the image, and `/data/necropsy.db` |
 
-Deploy options (port, subnet, drain time, repository) go in `/etc/necropsy/deploy.env`, see `deploy/bluegreen/deploy.env.example`. Quote a value in `necropsy.env` that contains `$` with single quotes, since Compose expands `$` in environment files.
+Deploy options (port, subnet, drain time, repository, branch) go in `/etc/necropsy/deploy.env`, see `deploy/bluegreen/deploy.env.example`. Quote a value in `necropsy.env` that contains `$` with single quotes, since Compose expands `$` in environment files.
 
 ## Deploying
 
-CI does this on every push to `main` ([ci-cd.md](ci-cd.md)). By hand, as the deploy user (or as root without `sudo`):
+CI does this on every push to `main`, and to `dev` on the dev server ([ci-cd.md](ci-cd.md)). By hand, as the deploy user (or as root without `sudo`):
 
 ```bash
 sudo necropsy-deploy deploy "$(git rev-parse origin/main)"   # a full 40-character hash on main

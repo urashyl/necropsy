@@ -1,0 +1,12 @@
+id = "iloveyou-dropped"
+track = "daily"
+date = "2026-11-24"
+number = 1
+title = "ILOVEYOU: the dropped files"
+difficulty = 2
+modes = ["web"]
+tags = ["worm", "vbscript", "2000"]
+hints = [
+  "Only `wscript.exe` is running the worm. Look at what it creates, not what other programs do.",
+  "Three of the files it creates are copies of itself. Two are in the System directory. The Windows directory is `C:\\WINDOWS` itself, with nothing after it but the file name.",
+]
