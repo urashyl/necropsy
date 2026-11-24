@@ -5,7 +5,7 @@
 #   sudo install-system.sh --user <name> --repo <https url>
 #   sudo install-system.sh --uninstall
 #
-# After this, <name> can run exactly these, as root:
+# After this, <name> can run exactly one program as root, and it accepts only:
 #   necropsy-deploy deploy <40-hex commit>
 #   necropsy-deploy rollback
 #   necropsy-deploy status
@@ -166,15 +166,16 @@ fi
 
 # ---- sudo -------------------------------------------------------------------
 
-# Exactly the three commands, with the one argument that varies pinned to a
-# hex string. The program checks its arguments again, since sudo patterns are
-# only globs.
+# The rule names the program and nothing else. It deliberately has no argument
+# patterns: sudo's pattern syntax differs between sudo and sudo-rs (which
+# rejects wildcards in arguments), and the program is the boundary anyway. It
+# takes only deploy <40-hex commit>, rollback and status, and refuses everything
+# else, including the test-only `switch`.
 rule="$(mktemp)"
 trap 'rm -f "$rule"' EXIT
 cat > "$rule" <<RULE
 # Managed by necropsy install-system.sh. Do not edit: rerun the installer.
-Cmnd_Alias NECROPSY_DEPLOY = $program deploy [0-9a-f]*, $program rollback, $program status
-$user ALL=(root) NOPASSWD: NECROPSY_DEPLOY
+$user ALL=(root) NOPASSWD: $program
 RULE
 if [ "$safe_mode" = 1 ]; then
   # A broken sudoers file can lock everyone out of sudo, so check before installing.
@@ -191,9 +192,9 @@ Installed.
   state      $state_dir
   sudo rule  $sudoers_file
 
-$user may now run, as root and without a password:
-  sudo $program deploy <40-hex commit on main>
-  sudo $program rollback
-  sudo $program status
-and nothing else.
+$user may now run, as root and without a password, this one program:
+  sudo necropsy-deploy deploy <40-hex commit on main>
+  sudo necropsy-deploy rollback
+  sudo necropsy-deploy status
+It accepts nothing else, and the user has no other passwordless sudo.
 MSG

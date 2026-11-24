@@ -95,10 +95,9 @@ check "program has its paths baked in" grep -q "STATEDIR='$root/var'" "$bin"
 check "the template placeholders are gone" bash -c "! grep -q \"='@\" '$bin'"
 check "deploy.env names the repository" grep -q "^NECROPSY_REPO=file://$work/origin.git" "$conf/deploy.env"
 rule="$root/sudoers.d/necropsy-deploy"
-check "sudo rule names the user" grep -q '^nobody ALL=(root) NOPASSWD: NECROPSY_DEPLOY' "$rule"
-check "sudo rule allows deploy with a hex argument" grep -q "$bin deploy \[0-9a-f\]\*" "$rule"
-check "sudo rule allows rollback and status" grep -q "$bin rollback, $bin status" "$rule"
-check "sudo rule allows nothing else" bash -c "[ \$(grep -c '$bin' '$rule') -eq 1 ] && ! grep -q 'ALL$' '$rule'"
+check "sudo rule names the user and only the program" grep -qx "nobody ALL=(root) NOPASSWD: $bin" "$rule"
+check "sudo rule grants exactly one command" bash -c "[ \$(grep -vc '^#' '$rule') -eq 1 ]"
+check "sudo rule has no wildcards (sudo-rs rejects them)" bash -c "! grep -v '^#' '$rule' | grep -q '[*?\\[]'"
 if command -v visudo >/dev/null; then
   check "visudo accepts the rule" visudo -cf "$rule"
 else

@@ -23,7 +23,7 @@ The image contains the binary and the packs, so each image is a complete release
 
 ## Who can do what
 
-The deploy command is a root-owned program that one unprivileged user may run through sudo, without a password and for nothing else:
+The deploy command is a root-owned program that one unprivileged user may run through sudo, without a password. It accepts `deploy <commit>`, `rollback` and `status`, and refuses everything else:
 
 | | |
 | --- | --- |
@@ -31,11 +31,12 @@ The deploy command is a root-owned program that one unprivileged user may run th
 | `/usr/local/lib/necropsy/` | the compose file, Caddyfile and settings template it uses, also root-owned |
 | `/etc/necropsy/` | settings (`necropsy.env` for the app, `deploy.env` for deploy options), root-only |
 | `/var/lib/necropsy/` | its state and a clone of the repository, root-only |
-| `/etc/sudoers.d/necropsy-deploy` | lets the deploy user run `necropsy-deploy deploy <commit>`, `rollback` and `status` as root |
+| `/etc/sudoers.d/necropsy-deploy` | lets the deploy user run that one program as root, without a password. It is the only passwordless sudo they have |
 
 The deploy user is **not** in the `docker` group (that group is root-equivalent). Because it can start the program as root, the program trusts none of what it controls:
 
 - **Which code:** `deploy` takes a full commit hash, and the program fetches the repository named in `/etc/necropsy/deploy.env` (https only) and refuses any commit that is not on `main`. The deploy user can choose between releases but cannot add one.
+- **Its arguments:** the sudo rule has no argument patterns (they differ between sudo implementations), so the program checks its own: a full 40-character hash for `deploy`, nothing for the others, and any other command is refused.
 - **Which files:** the compose file and Caddyfile come from the root-owned install, never from the caller.
 - **The environment:** it ignores the caller's environment entirely (`DOCKER_HOST`, `GIT_*`, `LD_PRELOAD` and the like) and starts again with a clean one.
 - **Its own settings:** `deploy.env` is parsed as plain `KEY=VALUE`, never executed, and the program refuses it if anyone but root can write to it.

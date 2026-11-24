@@ -11,7 +11,7 @@ Deploys never overlap: a second push waits for the running one instead of cancel
 
 ## What a deploy does
 
-CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and nothing else ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on `main`, builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
+CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on `main`, builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
 
 CI sends no image and no files, only the commit hash. The server needs Docker and git, not Rust.
 
