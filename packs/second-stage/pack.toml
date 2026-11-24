@@ -1,0 +1,10 @@
+id = "second-stage"
+number = 2
+title = "Second stage"
+difficulty = 2
+modes = ["web"]
+tags = ["loader", "encoding", "javascript"]
+hints = [
+  "Nothing here runs the payload for you. Decode `s` yourself and read the result.",
+  "Base64 first, then XOR each byte with k. A shell one-liner or a few lines of Python is enough.",
+]

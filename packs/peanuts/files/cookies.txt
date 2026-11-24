@@ -1,0 +1,2 @@
+.example-shop.invalid|locale|
+.example-shop.invalid|session_token|763130a1b29fda7ee8756b748239a07fc2659ef5e624fabb5ad9017fb9822c91129481

@@ -1,0 +1,15 @@
+[package]
+name = "necropsy-pack"
+description = "Puzzle pack format shared by the necropsy web and CLI front ends"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+thiserror = "2"
+toml = "0.8"

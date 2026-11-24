@@ -1,0 +1,6 @@
+host: kiosk-04 (Debian 12, no desktop environment)
+browser: Chromium 120, launched with --user-data-dir=/srv/kiosk/profile
+libsecret / kwallet: not installed
+
+$ sqlite3 /srv/kiosk/profile/Default/Cookies \
+    "SELECT host_key, name, hex(encrypted_value) FROM cookies"

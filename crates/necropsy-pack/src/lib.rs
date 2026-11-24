@@ -1,0 +1,426 @@
+//! The necropsy puzzle pack format, shared by every front end.
+//!
+//! A pack is a plain directory (see `docs/pack-format.md`):
+//!
+//! ```text
+//! <pack>/
+//!   pack.toml     metadata: id, number, title, difficulty, modes, tags, hints
+//!   brief.md      the question
+//!   files/        the excerpt (web) or file tree (CLI); text or data only
+//!   answer        `sha256:<hex>` of the normalized answer
+//!   explainer.md  the real finding, shown after solving
+//! ```
+//!
+//! This crate only reads packs. It never executes anything from them, and the
+//! loader refuses anything that could escape the pack directory (symlinks,
+//! `..` components, absolute paths) or that is unreasonably large, because a
+//! pack may one day come from somewhere less trusted than this repository.
+
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+
+/// Largest single file the loader accepts.
+pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
+/// Largest total size of a pack.
+pub const MAX_PACK_BYTES: u64 = 8 * 1024 * 1024;
+/// Most files a pack may contain (metadata files included).
+pub const MAX_FILES: usize = 256;
+/// Deepest directory nesting allowed under `files/`.
+const MAX_DEPTH: usize = 8;
+
+#[derive(Debug, thiserror::Error)]
+pub enum PackError {
+    #[error("{path}: {source}")]
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("{path}: {message}")]
+    Invalid { path: PathBuf, message: String },
+    #[error("{0}")]
+    Collection(String),
+}
+
+fn invalid(path: &Path, message: impl Into<String>) -> PackError {
+    PackError::Invalid {
+        path: path.to_owned(),
+        message: message.into(),
+    }
+}
+
+fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> PackError + '_ {
+    move |source| PackError::Io {
+        path: path.to_owned(),
+        source,
+    }
+}
+
+/// Which front ends a pack is meant for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    Web,
+    Cli,
+}
+
+/// Contents of `pack.toml`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Meta {
+    /// URL-safe slug, unique across all packs: `[a-z0-9-]`, 1 to 40 chars.
+    pub id: String,
+    /// Display number and order in the archive. Unique across all packs.
+    pub number: u32,
+    pub title: String,
+    /// 1 (easy) to 5 (hard).
+    pub difficulty: u8,
+    #[serde(default = "default_modes")]
+    pub modes: Vec<Mode>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Revealed one at a time, in order.
+    #[serde(default)]
+    pub hints: Vec<String>,
+}
+
+fn default_modes() -> Vec<Mode> {
+    vec![Mode::Web]
+}
+
+/// A file under `files/`, addressed by its path relative to `files/`
+/// using `/` separators.
+#[derive(Debug, Clone)]
+pub struct PackFile {
+    pub path: String,
+    pub data: Vec<u8>,
+}
+
+impl PackFile {
+    /// The contents as text, if they are valid UTF-8.
+    pub fn text(&self) -> Option<&str> {
+        std::str::from_utf8(&self.data).ok()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Pack {
+    pub meta: Meta,
+    pub brief_md: String,
+    pub explainer_md: String,
+    /// `sha256:<hex>`, as stored in the `answer` file.
+    pub answer_hash: String,
+    pub files: Vec<PackFile>,
+    /// SHA-256 over every file in the pack, see [`hash_files`].
+    pub pack_hash: String,
+}
+
+impl Pack {
+    /// Whether `guess` is the answer. The guess is normalized first.
+    pub fn check(&self, guess: &str) -> bool {
+        hash_answer(&self.meta.id, guess) == self.answer_hash
+    }
+
+    pub fn file(&self, path: &str) -> Option<&PackFile> {
+        self.files.iter().find(|f| f.path == path)
+    }
+}
+
+/// Normalizes an answer before hashing: trims, strips one layer of
+/// surrounding quotes or backticks, lowercases, and collapses runs of
+/// whitespace to a single space.
+pub fn normalize_answer(raw: &str) -> String {
+    let trimmed = raw
+        .trim()
+        .trim_matches(|c| matches!(c, '"' | '\'' | '`'))
+        .trim();
+    trimmed
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// The value stored in a pack's `answer` file.
+///
+/// The pack id is part of the hashed input so identical answers in different
+/// packs do not share a hash. This is an answer check, not a secret: the hash
+/// sits in a public repository, so a short or guessable answer can be
+/// brute-forced from it. Pick answers with some entropy.
+pub fn hash_answer(pack_id: &str, answer: &str) -> String {
+    let mut h = Sha256::new();
+    h.update(b"necropsy:v1:");
+    h.update(pack_id.as_bytes());
+    h.update(b":");
+    h.update(normalize_answer(answer).as_bytes());
+    format!("sha256:{}", hex(&h.finalize()))
+}
+
+/// Hash of a set of `(relative path, contents)` pairs, order-independent.
+/// Each entry is hashed as `path NUL length(u64 LE) contents`, so moving
+/// bytes between files changes the result.
+pub fn hash_files(files: &[(String, Vec<u8>)]) -> String {
+    let mut sorted: Vec<&(String, Vec<u8>)> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut h = Sha256::new();
+    for (path, data) in sorted {
+        h.update(path.as_bytes());
+        h.update([0]);
+        h.update((data.len() as u64).to_le_bytes());
+        h.update(data);
+    }
+    format!("sha256:{}", hex(&h.finalize()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
+}
+
+fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 40
+        && !id.starts_with('-')
+        && !id.ends_with('-')
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// Loads one pack directory.
+pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
+    let mut raw: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut total = 0u64;
+    walk(dir, dir, 0, &mut raw, &mut total)?;
+
+    let take = |name: &str| -> Result<&Vec<u8>, PackError> {
+        raw.iter()
+            .find(|(p, _)| p == name)
+            .map(|(_, d)| d)
+            .ok_or_else(|| invalid(&dir.join(name), "missing"))
+    };
+    let text = |name: &str| -> Result<String, PackError> {
+        String::from_utf8(take(name)?.clone())
+            .map_err(|_| invalid(&dir.join(name), "not valid UTF-8"))
+    };
+
+    let meta: Meta = toml::from_str(&text("pack.toml")?)
+        .map_err(|e| invalid(&dir.join("pack.toml"), e.to_string()))?;
+    if !valid_id(&meta.id) {
+        return Err(invalid(
+            &dir.join("pack.toml"),
+            "id must be 1-40 chars of a-z, 0-9 and '-', not starting or ending with '-'",
+        ));
+    }
+    if !(1..=5).contains(&meta.difficulty) {
+        return Err(invalid(&dir.join("pack.toml"), "difficulty must be 1-5"));
+    }
+    if meta.modes.is_empty() {
+        return Err(invalid(&dir.join("pack.toml"), "modes must not be empty"));
+    }
+
+    let answer_hash = text("answer")?.trim().to_owned();
+    let hex_part = answer_hash.strip_prefix("sha256:").unwrap_or("");
+    if hex_part.len() != 64
+        || !hex_part
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(invalid(
+            &dir.join("answer"),
+            "expected `sha256:` followed by 64 lowercase hex digits",
+        ));
+    }
+
+    let files: Vec<PackFile> = raw
+        .iter()
+        .filter_map(|(p, d)| {
+            p.strip_prefix("files/").map(|rel| PackFile {
+                path: rel.to_owned(),
+                data: d.clone(),
+            })
+        })
+        .collect();
+    if files.is_empty() {
+        return Err(invalid(&dir.join("files"), "needs at least one file"));
+    }
+
+    Ok(Pack {
+        brief_md: text("brief.md")?,
+        explainer_md: text("explainer.md")?,
+        pack_hash: hash_files(&raw),
+        meta,
+        answer_hash,
+        files,
+    })
+}
+
+/// Loads every pack directory directly under `root`, ordered by number.
+/// Fails if two packs share an id or a number.
+pub fn load_all(root: &Path) -> Result<Vec<Pack>, PackError> {
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(root).map_err(io_err(root))? {
+        let entry = entry.map_err(io_err(root))?;
+        let ty = entry.file_type().map_err(io_err(root))?;
+        if ty.is_dir() {
+            dirs.push(entry.path());
+        }
+    }
+    dirs.sort();
+
+    let mut packs = dirs
+        .iter()
+        .map(|d| load_pack(d))
+        .collect::<Result<Vec<_>, _>>()?;
+    packs.sort_by_key(|p| p.meta.number);
+
+    for pair in packs.windows(2) {
+        if pair[0].meta.number == pair[1].meta.number {
+            return Err(PackError::Collection(format!(
+                "packs {} and {} share number {}",
+                pair[0].meta.id, pair[1].meta.id, pair[0].meta.number
+            )));
+        }
+    }
+    for (i, a) in packs.iter().enumerate() {
+        if packs[i + 1..].iter().any(|b| b.meta.id == a.meta.id) {
+            return Err(PackError::Collection(format!(
+                "duplicate pack id {}",
+                a.meta.id
+            )));
+        }
+    }
+    if packs.is_empty() {
+        return Err(PackError::Collection(format!(
+            "no packs found in {}",
+            root.display()
+        )));
+    }
+    Ok(packs)
+}
+
+/// Collects every regular file under `dir` as `(relative path, bytes)`.
+/// Symlinks and special files are rejected rather than followed.
+fn walk(
+    root: &Path,
+    dir: &Path,
+    depth: usize,
+    out: &mut Vec<(String, Vec<u8>)>,
+    total: &mut u64,
+) -> Result<(), PackError> {
+    if depth > MAX_DEPTH {
+        return Err(invalid(dir, "directory nesting too deep"));
+    }
+    let mut entries = fs::read_dir(dir)
+        .map_err(io_err(dir))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(io_err(dir))?;
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let ty = entry.file_type().map_err(io_err(&path))?;
+        if ty.is_symlink() {
+            return Err(invalid(&path, "symlinks are not allowed in packs"));
+        }
+        if ty.is_dir() {
+            walk(root, &path, depth + 1, out, total)?;
+        } else if ty.is_file() {
+            let len = entry.metadata().map_err(io_err(&path))?.len();
+            if len > MAX_FILE_BYTES {
+                return Err(invalid(
+                    &path,
+                    format!("larger than {MAX_FILE_BYTES} bytes"),
+                ));
+            }
+            *total += len;
+            if *total > MAX_PACK_BYTES || out.len() >= MAX_FILES {
+                return Err(invalid(root, "pack is too large"));
+            }
+            let rel = relative_path(root, &path)?;
+            out.push((rel, fs::read(&path).map_err(io_err(&path))?));
+        } else {
+            return Err(invalid(
+                &path,
+                "only regular files and directories are allowed",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// `path` relative to `root`, `/`-separated, with every component checked.
+fn relative_path(root: &Path, path: &Path) -> Result<String, PackError> {
+    let rel = path
+        .strip_prefix(root)
+        .map_err(|_| invalid(path, "outside the pack directory"))?;
+    let mut parts = Vec::new();
+    for c in rel.components() {
+        match c {
+            Component::Normal(s) => {
+                let s = s
+                    .to_str()
+                    .ok_or_else(|| invalid(path, "file name is not valid UTF-8"))?;
+                if s.contains('\\') || s.chars().any(char::is_control) {
+                    return Err(invalid(path, "unsafe character in file name"));
+                }
+                parts.push(s.to_owned());
+            }
+            _ => return Err(invalid(path, "unsafe path component")),
+        }
+    }
+    Ok(parts.join("/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalization() {
+        assert_eq!(normalize_answer("  Foo   BAR \n"), "foo bar");
+        assert_eq!(normalize_answer("`Host.Example`"), "host.example");
+        assert_eq!(normalize_answer("\"x\""), "x");
+        assert_eq!(normalize_answer("  "), "");
+    }
+
+    #[test]
+    fn answer_hash_depends_on_pack_and_normalization() {
+        let a = hash_answer("one", "Secret");
+        assert_eq!(a, hash_answer("one", "  secret "));
+        assert_ne!(a, hash_answer("two", "secret"));
+        assert!(a.starts_with("sha256:") && a.len() == 71);
+    }
+
+    #[test]
+    fn pack_hash_is_order_independent_and_content_sensitive() {
+        let a = vec![
+            ("a".to_owned(), b"1".to_vec()),
+            ("b".to_owned(), b"2".to_vec()),
+        ];
+        let b = vec![
+            ("b".to_owned(), b"2".to_vec()),
+            ("a".to_owned(), b"1".to_vec()),
+        ];
+        assert_eq!(hash_files(&a), hash_files(&b));
+        let moved = vec![
+            ("a".to_owned(), b"12".to_vec()),
+            ("b".to_owned(), Vec::new()),
+        ];
+        assert_ne!(hash_files(&a), hash_files(&moved));
+    }
+
+    #[test]
+    fn id_validation() {
+        assert!(valid_id("phone-home"));
+        assert!(!valid_id("Phone"));
+        assert!(!valid_id("-x"));
+        assert!(!valid_id("a/b"));
+        assert!(!valid_id(""));
+    }
+}

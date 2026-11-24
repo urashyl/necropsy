@@ -1,0 +1,10 @@
+id = "phone-home"
+number = 1
+title = "Phone home"
+difficulty = 1
+modes = ["web"]
+tags = ["browser extension", "javascript"]
+hints = [
+  "Look for the call that carries the cookie data, not the ones that fetch or report something else.",
+  "navigator.sendBeacon is the only call that sends cookie data. Work out what HOSTS.sync expands to.",
+]

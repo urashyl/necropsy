@@ -1,0 +1,368 @@
+//! Page handlers and HTML. Pages are built with `maud`, which escapes every
+//! interpolated value; the only `PreEscaped` content is HTML we rendered from
+//! pack markdown (raw HTML stripped) or from syntect (escaped).
+
+use std::sync::Arc;
+
+use axum::extract::{Path, State};
+use axum::http::{header, StatusCode};
+use axum::response::{IntoResponse, Response};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
+
+use crate::markdown::render_markdown;
+use crate::state::{AppState, RenderedPack};
+
+pub const CSS: &str = include_str!("../static/app.css");
+pub const JS: &str = include_str!("../static/app.js");
+pub const THEME_JS: &str = include_str!("../static/theme.js");
+const FAVICON: &str = include_str!("../static/favicon.svg");
+const FORMAT_DOC: &str = include_str!("../../../docs/pack-format.md");
+
+const FONTS: &str = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500&display=swap";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Nav {
+    Today,
+    Archive,
+    Format,
+    None,
+}
+
+// ---------------------------------------------------------------- handlers
+
+pub async fn today(State(state): State<Arc<AppState>>) -> Markup {
+    let i = state.today_index();
+    puzzle_page(&state, &state.packs[i], true)
+}
+
+pub async fn puzzle(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
+    match state.get(&id) {
+        Some(p) => {
+            puzzle_page(&state, p, state.position(&id) == Some(state.today_index())).into_response()
+        }
+        None => not_found_page(&state).into_response(),
+    }
+}
+
+pub async fn archive(State(state): State<Arc<AppState>>) -> Markup {
+    let today = state.today_index();
+    let body = html! {
+        section.wrap.page-head {
+            h1 { "Archive" }
+        }
+        section.wrap.section-tight {
+            ul.work-list {
+                @for (i, p) in state.packs.iter().enumerate() {
+                    @let m = &p.pack.meta;
+                    li.work-row {
+                        a.work-link.archive-link href={"/p/" (m.id)} data-pack-id=(m.id) {
+                            span.work-name { span.num { "#" (m.number) } " " (m.title) }
+                            span.work-desc { (m.tags.join(", ")) }
+                            span.work-meta {
+                                @if i == today { span.badge { "Today" } " " }
+                                span.solved-mark.hidden { "Solved" }
+                                " " (difficulty(m.difficulty))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    layout(
+        &state,
+        "Archive",
+        "All necropsy puzzles.",
+        Nav::Archive,
+        "/archive",
+        body,
+    )
+}
+
+pub async fn format(State(state): State<Arc<AppState>>) -> Markup {
+    let body = html! {
+        section.wrap.page-head {
+            h1 { "Pack format" }
+        }
+        section.wrap.section-tight {
+            div.prose.doc { (PreEscaped(render_markdown(FORMAT_DOC))) }
+        }
+    };
+    layout(
+        &state,
+        "Pack format",
+        "How necropsy puzzle packs are structured.",
+        Nav::Format,
+        "/format",
+        body,
+    )
+}
+
+/// The raw bytes of one pack file. Lookup is by exact match against the files
+/// the pack loader found, never by joining a request path onto a directory.
+pub async fn raw_file(
+    State(state): State<Arc<AppState>>,
+    Path((id, path)): Path<(String, String)>,
+) -> Response {
+    let Some(file) = state.get(&id).and_then(|p| p.pack.file(&path)) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match file.text() {
+        Some(text) => (
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            text.to_owned(),
+        )
+            .into_response(),
+        None => (
+            [
+                (header::CONTENT_TYPE, "application/octet-stream"),
+                (header::CONTENT_DISPOSITION, "attachment"),
+            ],
+            file.data.clone(),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn not_found(State(state): State<Arc<AppState>>) -> Response {
+    not_found_page(&state).into_response()
+}
+
+fn not_found_page(state: &AppState) -> (StatusCode, Markup) {
+    let body = html! {
+        section.wrap.page-head {
+            h1 { "Not found" }
+            p.page-lead { a href="/" { "Back to today's puzzle" } }
+        }
+    };
+    (
+        StatusCode::NOT_FOUND,
+        layout(state, "Not found", "Page not found.", Nav::None, "/", body),
+    )
+}
+
+pub async fn static_css() -> Response {
+    asset("text/css; charset=utf-8", CSS)
+}
+pub async fn static_js() -> Response {
+    asset("text/javascript; charset=utf-8", JS)
+}
+pub async fn static_theme_js() -> Response {
+    asset("text/javascript; charset=utf-8", THEME_JS)
+}
+pub async fn favicon() -> Response {
+    asset("image/svg+xml", FAVICON)
+}
+
+fn asset(content_type: &'static str, body: &'static str) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+// ---------------------------------------------------------------- puzzle
+
+fn puzzle_page(state: &AppState, rp: &RenderedPack, is_today: bool) -> Markup {
+    let m = &rp.pack.meta;
+    let pos = state.position(&m.id).unwrap_or(0);
+    let prev = pos.checked_sub(1).map(|i| &state.packs[i]);
+    let next = state.packs.get(pos + 1);
+    let share_url = format!("{}/p/{}", state.base_url, m.id);
+
+    let body = html! {
+        div #puzzle data-id=(m.id) data-number=(m.number) data-title=(m.title)
+            data-hints=(m.hints.len()) data-url=(share_url) {
+            section.wrap.page-head {
+                p.crumb {
+                    "Puzzle #" (m.number)
+                    @if is_today { " " span.badge { "Today" } }
+                }
+                h1 { (m.title) }
+            }
+            div.wrap.case-grid {
+                div.puzzle-main {
+                    div.prose.brief { (PreEscaped(&rp.brief_html)) }
+
+                    @for f in &rp.files {
+                        figure.codefile {
+                            figcaption.codefile-head {
+                                span.codefile-name { (f.path) }
+                                a href={"/p/" (m.id) "/files/" (f.path)} { "Raw" }
+                            }
+                            @if let Some((hl, lines)) = &f.inline {
+                                div.codefile-body tabindex="0" role="region"
+                                    aria-label={"Contents of " (f.path)} {
+                                    pre.gutter aria-hidden="true" {
+                                        @for n in 1..=*lines { (n) "\n" }
+                                    }
+                                    pre.code.hl { code { (PreEscaped(hl)) } }
+                                }
+                            } @else {
+                                p.codefile-bin {
+                                    "Binary or large file, " (f.size) " bytes. "
+                                    a href={"/p/" (m.id) "/files/" (f.path)} { "Download" }
+                                }
+                            }
+                        }
+                    }
+
+                    form #answer-form.answer-form {
+                        label for="answer" { "Answer" }
+                        div.answer-row {
+                            input #answer name="answer" type="text" required maxlength="512"
+                                autocomplete="off" autocapitalize="off" spellcheck="false";
+                            button.button type="submit" { "Submit" }
+                        }
+                        p #answer-msg.answer-msg role="status" aria-live="polite" {}
+                        noscript { p.muted { "Checking answers needs JavaScript." } }
+                    }
+
+                    @if !m.hints.is_empty() {
+                        section #hints.hints {
+                            ol #hint-list.hint-list {
+                                @for h in &m.hints {
+                                    li.hidden { (h) }
+                                }
+                            }
+                            button #hint-btn.link-button type="button" { "Show a hint" }
+                        }
+                    }
+
+                    section #explainer.explainer.hidden {
+                        h2 { "Explainer" }
+                        div #explainer-body.prose {}
+                    }
+
+                    nav.pager aria-label="Puzzles" {
+                        @if let Some(p) = prev {
+                            a href={"/p/" (p.pack.meta.id)} { "← #" (p.pack.meta.number) " " (p.pack.meta.title) }
+                        } @else { span {} }
+                        @if let Some(n) = next {
+                            a href={"/p/" (n.pack.meta.id)} { "#" (n.pack.meta.number) " " (n.pack.meta.title) " →" }
+                        }
+                    }
+                }
+
+                aside.case-side {
+                    dl.facts {
+                        div { dt { "Difficulty" } dd { (difficulty(m.difficulty)) } }
+                        div { dt { "Files" } dd { (rp.files.len()) } }
+                        @if !m.tags.is_empty() {
+                            div { dt { "Tags" } dd { (m.tags.join(", ")) } }
+                        }
+                        div { dt { "Time" } dd #stat-time.tabular { "0:00" } }
+                        @if !m.hints.is_empty() {
+                            div { dt { "Hints used" } dd #stat-hints.tabular { "0" } }
+                        }
+                    }
+                    div #share.share.hidden {
+                        button #share-btn.button.button-quiet type="button" { "Copy result" }
+                        span #share-msg.muted role="status" aria-live="polite" {}
+                    }
+                }
+            }
+        }
+    };
+
+    layout(
+        state,
+        &m.title,
+        &format!("necropsy puzzle #{}: {}", m.number, m.title),
+        Nav::None,
+        &format!("/p/{}", m.id),
+        body,
+    )
+}
+
+fn difficulty(d: u8) -> Markup {
+    html! {
+        span.diff role="img" aria-label={"Difficulty " (d) " of 5"} {
+            @for i in 1..=5u8 { span.dot.on[i <= d] {} }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- layout
+
+fn layout(
+    state: &AppState,
+    title: &str,
+    description: &str,
+    nav: Nav,
+    path: &str,
+    body: Markup,
+) -> Markup {
+    let full_title = format!("{title} · necropsy");
+    let canonical = format!("{}{}", state.base_url, path);
+    let current = |n: Nav| if nav == n { Some("page") } else { None };
+
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                title { (full_title) }
+                meta name="description" content=(description);
+                link rel="canonical" href=(canonical);
+                meta property="og:type" content="website";
+                meta property="og:site_name" content="necropsy";
+                meta property="og:title" content=(full_title);
+                meta property="og:description" content=(description);
+                meta property="og:url" content=(canonical);
+                meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef0eb";
+                meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141916";
+                link rel="icon" type="image/svg+xml" href={"/favicon.svg"};
+                link rel="preconnect" href="https://fonts.googleapis.com";
+                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
+                link rel="stylesheet" href=(FONTS);
+                script src={"/static/theme.js?v=" (state.theme_v)} {}
+                link rel="stylesheet" href={"/static/app.css?v=" (state.css_v)};
+            }
+            body {
+                a.skip-link href="#main" { "Skip to content" }
+                header.site-header {
+                    div.wrap.header-inner {
+                        a.site-name href="/" {
+                            svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" {
+                                rect width="32" height="32" rx="8" fill="var(--accent)" {}
+                                path d="M9 22 23 10" stroke="var(--accent-ink)" stroke-width="2.5" stroke-linecap="round" {}
+                                circle cx="11" cy="11" r="3" fill="none" stroke="var(--accent-ink)" stroke-width="2" {}
+                            }
+                            span { "necropsy" }
+                        }
+                        nav.site-nav aria-label="Main" {
+                            a href="/" aria-current=[current(Nav::Today)] { "Today" }
+                            a href="/archive" aria-current=[current(Nav::Archive)] { "Archive" }
+                            a href="/format" aria-current=[current(Nav::Format)] { "Format" }
+                        }
+                        div.header-tools {
+                            a #streak-chip.streak.hidden href="/archive" title="Days in a row with a solved puzzle" {}
+                            button #theme-toggle.icon-btn type="button"
+                                aria-label="Switch color theme" title="Switch color theme" {
+                                svg.icon width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" aria-hidden="true" {
+                                    circle cx="12" cy="12" r="8" {}
+                                    path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none" {}
+                                }
+                            }
+                        }
+                    }
+                }
+                main #main { (body) }
+                footer.site-footer {
+                    div.wrap.footer-inner {
+                        a href="https://urashyl.dev" { "urashyl.dev" }
+                        a href="https://github.com/urashyl/necropsy" rel="noopener noreferrer" { "Source" }
+                    }
+                }
+                script src={"/static/app.js?v=" (state.js_v)} defer {}
+            }
+        }
+    }
+}
