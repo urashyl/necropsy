@@ -187,15 +187,20 @@ jobs:
       # (trusted) peer, and the app believes Caddy's.
       - name: Client address reaches the app
         run: |
+          # A different username each time, so only the per-address limit applies
+          # (there is also a limit of 10 per username).
           login() {
             curl -s -o /dev/null -w '%{http_code}' -H "X-Real-IP: $1" \
-              -d 'username=nobody&password=wrong' "http://127.0.0.1:$PORT/login"
+              -d "username=user$2&password=wrong" "http://127.0.0.1:$PORT/login"
           }
           for i in $(seq 1 30); do
-            [ "$(login 203.0.113.50)" = 401 ] || { echo "attempt $i was not a plain failure"; exit 1; }
+            code=$(login 203.0.113.50 "$i")
+            [ "$code" = 401 ] || { echo "attempt $i from one address got $code, not 401"; exit 1; }
           done
-          [ "$(login 203.0.113.50)" = 429 ] || { echo "the 31st attempt from one address was not refused"; exit 1; }
-          [ "$(login 198.51.100.7)" = 401 ] || { echo "another address was refused too"; exit 1; }
+          code=$(login 203.0.113.50 31)
+          [ "$code" = 429 ] || { echo "the 31st attempt from one address got $code, not 429"; exit 1; }
+          code=$(login 198.51.100.7 32)
+          [ "$code" = 401 ] || { echo "another address got $code, not 401"; exit 1; }
 
       - name: State on failure
         if: failure()

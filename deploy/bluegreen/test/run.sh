@@ -25,8 +25,14 @@ unset XDG_CONFIG_HOME XDG_STATE_HOME DOCKER_HOST
 failures=0
 
 check() { # description, command...
-  local what="$1"; shift
-  if "$@" >/dev/null 2>&1; then echo "ok   $what"; else echo "FAIL $what"; failures=$((failures + 1)); fi
+  local what="$1" out; shift
+  if out="$("$@" 2>&1)"; then
+    echo "ok   $what"
+  else
+    echo "FAIL $what"
+    [ -z "$out" ] || printf '%s\n' "$out" | head -8 | sed 's/^/       | /'
+    failures=$((failures + 1))
+  fi
 }
 equals() { [ "$1" = "$2" ]; }
 fails() { ! "$@"; }
