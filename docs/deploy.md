@@ -20,7 +20,7 @@ Nothing is hardcoded. Paths come from the XDG variables, falling back to their d
 | Settings | `$XDG_CONFIG_HOME` or `~/.config`, then `necropsy/necropsy.env` (mode 0600, never overwritten) |
 | Unit | `$XDG_CONFIG_HOME` or `~/.config`, then `systemd/user/necropsy.service` |
 
-The unit is generated from `deploy/necropsy.service.in`, which uses placeholders instead of paths. Listen address, base URL, SMTP and the rest are set in the settings file, documented in `deploy/necropsy.env.example`. After editing it:
+The unit is generated from `deploy/necropsy.service.in`, which uses placeholders instead of paths. Listen address, base URL, SMTP and the rest are set in the settings file, documented in `.env.example`. After editing it:
 
 ```bash
 systemctl --user restart necropsy

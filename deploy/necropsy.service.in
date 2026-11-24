@@ -1,7 +1,7 @@
 # Template for the necropsy user unit. deploy/install.sh fills in the @...@
 # placeholders and writes the result to the systemd user unit directory.
 # Settings (listen address, base URL, SMTP) live in the environment file, not
-# here: see deploy/necropsy.env.example.
+# here: see .env.example.
 
 [Unit]
 Description=necropsy puzzle site

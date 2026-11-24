@@ -125,7 +125,7 @@ mv "$packs.new" "$packs"
 # The environment file holds settings and possibly the SMTP password: create
 # it once, private, and never overwrite it.
 if [ ! -e "$env_file" ]; then
-  install -m 600 "$repo/deploy/necropsy.env.example" "$env_file"
+  install -m 600 "$repo/.env.example" "$env_file"
   info "created $env_file (edit it, then restart the service)"
 else
   chmod 600 "$env_file"
