@@ -1,7 +1,8 @@
 # Deploys main (to "production") and dev (to "development") once the checks
-# pass: builds the Docker image here, sends it to the server over SSH, and runs
-# deploy/bluegreen/deploy.sh there, which starts the new version beside the old
-# one and switches traffic only after it is healthy.
+# pass. It connects over SSH and asks the server's root-owned necropsy-deploy
+# program, through sudo, to deploy this commit. The program does the rest: it
+# builds the image and starts the new version beside the old one, switching
+# traffic only after it is healthy.
 #
 # Needs the secrets listed in docs/ci-cd.md, stored on each environment. Each
 # environment only accepts deploys from its own branch. Nothing about the
@@ -30,7 +31,7 @@ jobs:
     # A manual run from another branch must not deploy it.
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
     steps:
       - name: Check configuration
@@ -40,7 +41,6 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           missing=""
           for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
@@ -54,7 +54,7 @@ jobs:
             echo "::error::DEPLOY_PORT must be a number from 1 to 65535."
             exit 1
           fi
-          # These end up in an ssh config file and a remote command line.
+          # These end up in an ssh config file.
           if ! [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; then
             echo "::error::DEPLOY_HOST must be a hostname or IP address."
             exit 1
@@ -63,29 +63,6 @@ jobs:
             echo "::error::DEPLOY_USER is not a valid user name."
             exit 1
           fi
-          path="${DEPLOY_PATH:-necropsy-deploy}"
-          if ! [[ "$path" =~ ^[A-Za-z0-9._/-]+$ ]] || [ "$path" = / ] || [ "$path" = . ] || [ "$path" = .. ]; then
-            echo "::error::DEPLOY_PATH may only use letters, digits, . _ / - and must not be / or .."
-            exit 1
-          fi
-
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Image tag
-        id: tag
-        run: echo "tag=necropsy:$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          tags: ${{ steps.tag.outputs.tag }}
-          build-args: GIT_SHA=${{ github.sha }}
-          outputs: type=docker,dest=${{ runner.temp }}/necropsy-image.tar
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Set up SSH
         env:
@@ -110,29 +87,19 @@ jobs:
             StrictHostKeyChecking yes
             UserKnownHostsFile ~/.ssh/known_hosts_deploy
             ConnectTimeout 20
+            ServerAliveInterval 30
           CONFIG
           chmod 600 ~/.ssh/config
 
-      - name: Upload image
-        run: |
-          gzip -c "$RUNNER_TEMP/necropsy-image.tar" | ssh necropsy-deploy docker load
-
-      - name: Upload deploy files
+      # The only thing the deploy user may run as root, without a password, is
+      # the installed necropsy-deploy, and for this it takes a commit hash. The
+      # server fetches the repository itself, refuses a commit that is not on
+      # main, builds the image, and switches traffic only once it is healthy.
+      - name: Deploy
         env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SHA: ${{ github.sha }}
         run: |
-          dir="${DEPLOY_PATH:-necropsy-deploy}"
-          # Replace the previous copy so files removed from the repo go away.
-          tar -czf - --exclude=deploy/bluegreen/test deploy/bluegreen .env.example \
-            | ssh necropsy-deploy "rm -rf -- '$dir/deploy' '$dir/.env.example' && mkdir -p -- '$dir' && tar -xzf - -C '$dir'"
-
-      - name: Switch traffic
-        env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          IMAGE: ${{ steps.tag.outputs.tag }}
-        run: |
-          dir="${DEPLOY_PATH:-necropsy-deploy}"
-          ssh necropsy-deploy "'$dir/deploy/bluegreen/deploy.sh' '$IMAGE'"
+          ssh necropsy-deploy "sudo -n necropsy-deploy deploy $SHA"
 
       - name: Health check
         if: vars.DEPLOY_HEALTHCHECK_URL != ''

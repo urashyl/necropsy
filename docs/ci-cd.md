@@ -20,19 +20,28 @@ The usual flow is push (or merge) into `dev`, which deploys to development, then
 
 ## What a deploy does
 
-1. CI builds the Docker image from the commit that passed the checks.
-2. It sends the image to the server over SSH (`docker load`), along with the small `deploy/bluegreen` bundle.
-3. It runs `deploy.sh` on the server, which starts the new version beside the old one, waits for it to be healthy, switches traffic, and stops the old one. If anything fails before traffic moves, the live site is untouched.
+CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on the one branch it was installed for (`main` on the production server, `dev` on the development one), builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
 
-The server needs no git checkout, Rust or build tools, only Docker. Details, rollback and server setup: [docker.md](docker.md).
+CI sends no image and no files, only the commit hash. The server needs Docker and git, not Rust.
 
-CI also builds the image on every PR and runs it with the production hardening (read-only filesystem, no capabilities, fresh data volume) to check it starts, answers requests, runs as non-root and stops cleanly.
+CI also builds the image on every PR and runs it with the production hardening (read-only filesystem, no capabilities, fresh data volume), and a separate end-to-end job installs the deploy program, deploys twice with real Docker while requesting the site continuously, and checks that not one request failed during the switch.
+
+## Environments
+
+`production` and `development` are separate GitHub environments (Settings, Environments), each with its own copy of the secrets below, and each accepts deploys only from its own branch. Give them separate servers. The deploy program is installed once per machine, with fixed container names and one state directory, so two environments cannot share one. Install each with its own branch:
+
+```bash
+# production server
+deploy/bluegreen/install-system.sh --user deploy --repo https://github.com/urashyl/necropsy --branch main
+# development server
+deploy/bluegreen/install-system.sh --user deploy --repo https://github.com/urashyl/necropsy --branch dev
+```
+
+The branch lives in the root-owned `/etc/necropsy/deploy.env`, so a deploy user cannot make the production server build anything but `main`.
 
 ## Secrets
 
-Each environment, `production` and `development` (Settings, Environments), has its own copy of these. Environment secrets are only given to the deploy job, each environment only accepts deploys from its own branch, and the environment is where you can add required reviewers if you want a manual approval before each deploy.
-
-Use a separate deploy user for `development` (the starter value is `necropsy-dev`). The deploy state lives under the deploy user's home, so two environments sharing one user on one server would overwrite each other. On a shared server, also give the dev user its own `NECROPSY_PORT` and `NECROPSY_SUBNET` in its `deploy.env` (see [docker.md](docker.md)).
+Create these on each environment. Environment secrets are only given to the deploy job, and the environment is where you can add required reviewers if you want a manual approval before each deploy.
 
 | Secret | Required | Value |
 | --- | --- | --- |
@@ -41,7 +50,6 @@ Use a separate deploy user for `development` (the starter value is `necropsy-dev
 | `DEPLOY_USER` | yes | The user that owns the service and the checkout |
 | `DEPLOY_SSH_KEY` | yes | The private key, including the `-----BEGIN` and `-----END` lines |
 | `DEPLOY_KNOWN_HOSTS` | yes | The server's host key line(s), see below |
-| `DEPLOY_PATH` | no | Where the deploy files are unpacked on the server, relative to the deploy user's home unless absolute. Defaults to `necropsy-deploy`. Letters, digits, `.`, `_`, `/` and `-` only |
 
 Optional **variable** (not a secret). Set it on each environment (Settings, Environments, Environment variables) so each checks its own site:
 
@@ -59,7 +67,7 @@ Use a key made only for this. On your own machine:
 ssh-keygen -t ed25519 -N '' -C necropsy-deploy -f necropsy_deploy
 ```
 
-Do this once per environment. Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to the deploy user's `~/.ssh/authorized_keys` on the server. The `restrict` prefix turns off forwarding and other extras:
+Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to the deploy user's `~/.ssh/authorized_keys` on the server. The `restrict` prefix turns off forwarding and other extras:
 
 ```text
 restrict ssh-ed25519 AAAA... necropsy-deploy
@@ -76,15 +84,14 @@ Compare that fingerprint with the one on the server (`ssh-keygen -lf /etc/ssh/ss
 
 ## Server requirements
 
-- Docker with the compose plugin, and `curl` (the deploy checks the site through the proxy).
-- The deploy user in the `docker` group. That group is equivalent to root, so use an account made only for this, with the `restrict` option on its key as above. Rootless Docker is safer if you can use it.
-- Your reverse proxy pointed at the loopback port, see [docker.md](docker.md).
+Set the server up once as described in [docker.md](docker.md): Docker with the compose plugin, `git`, `curl`, and the installer run as root with `--user` set to the deploy user. The deploy user's SSH key should be one made for this (above), and the user must not be in the `docker` group, which would make the sudo restriction pointless; the installer refuses that.
 
 ## When it fails
 
 - **Missing secrets:** the first step lists them.
 - **Host key verification failed:** `DEPLOY_KNOWN_HOSTS` does not match the server, or the port is wrong. Regenerate it with `ssh-keyscan`.
 - **Permission denied:** the public key is not in the deploy user's `authorized_keys`, or `DEPLOY_USER` is wrong.
-- **"cannot talk to Docker":** the deploy user is not in the `docker` group, or the daemon is not running.
+- **"sudo: a password is required":** the sudo rule is missing or does not match. Re-run the installer as root, and check that `DEPLOY_USER` is the user it was given in `--user`.
+- **"commit ... is not on <branch>" or "not in the repository":** the commit is not on the branch this server was installed for, or the branch was rewritten. Check `NECROPSY_BRANCH` in `/etc/necropsy/deploy.env`.
 - **"did not become healthy":** the new version failed to start. The log run prints its last lines. The old version is still serving.
-- **Image build errors:** shown in the build step of the run log, before anything touches the server.
+- **Build errors:** shown in the deploy step of the run log. The live version keeps serving.

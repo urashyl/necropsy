@@ -1,0 +1,49 @@
+# Proxy in front of the blue and green containers. The files under
+# /etc/caddy/necropsy are written by deploy.sh:
+#   edge.caddy      which peers may tell us the client address (your own proxy)
+#   upstream.caddy  the live color, as: to necropsy-blue:8080
+#
+# There is deliberately no access log here. Email links carry one-time tokens
+# in the query string, and the app already logs the method and path of each
+# request.
+
+{
+	# A socket inside the container, so `caddy reload` can swap the config
+	# gracefully (requests in flight finish) without opening a network port.
+	admin unix//tmp/caddy-admin.sock
+	auto_https off
+	persist_config off
+
+	servers {
+		# Believe the client address in X-Real-IP only when the connection comes
+		# from the addresses in edge.caddy, your own proxy. Otherwise the client
+		# address is the real peer.
+		client_ip_headers X-Real-IP
+		import /etc/caddy/necropsy/edge.caddy
+	}
+}
+
+:8080 {
+	request_body {
+		max_size 16KB
+	}
+
+	reverse_proxy {
+		import /etc/caddy/necropsy/upstream.caddy
+
+		# A request that arrives in the instant of a switch waits briefly for a
+		# live upstream instead of failing.
+		lb_try_duration 3s
+		lb_try_interval 250ms
+
+		# Always overwritten: the app trusts this header from us, so it must be
+		# the address worked out above, never a client-supplied value. The Host
+		# header is passed through unchanged, which the app needs.
+		header_up X-Real-IP {client_ip}
+
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 30s
+		}
+	}
+}

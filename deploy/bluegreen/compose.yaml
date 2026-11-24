@@ -1,11 +1,11 @@
 # Blue-green stack for necropsy. Do not run this by hand: deploy.sh drives it,
 # supplies the variables below, and decides which color is live.
 #
-#   proxy ──► necropsy-blue   (one of these two serves traffic;
+#   proxy ──► necropsy-blue   (Caddy; one of these two serves traffic;
 #         └─► necropsy-green   the other is stopped or draining)
 #
 # The proxy is the only thing published to the host, on loopback. Your own
-# reverse proxy (nginx, Caddy, ...) points at it.
+# reverse proxy points at it.
 
 name: necropsy
 
@@ -23,6 +23,9 @@ x-app: &app
   volumes:
     - data:/data
   networks: [internal]
+  # Never root, whatever the image says. Matches the image's own user, and the
+  # owner of the data volume.
+  user: "65532:65532"
   read_only: true
   tmpfs: [/tmp]
   cap_drop: [ALL]
@@ -42,20 +45,28 @@ services:
     container_name: necropsy-green
 
   proxy:
-    image: nginxinc/nginx-unprivileged:1.27-alpine
+    image: caddy:2-alpine
     container_name: necropsy-proxy
     restart: unless-stopped
     ports:
       - "127.0.0.1:${NECROPSY_PORT:-8080}:8080"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # A directory, not single files: deploy.sh swaps files in it atomically,
       # and a bind-mounted file would keep pointing at the old one.
-      - ${NECROPSY_PROXY_DIR:?set by deploy.sh}:/etc/nginx/necropsy:ro
+      - ${NECROPSY_PROXY_DIR:?set by deploy.sh}:/etc/caddy/necropsy:ro
+    environment:
+      # Caddy wants to write state; there is nowhere to, and no need to.
+      XDG_DATA_HOME: /tmp/caddy-data
+      XDG_CONFIG_HOME: /tmp/caddy-config
     networks: [internal]
     read_only: true
     tmpfs: [/tmp]
+    # The caddy binary carries a file capability for low ports, and a process
+    # cannot start it without that capability in its set, even though this
+    # proxy only listens on 8080. It is the only one kept.
     cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
     security_opt: ["no-new-privileges:true"]
     pids_limit: 128
 
