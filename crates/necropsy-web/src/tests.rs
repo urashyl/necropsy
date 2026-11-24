@@ -1270,3 +1270,40 @@ async fn admin_can_add_an_email_that_is_never_shown_and_enables_reset() {
         assert!(!body.contains("boss@") && !body.contains("example.org"));
     }
 }
+
+// ---------------------------------------------------------------- container healthcheck
+
+#[tokio::test]
+async fn healthcheck_passes_against_a_running_server_and_fails_without_one() {
+    let s = site().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            s.app
+                .into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    assert!(
+        tokio::task::spawn_blocking(move || crate::healthcheck(addr))
+            .await
+            .unwrap()
+    );
+    server.abort();
+    let _ = server.await;
+    // Nothing is listening any more.
+    assert!(
+        !tokio::task::spawn_blocking(move || crate::healthcheck(addr))
+            .await
+            .unwrap()
+    );
+}
+
+#[test]
+fn healthcheck_checks_a_wildcard_address_through_loopback() {
+    // Port 9 (discard) is closed; the point is that 0.0.0.0 does not panic or hang.
+    assert!(!crate::healthcheck("0.0.0.0:9".parse().unwrap()));
+}

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Pretends to be the site answering through the proxy.
+[ -z "${FAKE_LIVE_FAIL:-}" ]

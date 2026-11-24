@@ -1,6 +1,6 @@
 # Running as a service
 
-`deploy/install.sh` installs necropsy as a systemd **user** service, so it runs as your own user with no root and no system-wide files.
+`deploy/install.sh` installs necropsy as a systemd **user** service, so it runs as your own user with no root and no system-wide files. Each update restarts the service, so there are a few seconds of downtime and no automatic rollback. For zero-downtime deploys with rollback, use the Docker setup in [docker.md](docker.md) instead.
 
 ```bash
 deploy/install.sh

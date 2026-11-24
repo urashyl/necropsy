@@ -11,18 +11,13 @@ Deploys never overlap: a second push waits for the running one instead of cancel
 
 ## What a deploy does
 
-The workflow connects to your server over SSH and runs, in the server's checkout:
+1. CI builds the Docker image from the `main` commit that passed the checks.
+2. It sends the image to the server over SSH (`docker load`), along with the small `deploy/bluegreen` bundle.
+3. It runs `deploy.sh` on the server, which starts the new version beside the old one, waits for it to be healthy, switches traffic, and stops the old one. If anything fails before traffic moves, the live site is untouched.
 
-```text
-git fetch origin main <sha>
-git checkout main
-git reset --hard <sha>
-deploy/install.sh
-```
+The server needs no git checkout, Rust or build tools, only Docker. Details, rollback and server setup: [docker.md](docker.md).
 
-`install.sh` builds on the server, installs the binary and packs, and restarts the user service. Settings (`necropsy.env`) and the database are never touched. See [deploy.md](deploy.md).
-
-The server's checkout is managed by CI, so keep local edits out of tracked files there (`reset --hard` discards them). Untracked and ignored files are left alone. Put settings in `~/.config/necropsy/necropsy.env`.
+CI also builds the image on every PR and runs it with the production hardening (read-only filesystem, no capabilities, fresh data volume) to check it starts, answers requests, runs as non-root and stops cleanly.
 
 ## Secrets
 
@@ -35,7 +30,7 @@ Create these in the repository under Settings, Environments, `production` (creat
 | `DEPLOY_USER` | yes | The user that owns the service and the checkout |
 | `DEPLOY_SSH_KEY` | yes | The private key, including the `-----BEGIN` and `-----END` lines |
 | `DEPLOY_KNOWN_HOSTS` | yes | The server's host key line(s), see below |
-| `DEPLOY_PATH` | no | The checkout on the server, relative to the deploy user's home unless absolute. Defaults to `necropsy` |
+| `DEPLOY_PATH` | no | Where the deploy files are unpacked on the server, relative to the deploy user's home unless absolute. Defaults to `necropsy-deploy`. Letters, digits, `.`, `_`, `/` and `-` only |
 
 Optional repository **variable** (not a secret), under Settings, Secrets and variables, Actions, Variables:
 
@@ -70,13 +65,15 @@ Compare that fingerprint with the one on the server (`ssh-keygen -lf /etc/ssh/ss
 
 ## Server requirements
 
-- A checkout of the repository, on `main`, with `origin` pointing at it (the repository is public, so HTTPS needs no credentials).
-- `cargo` for the deploy user, installed through rustup, which the workflow picks up from `~/.cargo/env`.
-- The service installed once by hand with `deploy/install.sh`, and lingering enabled, so the user manager is available to SSH sessions.
+- Docker with the compose plugin, and `curl` (the deploy checks the site through the proxy).
+- The deploy user in the `docker` group. That group is equivalent to root, so use an account made only for this, with the `restrict` option on its key as above. Rootless Docker is safer if you can use it.
+- Your reverse proxy pointed at the loopback port, see [docker.md](docker.md).
 
 ## When it fails
 
 - **Missing secrets:** the first step lists them.
 - **Host key verification failed:** `DEPLOY_KNOWN_HOSTS` does not match the server, or the port is wrong. Regenerate it with `ssh-keyscan`.
 - **Permission denied:** the public key is not in the deploy user's `authorized_keys`, or `DEPLOY_USER` is wrong.
-- **Build or install errors:** shown in the run log, from `install.sh`. The previous binary keeps running if the build fails, because the install only replaces it after a successful build.
+- **"cannot talk to Docker":** the deploy user is not in the `docker` group, or the daemon is not running.
+- **"did not become healthy":** the new version failed to start. The log run prints its last lines. The old version is still serving.
+- **Image build errors:** shown in the build step of the run log, before anything touches the server.

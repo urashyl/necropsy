@@ -1,0 +1,70 @@
+# Blue-green stack for necropsy. Do not run this by hand: deploy.sh drives it,
+# supplies the variables below, and decides which color is live.
+#
+#   proxy ──► necropsy-blue   (one of these two serves traffic;
+#         └─► necropsy-green   the other is stopped or draining)
+#
+# The proxy is the only thing published to the host, on loopback. Your own
+# reverse proxy (nginx, Caddy, ...) points at it.
+
+name: necropsy
+
+x-app: &app
+  restart: unless-stopped
+  env_file:
+    - ${NECROPSY_ENV_FILE:?set by deploy.sh}
+  # Fixed here, after env_file, so settings written for a bare-metal install
+  # cannot break the container: it must listen on all interfaces and trust only
+  # the proxy for the client address header.
+  environment:
+    NECROPSY_ADDR: 0.0.0.0:8080
+    NECROPSY_CLIENT_IP_HEADER: X-Real-IP
+    NECROPSY_TRUSTED_PROXIES: ${NECROPSY_SUBNET:-172.30.30.0/24}
+  volumes:
+    - data:/data
+  networks: [internal]
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 256
+  stop_grace_period: 20s
+
+services:
+  necropsy-blue:
+    <<: *app
+    image: ${BLUE_IMAGE:-necropsy:unset}
+    container_name: necropsy-blue
+
+  necropsy-green:
+    <<: *app
+    image: ${GREEN_IMAGE:-necropsy:unset}
+    container_name: necropsy-green
+
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    container_name: necropsy-proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${NECROPSY_PORT:-8080}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # A directory, not single files: deploy.sh swaps files in it atomically,
+      # and a bind-mounted file would keep pointing at the old one.
+      - ${NECROPSY_PROXY_DIR:?set by deploy.sh}:/etc/nginx/necropsy:ro
+    networks: [internal]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: ${NECROPSY_SUBNET:-172.30.30.0/24}
+
+volumes:
+  data:
+    name: necropsy-data

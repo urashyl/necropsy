@@ -1,5 +1,7 @@
-# Deploys main to the server over SSH once the checks pass. The server builds
-# and installs it with deploy/install.sh, the same way as a manual install.
+# Deploys main to the server once the checks pass: builds the Docker image
+# here, sends it to the server over SSH, and runs deploy/bluegreen/deploy.sh
+# there, which starts the new version beside the old one and switches traffic
+# only after it is healthy.
 #
 # Needs the secrets listed in docs/ci-cd.md, stored on the "production"
 # environment. Nothing about the server is written in this file.
@@ -37,6 +39,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           missing=""
           for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
@@ -50,13 +53,44 @@ jobs:
             echo "::error::DEPLOY_PORT must be a number from 1 to 65535."
             exit 1
           fi
-          # Values that start with - would be read as ssh options.
-          for v in "$DEPLOY_HOST" "$DEPLOY_USER"; do
-            case "$v" in -*) echo "::error::DEPLOY_HOST and DEPLOY_USER must not start with '-'."; exit 1 ;; esac
-          done
+          # These end up in an ssh config file and a remote command line.
+          if ! [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; then
+            echo "::error::DEPLOY_HOST must be a hostname or IP address."
+            exit 1
+          fi
+          if ! [[ "$DEPLOY_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::DEPLOY_USER is not a valid user name."
+            exit 1
+          fi
+          path="${DEPLOY_PATH:-necropsy-deploy}"
+          if ! [[ "$path" =~ ^[A-Za-z0-9._/-]+$ ]] || [ "$path" = / ] || [ "$path" = . ] || [ "$path" = .. ]; then
+            echo "::error::DEPLOY_PATH may only use letters, digits, . _ / - and must not be / or .."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Image tag
+        id: tag
+        run: echo "tag=necropsy:$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: ${{ steps.tag.outputs.tag }}
+          build-args: GIT_SHA=${{ github.sha }}
+          outputs: type=docker,dest=${{ runner.temp }}/necropsy-image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Set up SSH
         env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
@@ -64,40 +98,40 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts_deploy
+          cat > ~/.ssh/config <<CONFIG
+          Host necropsy-deploy
+            HostName $DEPLOY_HOST
+            Port $DEPLOY_PORT
+            User $DEPLOY_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts_deploy
+            ConnectTimeout 20
+          CONFIG
+          chmod 600 ~/.ssh/config
 
-      - name: Deploy
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          # Where the checkout lives on the server, relative to the deploy
-          # user's home unless absolute. Optional.
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          SHA: ${{ github.sha }}
+      - name: Upload image
         run: |
-          ssh \
-            -i ~/.ssh/deploy_key \
-            -p "$DEPLOY_PORT" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$HOME/.ssh/known_hosts_deploy" \
-            -o ConnectTimeout=20 \
-            "$DEPLOY_USER@$DEPLOY_HOST" \
-            bash -s -- "$SHA" "${DEPLOY_PATH:-necropsy}" <<'REMOTE'
-          set -euo pipefail
-          sha=$1
-          dir=$2
-          # A non-interactive SSH command does not read the profile that puts
-          # cargo on PATH.
-          if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
-          cd "$dir"
-          git fetch --quiet origin main "$sha"
-          git checkout --quiet main
-          git reset --quiet --hard "$sha"
-          echo "Deploying $(git rev-parse --short HEAD)"
-          deploy/install.sh
-          REMOTE
+          gzip -c "$RUNNER_TEMP/necropsy-image.tar" | ssh necropsy-deploy docker load
+
+      - name: Upload deploy files
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          dir="${DEPLOY_PATH:-necropsy-deploy}"
+          # Replace the previous copy so files removed from the repo go away.
+          tar -czf - --exclude=deploy/bluegreen/test deploy/bluegreen .env.example \
+            | ssh necropsy-deploy "rm -rf -- '$dir/deploy' '$dir/.env.example' && mkdir -p -- '$dir' && tar -xzf - -C '$dir'"
+
+      - name: Switch traffic
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          IMAGE: ${{ steps.tag.outputs.tag }}
+        run: |
+          dir="${DEPLOY_PATH:-necropsy-deploy}"
+          ssh necropsy-deploy "'$dir/deploy/bluegreen/deploy.sh' '$IMAGE'"
 
       - name: Health check
         if: vars.DEPLOY_HEALTHCHECK_URL != ''

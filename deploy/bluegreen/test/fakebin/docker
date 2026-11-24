@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# A stand-in for the docker CLI that keeps container state in $FAKE_DIR, so
+# deploy.sh's logic can be tested without a daemon. Failures are injected with:
+#   FAKE_UNHEALTHY=<color>   that color's container never becomes healthy
+#   FAKE_NGINX_BAD=1         nginx -t fails
+#   FAKE_NO_DAEMON=1         docker info fails
+set -u
+d="$FAKE_DIR"
+mkdir -p "$d/c" "$d/images"
+cmd="${1:-}"; shift || true
+
+env_value() { grep "^$2=" "$1" 2>/dev/null | tail -n 1 | cut -d= -f2-; }
+cdir() { echo "$d/c/$1"; }
+
+case "$cmd" in
+  info) [ -z "${FAKE_NO_DAEMON:-}" ] ;;
+
+  compose)
+    if [ "${1:-}" = version ]; then echo "Docker Compose version fake"; exit 0; fi
+    envfile=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -f) shift 2 ;;
+        --env-file) envfile="$2"; shift 2 ;;
+        *) break ;;
+      esac
+    done
+    sub="$1"; shift
+    case "$sub" in
+      up)
+        svc=""
+        for a in "$@"; do case "$a" in necropsy-*|proxy) svc="$a" ;; esac; done
+        name="$svc"; [ "$svc" = proxy ] && name=necropsy-proxy
+        mkdir -p "$(cdir "$name")"
+        case "$svc" in
+          necropsy-blue) image="$(env_value "$envfile" BLUE_IMAGE)" ;;
+          necropsy-green) image="$(env_value "$envfile" GREEN_IMAGE)" ;;
+          *) image=proxy ;;
+        esac
+        echo "$image" > "$(cdir "$name")/image"
+        echo true > "$(cdir "$name")/running"
+        color="${svc#necropsy-}"
+        if [ "${FAKE_UNHEALTHY:-}" = "$color" ]; then echo unhealthy; else echo healthy; fi > "$(cdir "$name")/health"
+        echo "up $name" >> "$d/calls"
+        ;;
+      stop)
+        svc=""
+        for a in "$@"; do case "$a" in necropsy-*|proxy) svc="$a" ;; esac; done
+        [ -d "$(cdir "$svc")" ] && echo false > "$(cdir "$svc")/running"
+        echo "stop $svc" >> "$d/calls"
+        ;;
+      exec)
+        if [ "${FAKE_NGINX_BAD:-}" = 1 ] && [[ " $* " == *" -t "* ]]; then exit 1; fi
+        if [[ " $* " == *" reload "* ]]; then
+          cp "$NECROPSY_PROXY_DIR/upstream.conf" "$d/reloaded_upstream"
+          echo reload >> "$d/calls"
+        fi
+        ;;
+      *) echo "fake docker: unsupported compose $sub" >&2; exit 2 ;;
+    esac
+    ;;
+
+  inspect)
+    fmt=""; [ "${1:-}" = -f ] && { fmt="$2"; shift 2; }
+    name="$1"; c="$(cdir "$name")"
+    [ -d "$c" ] || exit 1
+    running="$(cat "$c/running")"; health="$(cat "$c/health")"
+    case "$fmt" in
+      *"if .State.Running"*) [ "$running" = true ] && echo "$health" || echo stopped ;;
+      "{{.State.Running}}") echo "$running" ;;
+      *) [ "$running" = true ] && echo "running ($health)" || echo "exited ()" ;;
+    esac
+    ;;
+
+  image)
+    sub="$1"; shift
+    case "$sub" in
+      inspect) [ -e "$d/images/${1//\//_}" ] ;;
+      ls)
+        repo="$1"
+        for f in "$d"/images/*; do
+          [ -e "$f" ] || continue
+          ref="$(basename "$f")"
+          [[ "$ref" == "$repo":* ]] && echo "$ref"
+        done
+        ;;
+    esac
+    ;;
+
+  rmi) rm -f "$d/images/${1//\//_}"; echo "rmi $1" >> "$d/calls" ;;
+  logs) echo "fake log line" ;;
+  *) echo "fake docker: unsupported $cmd" >&2; exit 2 ;;
+esac

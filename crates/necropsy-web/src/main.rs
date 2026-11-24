@@ -40,6 +40,14 @@ use crate::state::{AppState, Config};
 
 #[tokio::main]
 async fn main() {
+    // `necropsy-web healthcheck` is what the container's HEALTHCHECK runs, so
+    // the image needs no curl or shell. It exits 0 only if /healthz answers.
+    if std::env::args().nth(1).as_deref() == Some("healthcheck") {
+        let addr = env_or("NECROPSY_ADDR", "127.0.0.1:8080");
+        let ok = addr.parse::<SocketAddr>().map(healthcheck).unwrap_or(false);
+        std::process::exit(if ok { 0 } else { 1 });
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -130,6 +138,32 @@ fn trusted_proxies_from_env() -> Result<Vec<ipnet::IpNet>, String> {
         Ok(v) => ipnet::parse_list(&v).map_err(|e| format!("NECROPSY_TRUSTED_PROXIES: {e}")),
         Err(_) => Ok(Vec::new()),
     }
+}
+
+/// Requests `/healthz` from the server listening on `addr`. A wildcard
+/// listen address is checked through loopback.
+fn healthcheck(addr: SocketAddr) -> bool {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+
+    let mut target = addr;
+    if target.ip().is_unspecified() {
+        target.set_ip(if target.is_ipv4() {
+            std::net::Ipv4Addr::LOCALHOST.into()
+        } else {
+            std::net::Ipv6Addr::LOCALHOST.into()
+        });
+    }
+    let Ok(mut conn) = std::net::TcpStream::connect_timeout(&target, Duration::from_secs(3)) else {
+        return false;
+    };
+    let _ = conn.set_read_timeout(Some(Duration::from_secs(3)));
+    let request = b"GET /healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    let mut reply = String::new();
+    conn.write_all(request).is_ok()
+        && conn.read_to_string(&mut reply).is_ok()
+        && reply.starts_with("HTTP/1.")
+        && reply.lines().next().is_some_and(|l| l.contains(" 200 "))
 }
 
 fn fail(msg: &str) -> ! {
