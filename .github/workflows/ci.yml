@@ -152,13 +152,19 @@ jobs:
 
       - name: Second deploy under load, with no failed request
         run: |
-          : > "$RUNNER_TEMP/fails"; : > "$RUNNER_TEMP/oks"
+          : > "$RUNNER_TEMP/fails"; : > "$RUNNER_TEMP/oks"; : > "$RUNNER_TEMP/slow"
           (
             while true; do
-              if curl -fsS -m 3 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
+              # Record what each failure was (curl's exit code, the HTTP status
+              # and how long it took), and any slow request, so a rare failure
+              # explains itself in the log.
+              res=$(curl -sS -m 3 -o /dev/null -w '%{http_code} %{time_total}' "http://127.0.0.1:$PORT/healthz" 2>&1)
+              rc=$?
+              if [ "$rc" = 0 ] && [ "${res%% *}" = 200 ]; then
                 echo ok >> "$RUNNER_TEMP/oks"
+                case "${res##* }" in 0.[0-9]*|1.[0-9]*) awk -v t="${res##* }" -v d="$(date +%T.%N)" 'BEGIN{if (t > 0.5) print d, "slow", t}' >> "$RUNNER_TEMP/slow" ;; esac
               else
-                echo "$(date +%T) failed" >> "$RUNNER_TEMP/fails"
+                echo "$(date +%T.%N) exit=$rc $res" >> "$RUNNER_TEMP/fails"
               fi
               sleep 0.05
             done
@@ -169,6 +175,7 @@ jobs:
           sudo "$DEPLOY" status | grep -q '^live:    green'
           echo "requests during the deploy: $(wc -l < "$RUNNER_TEMP/oks") ok, $(wc -l < "$RUNNER_TEMP/fails") failed"
           [ "$(wc -l < "$RUNNER_TEMP/oks")" -gt 50 ]
+          if [ -s "$RUNNER_TEMP/slow" ]; then echo "slow requests (over 0.5s):"; cat "$RUNNER_TEMP/slow"; fi
           if [ -s "$RUNNER_TEMP/fails" ]; then
             echo "::error::requests failed during the switch"
             cat "$RUNNER_TEMP/fails"
