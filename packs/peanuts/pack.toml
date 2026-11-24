@@ -5,6 +5,6 @@ difficulty = 3
 modes = ["web"]
 tags = ["chromium", "cookies", "decryption"]
 hints = [
-  "The value starts with `v10`, which is a version marker, not part of the ciphertext. Chromium on Linux with no keyring uses a fixed password.",
+  "The hex value starts with `763130`, which is `v10` in ASCII: a version marker, not part of the ciphertext. Chromium on Linux with no keyring uses a fixed password.",
   "Key: PBKDF2-HMAC-SHA1, password `peanuts`, salt `saltysalt`, 1 iteration, 16 bytes. Cipher: AES-128-CBC, IV of 16 spaces.",
 ]
