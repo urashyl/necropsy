@@ -12,4 +12,4 @@ What changed afterwards:
 
 When you analyse a message like this, read the raw `Content-Type` and `Content-Disposition` headers. They show what the file really is, whatever the mail program displays.
 
-Sources: [F-Secure description of Email-Worm:VBS/LoveLetter](https://www.f-secure.com/v-descs/love) and [Wikipedia: ILOVEYOU](https://en.wikipedia.org/wiki/ILOVEYOU). The original script is not included here, only the artifacts an analyst would work from.
+Sources: [F-Secure description of Email-Worm:VBS/LoveLetter](https://www.f-secure.com/v-descs/love) and [Wikipedia: ILOVEYOU](https://en.wikipedia.org/wiki/ILOVEYOU). The artifacts above are reconstructed from those descriptions, not captured from a live run. The worm's actual source is not reproduced in this pack; a formatted copy is archived at [github.com/ferristotle/ILOVEYOU](https://github.com/ferristotle/ILOVEYOU) for anyone who wants to read the real thing (VBScript targeting Outlook's Windows address book on Windows 98/2000 has no attack surface on any system in current use, which is why museums and archives keep copies like this one as plain text).
