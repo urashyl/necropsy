@@ -11,13 +11,12 @@ Deploys of the same branch never overlap: a second push waits for the running on
 
 ## Branches
 
-`main` and `dev` are protected by a repository ruleset with nobody on the bypass list, admins included:
+Two repository rulesets, with nobody on the bypass list, admins included:
 
-- Changes land only through a pull request. Direct pushes, force pushes and deleting the branch are blocked.
-- The CI `check` and `image` jobs must pass, and review threads must be resolved, before merging.
-- No approving review is required, since GitHub does not let you approve your own pull request. Raise it in the ruleset once someone else reviews.
+- **`main`:** changes land only through a pull request. Direct pushes, force pushes and deleting the branch are blocked. The CI `check` and `image` jobs must pass, and review threads must be resolved, before merging. No approving review is required, since GitHub does not let you approve your own pull request. Raise it in the ruleset once someone else reviews.
+- **`dev`:** ordinary pushes are allowed. Force pushes and deleting the branch are blocked.
 
-The usual flow is feature branch → PR into `dev` (deploys to development) → PR from `dev` into `main` (deploys to production).
+The usual flow is push (or merge) into `dev`, which deploys to development, then a PR from `dev` into `main`, which deploys to production.
 
 ## What a deploy does
 
