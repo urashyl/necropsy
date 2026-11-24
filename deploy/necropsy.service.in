@@ -1,0 +1,34 @@
+# Template for the necropsy user unit. deploy/install.sh fills in the @...@
+# placeholders and writes the result to the systemd user unit directory.
+# Settings (listen address, base URL, SMTP) live in the environment file, not
+# here: see deploy/necropsy.env.example.
+
+[Unit]
+Description=necropsy puzzle site
+Documentation=https://github.com/urashyl/necropsy
+
+[Service]
+Type=simple
+ExecStart=@BIN@
+WorkingDirectory=@STATE_DIR@
+
+# Defaults for where packs and the database live. Values in the environment
+# file take precedence, so either can be overridden there.
+Environment=NECROPSY_PACKS=@PACKS@
+Environment=NECROPSY_DB=@DB@
+EnvironmentFile=-@ENV_FILE@
+
+Restart=on-failure
+RestartSec=3
+# The server shuts down gracefully on SIGINT.
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+# Hardening that works without privileges in a user manager.
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target

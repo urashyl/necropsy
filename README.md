@@ -19,6 +19,8 @@ Then open <http://127.0.0.1:8080>. On first run the server creates an admin acco
 | `crates/necropsy-web` | Web front end. |
 | `docs/pack-format.md` | The pack format. |
 | `docs/web.md` | Running and operating the web front end. |
+| `docs/deploy.md` | Installing as a systemd user service. |
+| `deploy/` | Service unit template, settings example and `install.sh`. |
 | `docs/accounts.md` | Accounts, email, admin, and the security design. |
 
 The packs contain answer hashes and explainers, so spoilers are in this repository.
