@@ -1,21 +1,32 @@
 The answer is `Win32DLL.vbs`.
 
-Three files were created by `wscript.exe`, the Windows Script Host that runs `.vbs` files:
+In `main()` the worm resolves three folders:
 
-| File | Where |
-| --- | --- |
-| `MSKernel32.vbs` | `C:\WINDOWS\SYSTEM` |
-| `LOVE-LETTER-FOR-YOU.TXT.vbs` | `C:\WINDOWS\SYSTEM` |
-| `Win32DLL.vbs` | `C:\WINDOWS` |
+```vbscript
+Set dirwin    = fso.GetSpecialFolder(0)   ' the Windows folder, e.g. C:\WINDOWS
+Set dirsystem = fso.GetSpecialFolder(1)   ' the System folder,  e.g. C:\WINDOWS\SYSTEM
+Set dirtemp   = fso.GetSpecialFolder(2)   ' the Temp folder
+```
 
-Other programs were writing files into the Windows directory at the same moment (`scandisk.exe` wrote a log there), which is why the question says *directly in* `C:\WINDOWS` and asks about the process that matters. Whatever tool you use, filter the log by the process first, then by the operation.
+then copies itself three times:
 
-The names are the point. `MSKernel32` and `Win32DLL` are made to look like parts of Windows (`KERNEL32.DLL`, `WIN32S.DLL`), so anyone browsing the folder would not look twice. The worm also added registry entries so these copies would run again when the machine started, which is why removing only the emailed attachment never cleaned an infected PC.
+```vbscript
+c.Copy(dirsystem & "\MSKernel32.vbs")             ' -> System
+c.Copy(dirwin    & "\Win32DLL.vbs")               ' -> Windows   <- the one asked for
+c.Copy(dirsystem & "\LOVE-LETTER-FOR-YOU.TXT.vbs")' -> System
+```
 
-What to take from it:
+The whole puzzle is knowing that `GetSpecialFolder(0)` is the Windows directory and `(1)` is the System directory inside it. The copy built from `dirwin` is `Win32DLL.vbs`.
 
-- **A `.vbs` file in a system folder is wrong.** Windows ships almost no scripts there, so a hunt for scripts in `SYSTEM` and the Windows directory finds this family immediately.
-- **Name a file after what it imitates, and people stop looking.** Check names against the real list, not against what looks plausible.
-- **Process ancestry beats file names.** Here the creator is `wscript.exe` and the parent is the mail client, which is the whole story in one line.
+The names are chosen to blend in: `MSKernel32` and `Win32DLL` read like parts of Windows (`KERNEL32.DLL`, system DLLs), so a glance at the folder would not flag them. `regruns()` then writes `Run` and `RunServices` registry keys pointing at those two copies, so they execute on every boot — which is why deleting the emailed attachment never cleaned an infected PC.
 
-Sources: [F-Secure description of Email-Worm:VBS/LoveLetter](https://www.f-secure.com/v-descs/love) and [Wikipedia: ILOVEYOU](https://en.wikipedia.org/wiki/ILOVEYOU). The original script is not included here, only the artifacts an analyst would work from.
+Worth tracing in the rest of the file, now that you have it:
+
+- **`spreadtoemail()`** opens `Outlook.Application`, walks every entry in every MAPI address list, and mails each one a copy with the subject `ILOVEYOU`. A `WAB` registry marker per address stops it mailing the same person twice. This is why each copy arrived from someone you knew.
+- **`infectfiles()`** overwrites `.vbs`/`.vbe` files with itself, replaces `.js`/`.css`/`.hta` and image/audio files with `.vbs` copies (destroying the originals), and drops a malicious mIRC `script.ini`. This is the part that did real damage.
+- **`regruns()`** also points Internet Explorer's start page at a `skyinet.net` URL that downloaded a separate password-stealing trojan (`WIN-BUGSFIX.exe`).
+- **`html()`** writes an HTML copy carrying the author's own credit string.
+
+How to read a sample like this: start at the entry point (`main()` here), list what it calls, and for each routine ask the four questions — how it installs, how it persists, how it spreads, and what it damages. The comments in this copy were added for teaching; the real thing was one terse block headed `On Error Resume Next` so that every failure was swallowed silently.
+
+Source: the worm's source is widely archived; this formatted, commented copy is from [github.com/ferristotle/ILOVEYOU](https://github.com/ferristotle/ILOVEYOU) (which credits [cexx.org](http://www.cexx.org/loveletter.htm)). Background: [Wikipedia: ILOVEYOU](https://en.wikipedia.org/wiki/ILOVEYOU). VBScript worms that drive Outlook's address book on Windows 98/2000 have no attack surface on any current system, which is why copies like this are kept as plain text for study.

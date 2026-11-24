@@ -18,4 +18,4 @@ When you investigate something like this, the checklist is the same:
 
 The marker key and the file name are exactly the **indicators of compromise** that were shared in those first hours, and you can search for them across a whole network.
 
-Sources: [F-Secure description of Email-Worm:VBS/LoveLetter](https://www.f-secure.com/v-descs/love) and [Wikipedia: ILOVEYOU](https://en.wikipedia.org/wiki/ILOVEYOU). The original script is not included here, only the artifacts an analyst would work from.
+Sources: [F-Secure description of Email-Worm:VBS/LoveLetter](https://www.f-secure.com/v-descs/love) and [Wikipedia: ILOVEYOU](https://en.wikipedia.org/wiki/ILOVEYOU). The artifacts above are reconstructed from those descriptions, not captured from a live run. The worm's own source is the file in [ILOVEYOU: the source](/p/iloveyou-dropped), from the formatted, commented copy archived at [github.com/ferristotle/ILOVEYOU](https://github.com/ferristotle/ILOVEYOU).
