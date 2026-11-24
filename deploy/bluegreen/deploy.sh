@@ -1,91 +1,144 @@
 #!/usr/bin/env bash
-# Zero-downtime (blue-green) deploys of necropsy with Docker.
+# necropsy-deploy: zero-downtime (blue-green) deploys of necropsy with Docker.
 #
-#   deploy.sh <image>     start <image> as the idle color, switch traffic to it
-#                         once healthy, then stop the old color
-#   deploy.sh --rollback  switch back to the previous release (still on disk)
-#   deploy.sh --status    show the live color, images and container health
+#   necropsy-deploy deploy <commit>   build that commit (it must be on the
+#                                     configured branch, main by default),
+#                                     start it as the idle color, switch
+#                                     traffic once it is healthy, stop the old
+#   necropsy-deploy rollback          switch back to the previous release
+#   necropsy-deploy status            live color, images, container health
 #
-# The image must already exist locally (docker load, or docker build). Paths
-# come from the XDG variables, with the usual defaults under $HOME; nothing is
-# hardcoded. See docs/docker.md.
+# This file is a template. install-system.sh bakes the paths below into a copy
+# that it installs as a root-owned program (/usr/local/bin/necropsy-deploy by
+# default), and allows one unprivileged user to run it through sudo without a
+# password, and nothing else. See docs/docker.md.
 #
-# Deploy-time settings (all optional) go in the environment or in
-# $XDG_CONFIG_HOME/necropsy/deploy.env:
-#   NECROPSY_PORT          loopback port the proxy listens on      (8080)
-#   NECROPSY_SUBNET        private subnet of the containers        (172.30.30.0/24)
-#   NECROPSY_EDGE_TRUSTED  your own proxy's address as the container proxy sees
-#                          it, comma-separated       (the subnet's gateway,127.0.0.1)
-#   DRAIN_SECONDS          how long the old color keeps finishing requests (15)
-#   HEALTH_TIMEOUT         seconds to wait for a new color to be healthy   (90)
+# Because an unprivileged user can start it as root, it trusts nothing the
+# caller controls: not the environment, not the arguments (checked below), not
+# the files it reads (root-owned configuration only), and it builds only code
+# that is on the branch and repository named in that configuration.
 #
-# The app's own settings are in $XDG_CONFIG_HOME/necropsy/necropsy.env, the
-# same file the systemd install uses.
+# Settings are read from $SYSCONFDIR/necropsy/deploy.env, a plain KEY=VALUE
+# file that is parsed, never executed:
+#   NECROPSY_REPO          https URL of the repository (required)
+#   NECROPSY_BRANCH        the only branch whose commits are built  (main)
+#   NECROPSY_PORT          loopback port of the proxy container      (8080)
+#   NECROPSY_SUBNET        private subnet of the containers          (172.30.30.0/24)
+#   NECROPSY_EDGE_TRUSTED  your reverse proxy's address as the proxy container
+#                          sees it, comma-separated     (subnet gateway,127.0.0.1)
+#   DRAIN_SECONDS          how long the old color finishes requests  (15)
+#   HEALTH_TIMEOUT         seconds to wait for a new color to be healthy (90)
+# The application's own settings are in $SYSCONFDIR/necropsy/necropsy.env.
 
 set -euo pipefail
+# Without this, a failure inside $(...) does not stop the script.
+shopt -s inherit_errexit
+
+# ---- baked in by install-system.sh ------------------------------------------
+LIBDIR='@LIBDIR@'
+SYSCONFDIR='@SYSCONFDIR@'
+STATEDIR='@STATEDIR@'
+SAFE_PATH='@SAFE_PATH@'
+# 1 in a real install: root only, clean environment, https only, no `switch`.
+# 0 only for the test suite.
+SAFE_MODE='@SAFE_MODE@'
+# -----------------------------------------------------------------------------
 
 die() { echo "error: $*" >&2; exit 1; }
-log() { echo "==> $*"; }
+log() { echo "==> $*" >&2; }
 
-case "${1:-}" in
-  ""|-h|--help)
-    sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-    [ -n "${1:-}" ] && exit 0
-    exit 2
-    ;;
+case "$LIBDIR" in
+  @*) die "this is the template. Run install-system.sh and use the installed program." ;;
 esac
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/necropsy"
-bg_state="${XDG_STATE_HOME:-$HOME/.local/state}/necropsy/bluegreen"
-proxy_dir="$bg_state/proxy"
-images_env="$bg_state/images.env"
-active_file="$bg_state/active"
+usage() {
+  sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
 
-# Optional deploy-time settings. The file is the deploy user's own.
-if [ -f "$config_dir/deploy.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . "$config_dir/deploy.env"
-  set +a
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+if [ "$SAFE_MODE" = 1 ]; then
+  [ "$(id -u)" -eq 0 ] || die "must run as root (through sudo)"
+  # The environment comes from the unprivileged caller. Start over from a
+  # known one, so DOCKER_HOST, GIT_*, LD_PRELOAD and the like cannot steer us.
+  dirty=0
+  for v in $(compgen -e); do
+    case "$v" in PATH|HOME|LANG|PWD|OLDPWD|SHLVL|_) ;; *) dirty=1 ;; esac
+  done
+  [ "$PATH" = "$SAFE_PATH" ] || dirty=1
+  if [ "$dirty" = 1 ]; then
+    [ "${1:-}" != --cleaned ] || die "could not get a clean environment"
+    exec env -i PATH="$SAFE_PATH" HOME=/root LANG=C "$(readlink -f "${BASH_SOURCE[0]}")" --cleaned "$@"
+  fi
+  [ "${1:-}" != --cleaned ] || shift
+  umask 077
 fi
 
-export NECROPSY_ENV_FILE="${NECROPSY_ENV_FILE:-$config_dir/necropsy.env}"
+config_dir="$SYSCONFDIR/necropsy"
+bg_state="$STATEDIR/necropsy/bluegreen"
+src_dir="$STATEDIR/necropsy/src.git"
+deploy_conf="$config_dir/deploy.env"
+compose_file="$LIBDIR/bluegreen/compose.yaml"
+images_env="$bg_state/images.env"
+active_file="$bg_state/active"
+proxy_dir="$bg_state/proxy"
+
+# ---- configuration (parsed, never sourced) -----------------------------------
+
+NECROPSY_REPO="" NECROPSY_BRANCH=main NECROPSY_PORT=8080 NECROPSY_SUBNET=172.30.30.0/24
+NECROPSY_EDGE_TRUSTED="" DRAIN_SECONDS=15 HEALTH_TIMEOUT=90
+
+# A file that someone other than root can write is a way to change what runs as
+# root, so in a real install it must be root-owned and not writable by others.
+trusted_file() {
+  [ "$SAFE_MODE" = 1 ] || return 0
+  local owner mode
+  owner="$(stat -c %u "$1")"
+  mode="$(stat -c %a "$1")"
+  [ "$owner" = 0 ] && [ $(( 8#$mode & 8#022 )) -eq 0 ]
+}
+
+if [ -f "$deploy_conf" ]; then
+  trusted_file "$deploy_conf" || die "$deploy_conf must be owned by root and not writable by others"
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    case "$key" in ''|'#'*) continue ;; esac
+    value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
+    case "$key" in
+      NECROPSY_REPO|NECROPSY_BRANCH|NECROPSY_PORT|NECROPSY_SUBNET|NECROPSY_EDGE_TRUSTED|DRAIN_SECONDS|HEALTH_TIMEOUT)
+        printf -v "$key" '%s' "$value" ;;
+    esac
+  done < "$deploy_conf"
+fi
+
+export NECROPSY_ENV_FILE="$config_dir/necropsy.env"
 export NECROPSY_PROXY_DIR="$proxy_dir"
-export NECROPSY_PORT="${NECROPSY_PORT:-8080}"
-export NECROPSY_SUBNET="${NECROPSY_SUBNET:-172.30.30.0/24}"
-drain_seconds="${DRAIN_SECONDS:-15}"
-health_timeout="${HEALTH_TIMEOUT:-90}"
+export NECROPSY_PORT NECROPSY_SUBNET
 
 # The first usable address of the subnet is the Docker bridge gateway, which is
-# who the proxy sees when your own proxy connects to the published port.
+# who the proxy container sees when your own proxy connects to the published port.
 subnet_base="${NECROPSY_SUBNET%%/*}"
 gateway="${subnet_base%.*}.$(( ${subnet_base##*.} + 1 ))"
 edge_trusted="${NECROPSY_EDGE_TRUSTED:-$gateway,127.0.0.1}"
 
-dc() { docker compose -f "$here/compose.yaml" --env-file "$images_env" "$@"; }
+dc() { docker compose -f "$compose_file" --env-file "$images_env" "$@"; }
 
 # ---- checks -----------------------------------------------------------------
 
-case "$NECROPSY_PORT" in
-  ''|*[!0-9]*) die "NECROPSY_PORT must be a number" ;;
-esac
+[[ "$NECROPSY_PORT" =~ ^[0-9]+$ ]] || die "NECROPSY_PORT must be a number"
 [[ "$NECROPSY_SUBNET" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] \
   || die "NECROPSY_SUBNET must look like 172.30.30.0/24"
-[[ "$drain_seconds" =~ ^[0-9]+$ && "$health_timeout" =~ ^[0-9]+$ ]] \
+[[ "$DRAIN_SECONDS" =~ ^[0-9]+$ && "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] \
   || die "DRAIN_SECONDS and HEALTH_TIMEOUT must be numbers"
-# These end up inside an nginx config, so accept only addresses and ranges.
+# These end up inside the proxy config, so accept only addresses and ranges.
 IFS=',' read -r -a edge_list <<< "$edge_trusted"
 for e in "${edge_list[@]}"; do
   [[ "$e" =~ ^[0-9a-fA-F:.]+(/[0-9]+)?$ ]] || die "NECROPSY_EDGE_TRUSTED has an invalid entry: $e"
 done
 
-command -v docker >/dev/null || die "docker not found"
-docker compose version >/dev/null 2>&1 || die "the docker compose plugin is required"
-docker info >/dev/null 2>&1 || die "cannot talk to Docker (is the daemon running, and is this user allowed to use it?)"
-
-mkdir -p "$bg_state" "$proxy_dir" "$config_dir"
-touch "$images_env"
+# An image reference is only ever one of ours.
+valid_image() { [[ "$1" =~ ^necropsy:[A-Za-z0-9_.-]{1,64}$ ]]; }
 
 # ---- state ------------------------------------------------------------------
 
@@ -112,20 +165,18 @@ set_image() { # color image
 }
 
 write_proxy_conf() { # color
-  {
-    for e in "${edge_list[@]}"; do echo "set_real_ip_from $e;"; done
-  } > "$proxy_dir/edge.conf.new"
-  echo "server $(container_of "$1"):8080;" > "$proxy_dir/upstream.conf.new"
-  # Rename into place, so nginx never reads a half-written file.
-  mv -f "$proxy_dir/edge.conf.new" "$proxy_dir/edge.conf"
-  mv -f "$proxy_dir/upstream.conf.new" "$proxy_dir/upstream.conf"
+  echo "trusted_proxies static ${edge_list[*]}" > "$proxy_dir/edge.caddy.new"
+  echo "to $(container_of "$1"):8080" > "$proxy_dir/upstream.caddy.new"
+  # Rename into place, so Caddy never reads a half-written file.
+  mv -f "$proxy_dir/edge.caddy.new" "$proxy_dir/edge.caddy"
+  mv -f "$proxy_dir/upstream.caddy.new" "$proxy_dir/upstream.caddy"
 }
 
 proxy_running() { [ "$(docker inspect -f '{{.State.Running}}' necropsy-proxy 2>/dev/null || true)" = true ]; }
 
 wait_healthy() { # container
   local c="$1" waited=0 status
-  while [ "$waited" -lt "$health_timeout" ]; do
+  while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
     status="$(docker inspect -f '{{if .State.Running}}{{.State.Health.Status}}{{else}}stopped{{end}}' "$c" 2>/dev/null || echo missing)"
     case "$status" in
       healthy) return 0 ;;
@@ -148,12 +199,26 @@ live_check() {
   return 1
 }
 
+caddy_args=(--config /etc/caddy/Caddyfile --adapter caddyfile)
+proxy_validate() { dc exec -T proxy caddy validate "${caddy_args[@]}" >/dev/null 2>&1; }
+# Graceful: requests already in flight finish on the old upstream.
+proxy_reload() { dc exec -T proxy caddy reload "${caddy_args[@]}" --address unix//tmp/caddy-admin.sock >/dev/null 2>&1; }
+
+# Puts the proxy back on the previous color after a failed switch.
+restore_proxy() { # old
+  [ -n "$1" ] || return 0
+  write_proxy_conf "$1"
+  if proxy_running; then
+    proxy_reload || true
+  fi
+}
+
 # ---- one switch -------------------------------------------------------------
 
 # Starts $target from $image (if given), waits for it, points the proxy at it,
 # and stops $old after a drain. On any failure before traffic moves, the live
 # color is left exactly as it was.
-switch() { # target old image-or-empty
+switch_traffic() { # target old image-or-empty
   local target="$1" old="$2" image="${3:-}" prev_images
   prev_images="$(cat "$images_env")"
 
@@ -169,12 +234,10 @@ switch() { # target old image-or-empty
   fi
 
   log "$target is healthy, switching traffic"
-  local prev_upstream=""
-  [ -f "$proxy_dir/upstream.conf" ] && prev_upstream="$(cat "$proxy_dir/upstream.conf")"
   write_proxy_conf "$target"
   if proxy_running; then
-    if ! dc exec -T proxy nginx -t >/dev/null 2>&1 || ! dc exec -T proxy nginx -s reload >/dev/null 2>&1; then
-      restore_proxy "$prev_upstream" "$old"
+    if ! proxy_validate || ! proxy_reload; then
+      restore_proxy "$old"
       dc stop -t 5 "necropsy-$target" >/dev/null 2>&1 || true
       printf '%s\n' "$prev_images" > "$images_env"
       die "the proxy rejected the new configuration. Traffic stays on ${old:-nothing}."
@@ -184,7 +247,7 @@ switch() { # target old image-or-empty
   fi
 
   if ! live_check; then
-    restore_proxy "$prev_upstream" "$old"
+    restore_proxy "$old"
     dc stop -t 5 "necropsy-$target" >/dev/null 2>&1 || true
     printf '%s\n' "$prev_images" > "$images_env"
     die "the site did not answer through the proxy after the switch. Traffic is back on ${old:-nothing}."
@@ -194,36 +257,76 @@ switch() { # target old image-or-empty
   echo "$(date -u +%FT%TZ) live=$target image=$(image_of "$target")" >> "$bg_state/history.log"
 
   if [ -n "$old" ]; then
-    log "draining $old for ${drain_seconds}s"
-    sleep "$drain_seconds"
+    log "draining $old for ${DRAIN_SECONDS}s"
+    sleep "$DRAIN_SECONDS"
     dc stop -t 20 "necropsy-$old" >/dev/null
   fi
   log "live: $target"
 }
 
-# Puts the proxy back on the previous color after a failed switch.
-restore_proxy() { # previous-upstream-line old
-  [ -n "$2" ] || return 0
-  write_proxy_conf "$2"
-  if [ -n "$1" ] && proxy_running; then
-    dc exec -T proxy nginx -s reload >/dev/null 2>&1 || true
-  fi
-}
-
-prune_images() { # repository
-  local repo="$1" keep ref
+prune_images() {
+  local keep ref
   keep="$(image_of blue) $(image_of green)"
-  docker image ls "$repo" --format '{{.Repository}}:{{.Tag}}' | while read -r ref; do
+  docker image ls necropsy --format '{{.Repository}}:{{.Tag}}' | while read -r ref; do
     case " $keep " in *" $ref "*) ;; *) docker rmi "$ref" >/dev/null 2>&1 || true ;; esac
   done
+  # Build cache older than a week.
+  docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
 }
 
 ensure_env_file() {
   [ -f "$NECROPSY_ENV_FILE" ] && return 0
-  local example="$here/../../.env.example"
-  [ -f "$example" ] || die "no settings file at $NECROPSY_ENV_FILE and no .env.example to start from"
-  install -m 600 "$example" "$NECROPSY_ENV_FILE"
-  log "created $NECROPSY_ENV_FILE with defaults. Edit it and deploy again to apply changes."
+  [ -f "$LIBDIR/env.example" ] || die "no settings file at $NECROPSY_ENV_FILE and no example to start from"
+  install -m 600 "$LIBDIR/env.example" "$NECROPSY_ENV_FILE"
+  log "created $NECROPSY_ENV_FILE with defaults. Edit it, then deploy again to apply changes."
+}
+
+# ---- building a commit ------------------------------------------------------
+
+# The only code ever built is a commit on the configured branch of the
+# configured repository,
+# so whoever can run this command can choose among releases but not add one.
+# Sets $built_image. (Not a command substitution: errors inside one do not stop
+# the script.)
+built_image=""
+build_commit() { # full commit hash
+  local sha="$1" build_dir tag
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "expected a full 40-character commit hash"
+  [ -n "$NECROPSY_REPO" ] || die "NECROPSY_REPO is not set in $deploy_conf"
+  local branch="$NECROPSY_BRANCH"
+  # It ends up in git refspecs, so a plain branch name only.
+  [[ "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] && [[ "$branch" != *..* ]] \
+    && git check-ref-format "refs/heads/$branch" \
+    || die "NECROPSY_BRANCH in $deploy_conf is not a valid branch name"
+  if [ "$SAFE_MODE" = 1 ]; then
+    [[ "$NECROPSY_REPO" =~ ^https://[A-Za-z0-9._/-]+$ ]] || die "NECROPSY_REPO must be an https URL"
+    export GIT_ALLOW_PROTOCOL=https
+  else
+    export GIT_ALLOW_PROTOCOL=file:https
+  fi
+  export GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+
+  log "fetching $branch from $NECROPSY_REPO"
+  if [ ! -d "$src_dir" ]; then
+    git clone --quiet --bare --branch "$branch" -- "$NECROPSY_REPO" "$src_dir" >&2
+  else
+    git -C "$src_dir" remote set-url origin "$NECROPSY_REPO"
+    git -C "$src_dir" fetch --quiet --prune origin "+refs/heads/$branch:refs/heads/$branch" >&2
+  fi
+  git -C "$src_dir" cat-file -e "$sha^{commit}" 2>/dev/null || die "commit $sha is not in the repository"
+  git -C "$src_dir" merge-base --is-ancestor "$sha" "refs/heads/$branch" \
+    || die "commit $sha is not on $branch, refusing to build it"
+
+  build_dir="$(mktemp -d "$bg_state/build.XXXXXX")"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$build_dir'" EXIT
+  git -C "$src_dir" archive "$sha" | tar -x --no-same-owner -C "$build_dir"
+  tag="necropsy:${sha:0:12}"
+  log "building $tag"
+  docker build --pull -t "$tag" --build-arg "GIT_SHA=$sha" "$build_dir" >&2
+  rm -rf "$build_dir"
+  trap - EXIT
+  built_image="$tag"
 }
 
 # ---- commands ---------------------------------------------------------------
@@ -239,19 +342,46 @@ status() {
   done
 }
 
-case "${1:-}" in
-  --status)
+command -v docker >/dev/null || die "docker not found"
+docker compose version >/dev/null 2>&1 || die "the docker compose plugin is required"
+docker info >/dev/null 2>&1 || die "cannot talk to Docker (is the daemon running?)"
+
+mkdir -p "$bg_state" "$proxy_dir"
+touch "$images_env"
+
+cmd="${1:-}"
+[ -n "$cmd" ] || { usage >&2; exit 2; }
+shift
+
+case "$cmd" in
+  status)
+    [ $# -eq 0 ] || die "status takes no arguments"
     status
     exit 0
     ;;
+  deploy|rollback|switch) ;;
+  *) die "unknown command: $cmd" ;;
 esac
 
 command -v flock >/dev/null || die "flock not found (install util-linux)"
 exec 9> "$bg_state/lock"
 flock -n 9 || die "another deploy is already running"
 
-case "$1" in
-  --rollback)
+case "$cmd" in
+  deploy)
+    [ $# -eq 1 ] || die "usage: necropsy-deploy deploy <commit>"
+    ensure_env_file
+    build_commit "$1"
+    image="$built_image"
+    old="$(active_color)"
+    if [ -z "$old" ]; then target=blue; else target="$(other_color "$old")"; fi
+    log "deploying $image: ${old:-nothing} -> $target"
+    switch_traffic "$target" "$old" "$image"
+    prune_images
+    ;;
+
+  rollback)
+    [ $# -eq 0 ] || die "rollback takes no arguments"
     old="$(active_color)"
     [ -n "$old" ] || die "nothing is deployed yet"
     target="$(other_color "$old")"
@@ -259,25 +389,28 @@ case "$1" in
     [ -n "$image" ] || die "there is no previous release to go back to"
     docker image inspect "$image" >/dev/null 2>&1 || die "the previous image $image is gone"
     log "rolling back from $old to $target"
-    switch "$target" "$old" ""
+    switch_traffic "$target" "$old" ""
     ;;
-  -*)
-    die "unknown option: $1"
-    ;;
-  *)
+
+  # Deploys an image that already exists locally. For the test suite only: it
+  # would let the caller run any local image, so a real install refuses it.
+  switch)
+    [ "$SAFE_MODE" != 1 ] || die "unknown command: switch"
+    [ $# -eq 1 ] || die "usage: necropsy-deploy switch <image>"
     image="$1"
-    docker image inspect "$image" >/dev/null 2>&1 \
-      || die "image not found locally: $image (docker load it or docker build it first)"
+    valid_image "$image" || die "not a necropsy image: $image"
+    docker image inspect "$image" >/dev/null 2>&1 || die "image not found locally: $image"
     ensure_env_file
     old="$(active_color)"
     if [ -z "$old" ]; then target=blue; else target="$(other_color "$old")"; fi
     log "deploying $image: ${old:-nothing} -> $target"
-    switch "$target" "$old" "$image"
-    prune_images "${image%:*}"
-    echo
-    echo "Logs:    docker logs -f $(container_of "$target")"
-    echo "Status:  $here/deploy.sh --status"
-    echo "First deploy? The admin credentials were printed once to that log:"
-    echo "  docker logs $(container_of "$target") 2>&1 | grep -A4 'first run'"
+    switch_traffic "$target" "$old" "$image"
+    prune_images
     ;;
 esac
+
+echo
+echo "Logs:    docker logs -f $(container_of "$(active_color)")"
+echo "Status:  necropsy-deploy status"
+echo "First deploy? The admin credentials were printed once to that log:"
+echo "  docker logs $(container_of "$(active_color)") 2>&1 | grep -A4 'first run'"
