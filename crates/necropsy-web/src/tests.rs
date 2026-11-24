@@ -43,6 +43,14 @@ impl Reply {
 }
 
 async fn build(mailer: Option<Mailer>, client_ip_header: Option<&str>) -> Site {
+    build_trusting(mailer, client_ip_header, &[]).await
+}
+
+async fn build_trusting(
+    mailer: Option<Mailer>,
+    client_ip_header: Option<&str>,
+    trusted: &[&str],
+) -> Site {
     let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../packs"
@@ -55,6 +63,7 @@ async fn build(mailer: Option<Mailer>, client_ip_header: Option<&str>) -> Site {
         Config {
             base_url: ORIGIN.into(),
             client_ip_header: client_ip_header.map(|h| h.parse().unwrap()),
+            trusted_proxies: trusted.iter().map(|n| n.parse().unwrap()).collect(),
         },
         Db::open(":memory:").unwrap(),
         mailer,
@@ -1021,6 +1030,86 @@ async fn list_headers_use_the_last_entry() {
             "x-forwarded-for",
             "u99",
         ))
+        .await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+/// Pretends the request arrived over a connection from `peer`.
+fn from_peer(mut req: Request<Body>, peer: &str) -> Request<Body> {
+    let addr: std::net::SocketAddr = peer.parse().unwrap();
+    req.extensions_mut()
+        .insert(axum::extract::ConnectInfo(addr));
+    req
+}
+
+#[tokio::test]
+async fn header_is_only_believed_from_trusted_proxies() {
+    let s = build_trusting(None, Some("x-real-ip"), &["127.0.0.1", "10.1.0.0/16"]).await;
+
+    // From a trusted proxy the header decides the key: one address runs out
+    // while another is unaffected.
+    for i in 0..30 {
+        let r = s
+            .send(from_peer(
+                login_from(Some("203.0.113.7"), "x-real-ip", &format!("u{i}")),
+                "127.0.0.1:5000",
+            ))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{i}");
+    }
+    let r = s
+        .send(from_peer(
+            login_from(Some("203.0.113.7"), "x-real-ip", "u99"),
+            "10.1.2.3:5000",
+        ))
+        .await;
+    assert_eq!(
+        r.status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "range member is trusted too"
+    );
+    let r = s
+        .send(from_peer(
+            login_from(Some("198.51.100.9"), "x-real-ip", "u99"),
+            "127.0.0.1:5000",
+        ))
+        .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+
+    // From anyone else the header is ignored, so changing it does not help:
+    // every request counts against the connecting address.
+    for i in 0..30 {
+        let r = s
+            .send(from_peer(
+                login_from(Some(&format!("192.0.2.{i}")), "x-real-ip", &format!("v{i}")),
+                "198.18.0.5:4000",
+            ))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{i}");
+    }
+    let r = s
+        .send(from_peer(
+            login_from(Some("192.0.2.200"), "x-real-ip", "v99"),
+            "198.18.0.5:4000",
+        ))
+        .await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn untrusted_when_the_peer_is_unknown() {
+    // With a trusted list, a request with no known peer address is not trusted.
+    let s = build_trusting(None, Some("x-real-ip"), &["127.0.0.1"]).await;
+    for i in 0..30 {
+        s.send(login_from(
+            Some(&format!("192.0.2.{i}")),
+            "x-real-ip",
+            &format!("w{i}"),
+        ))
+        .await;
+    }
+    let r = s
+        .send(login_from(Some("192.0.2.200"), "x-real-ip", "w99"))
         .await;
     assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
 }

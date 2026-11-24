@@ -38,6 +38,9 @@ pub struct Config {
     /// (for example `X-Real-IP`). Only set it when a proxy always overwrites
     /// it, or clients can choose their own rate-limit key.
     pub client_ip_header: Option<axum::http::HeaderName>,
+    /// Peers allowed to supply `client_ip_header`. When empty, any peer is
+    /// believed; otherwise the header from every other peer is ignored.
+    pub trusted_proxies: Vec<crate::ipnet::IpNet>,
 }
 
 pub struct AppState {
@@ -47,6 +50,7 @@ pub struct AppState {
     /// Cookies get the `Secure` attribute when the site is served over https.
     pub secure_cookies: bool,
     pub client_ip_header: Option<axum::http::HeaderName>,
+    pub trusted_proxies: Vec<crate::ipnet::IpNet>,
     pub db: Db,
     pub mailer: Mailer,
     pub limiter: RateLimiter,
@@ -96,6 +100,7 @@ impl AppState {
             secure_cookies: config.base_url.starts_with("https://"),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             client_ip_header: config.client_ip_header,
+            trusted_proxies: config.trusted_proxies,
             db,
             mailer,
             limiter: RateLimiter::default(),

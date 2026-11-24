@@ -69,4 +69,4 @@ Uninstalling removes the service and binary but keeps the settings, packs and da
 
 ## Behind a reverse proxy
 
-Keep `NECROPSY_ADDR` on loopback, point the proxy at it, and set `NECROPSY_BASE_URL` to the public https address. Set `NECROPSY_CLIENT_IP_HEADER` to the header your proxy uses for the client address (for example `X-Real-IP`) so rate limits see real clients. The proxy must always overwrite that header, for example `proxy_set_header X-Real-IP $remote_addr;` in nginx, and must pass the `Host` header.
+Keep `NECROPSY_ADDR` on loopback, point the proxy at it, and set `NECROPSY_BASE_URL` to the public https address. Set `NECROPSY_CLIENT_IP_HEADER` to the header your proxy uses for the client address (for example `X-Real-IP`) so rate limits see real clients, and `NECROPSY_TRUSTED_PROXIES` to the proxy's address (an IP or CIDR range, comma-separated for several) so only the proxy can supply it. The proxy must always overwrite that header, for example `proxy_set_header X-Real-IP $remote_addr;` in nginx, and must pass the `Host` header.

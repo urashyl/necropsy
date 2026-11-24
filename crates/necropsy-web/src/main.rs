@@ -12,6 +12,7 @@ mod accounts;
 mod admin;
 mod auth;
 mod db;
+mod ipnet;
 mod mail;
 mod markdown;
 mod pages;
@@ -54,6 +55,7 @@ async fn main() {
     let config = Config {
         base_url: env_or("NECROPSY_BASE_URL", "https://necropsy.urashyl.dev"),
         client_ip_header: client_ip_header_from_env().unwrap_or_else(|e| fail(&e)),
+        trusted_proxies: trusted_proxies_from_env().unwrap_or_else(|e| fail(&e)),
     };
 
     let packs = match necropsy_pack::load_all(&packs_dir) {
@@ -82,6 +84,17 @@ async fn main() {
         Err(e) => fail(&e),
     }
 
+    match (&config.client_ip_header, config.trusted_proxies.is_empty()) {
+        (Some(h), true) => tracing::warn!(
+            "{h} is believed from any client. Set NECROPSY_TRUSTED_PROXIES to your proxy's address \
+             so only it can supply the client address."
+        ),
+        (None, false) => tracing::warn!(
+            "NECROPSY_TRUSTED_PROXIES has no effect without NECROPSY_CLIENT_IP_HEADER"
+        ),
+        _ => {}
+    }
+
     let state = Arc::new(AppState::new(packs, config, db, mailer));
     spawn_housekeeping(state.clone());
     let app = router(state);
@@ -108,6 +121,14 @@ fn client_ip_header_from_env() -> Result<Option<axum::http::HeaderName>, String>
             .map(Some)
             .map_err(|_| format!("NECROPSY_CLIENT_IP_HEADER is not a valid header name: {v}")),
         _ => Ok(None),
+    }
+}
+
+/// `NECROPSY_TRUSTED_PROXIES`: comma-separated addresses or CIDR ranges.
+fn trusted_proxies_from_env() -> Result<Vec<ipnet::IpNet>, String> {
+    match std::env::var("NECROPSY_TRUSTED_PROXIES") {
+        Ok(v) => ipnet::parse_list(&v).map_err(|e| format!("NECROPSY_TRUSTED_PROXIES: {e}")),
+        Err(_) => Ok(Vec::new()),
     }
 }
 
@@ -224,13 +245,14 @@ async fn security_headers(req: Request, next: Next) -> Response {
     res
 }
 
-/// Sets the [`ClientIp`] used for rate limiting: the peer address, or, when
-/// `NECROPSY_CLIENT_IP_HEADER` names a header, the address in that header.
-/// The header is only believed if your proxy always overwrites it (nginx
-/// `proxy_set_header X-Real-IP $remote_addr;`). A header holding a list, like
-/// `X-Forwarded-For`, uses its last entry, the one your proxy appended. A
-/// value that is not an IP address is ignored, so a client cannot make up
-/// arbitrary keys.
+/// Sets the [`ClientIp`] used for rate limiting: the connecting address, or,
+/// when `NECROPSY_CLIENT_IP_HEADER` names a header, the address in that
+/// header. The header is only believed when the connection comes from one of
+/// `NECROPSY_TRUSTED_PROXIES` (any connection, if none are listed), and your
+/// proxy must always overwrite it (nginx `proxy_set_header X-Real-IP
+/// $remote_addr;`). A header holding a list, like `X-Forwarded-For`, uses its
+/// last entry, the one your proxy appended. A value that is not an IP address
+/// is ignored, so a client cannot make up arbitrary keys.
 async fn client_ip_layer(
     State(state): State<Arc<AppState>>,
     mut req: Request,
@@ -239,16 +261,24 @@ async fn client_ip_layer(
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
-        .map(|c| c.0.ip().to_string());
-    let from_header = state.client_ip_header.as_ref().and_then(|name| {
-        req.headers()
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.rsplit(',').next())
-            .and_then(|s| s.trim().parse::<std::net::IpAddr>().ok())
-            .map(|ip| ip.to_string())
-    });
-    let ip = from_header.or(peer).unwrap_or_else(|| "unknown".into());
+        .map(|c| c.0.ip());
+    let peer_trusted = state.trusted_proxies.is_empty()
+        || peer.is_some_and(|p| state.trusted_proxies.iter().any(|n| n.contains(p)));
+    let from_header = state
+        .client_ip_header
+        .as_ref()
+        .filter(|_| peer_trusted)
+        .and_then(|name| {
+            req.headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.rsplit(',').next())
+                .and_then(|s| s.trim().parse::<std::net::IpAddr>().ok())
+        });
+    let ip = from_header
+        .or(peer)
+        .map(|ip| ip.to_canonical().to_string())
+        .unwrap_or_else(|| "unknown".into());
     req.extensions_mut().insert(ClientIp(ip));
     next.run(req).await
 }
