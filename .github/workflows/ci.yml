@@ -41,11 +41,17 @@ jobs:
       - name: Pack validation
         run: cargo run --locked -q -p necropsy-pack --bin pack-tool -- validate packs
 
-      - name: Installer syntax
-        run: bash -n deploy/install.sh deploy/bluegreen/deploy.sh
+      - name: Script syntax
+        run: |
+          for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh; do
+            bash -n "$f"
+          done
 
-      - name: Blue-green switching logic
-        run: deploy/bluegreen/test/run.sh
+      # As root, so the tests of the real install (clean environment, no
+      # `switch`, https only, root-owned settings) run too. They use a fake
+      # docker, so nothing touches this machine's Docker.
+      - name: Deploy program and installer
+        run: sudo env "PATH=$PATH" deploy/bluegreen/test/run.sh
 
   # Builds the real image and runs it the way production does: read-only root,
   # no capabilities, a fresh volume for the database.
@@ -109,3 +115,95 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: docker logs smoke || true
+
+  # The real thing, with real Docker: installs the deploy program, deploys twice
+  # (so both colors and the Caddy switch run) while requesting the site
+  # continuously, rolls back, and checks the client address gets through the
+  # whole chain. A local repository stands in for GitHub.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PORT: "18090"
+      DEPLOY: /usr/local/bin/necropsy-deploy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install the deploy program
+        run: |
+          git clone --bare . "$RUNNER_TEMP/origin.git"
+          git -C "$RUNNER_TEMP/origin.git" update-ref refs/heads/main "$(git rev-parse HEAD)"
+          git -C "$RUNNER_TEMP/origin.git" symbolic-ref HEAD refs/heads/main
+          # The runner user is in the docker group, which a real deploy user is not.
+          sudo deploy/bluegreen/install-system.sh --unsafe-for-tests --allow-docker-group \
+            --user "$USER" --repo "file://$RUNNER_TEMP/origin.git"
+          printf 'NECROPSY_PORT=%s\nDRAIN_SECONDS=3\nHEALTH_TIMEOUT=120\n' "$PORT" \
+            | sudo tee -a /etc/necropsy/deploy.env >/dev/null
+
+      - name: First deploy
+        run: |
+          sudo "$DEPLOY" deploy "$(git rev-parse HEAD)"
+          curl -fsS "http://127.0.0.1:$PORT/healthz"
+          curl -fsS "http://127.0.0.1:$PORT/" | grep -q necropsy
+          sudo "$DEPLOY" status
+          sudo "$DEPLOY" status | grep -q '^live:    blue'
+
+      - name: Second deploy under load, with no failed request
+        run: |
+          : > "$RUNNER_TEMP/fails"; : > "$RUNNER_TEMP/oks"
+          (
+            while true; do
+              if curl -fsS -m 3 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
+                echo ok >> "$RUNNER_TEMP/oks"
+              else
+                echo "$(date +%T) failed" >> "$RUNNER_TEMP/fails"
+              fi
+              sleep 0.05
+            done
+          ) &
+          hammer=$!
+          sudo "$DEPLOY" deploy "$(git rev-parse HEAD)"
+          kill "$hammer" || true
+          sudo "$DEPLOY" status | grep -q '^live:    green'
+          echo "requests during the deploy: $(wc -l < "$RUNNER_TEMP/oks") ok, $(wc -l < "$RUNNER_TEMP/fails") failed"
+          [ "$(wc -l < "$RUNNER_TEMP/oks")" -gt 50 ]
+          if [ -s "$RUNNER_TEMP/fails" ]; then
+            echo "::error::requests failed during the switch"
+            cat "$RUNNER_TEMP/fails"
+            exit 1
+          fi
+
+      - name: Rollback
+        run: |
+          sudo "$DEPLOY" rollback
+          sudo "$DEPLOY" status | grep -q '^live:    blue'
+          curl -fsS "http://127.0.0.1:$PORT/healthz"
+
+      # 30 failed logins per address are allowed in 15 minutes, so the 31st from
+      # one address is refused while another address is untouched. That only
+      # holds if X-Real-IP survives the whole chain: Caddy believes it from this
+      # (trusted) peer, and the app believes Caddy's.
+      - name: Client address reaches the app
+        run: |
+          login() {
+            curl -s -o /dev/null -w '%{http_code}' -H "X-Real-IP: $1" \
+              -d 'username=nobody&password=wrong' "http://127.0.0.1:$PORT/login"
+          }
+          for i in $(seq 1 30); do
+            [ "$(login 203.0.113.50)" = 401 ] || { echo "attempt $i was not a plain failure"; exit 1; }
+          done
+          [ "$(login 203.0.113.50)" = 429 ] || { echo "the 31st attempt from one address was not refused"; exit 1; }
+          [ "$(login 198.51.100.7)" = 401 ] || { echo "another address was refused too"; exit 1; }
+
+      - name: State on failure
+        if: failure()
+        run: |
+          sudo "$DEPLOY" status || true
+          docker ps -a
+          docker logs necropsy-proxy 2>&1 | tail -40 || true
+          docker logs necropsy-blue 2>&1 | tail -20 || true
+          docker logs necropsy-green 2>&1 | tail -20 || true
+          sudo cat /var/lib/necropsy/necropsy/bluegreen/history.log || true
+
