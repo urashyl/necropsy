@@ -14,7 +14,7 @@ cargo run -p necropsy-web
 | `NECROPSY_PACKS` | `packs` | Directory containing one subdirectory per pack. |
 | `NECROPSY_BASE_URL` | `https://necropsy.urashyl.dev` | Origin used in links, emails and canonical URLs. Change it when the domain changes. Cookies are `Secure` when it starts with `https://`. |
 | `NECROPSY_DB` | `necropsy.db` | SQLite file for accounts and solves. |
-| `NECROPSY_TRUST_PROXY` | `0` | `1` to use `X-Forwarded-For` from a reverse proxy for rate limiting. |
+| `NECROPSY_CLIENT_IP_HEADER` | unset | Header your reverse proxy sets to the client address, such as `X-Real-IP`. Used for rate limiting. |
 | `NECROPSY_SMTP_*`, `NECROPSY_DEV_MAIL_LOG` | unset | Email, see [accounts.md](accounts.md). |
 
 On first run the server prints generated admin credentials to the log, see [accounts.md](accounts.md).

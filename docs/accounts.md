@@ -72,7 +72,7 @@ Kept in memory and cleared on restart. Counted per 15 minutes:
 | Password reset requests | 5 per client address |
 | Password confirmations in settings | 10 per user |
 
-The client address is the peer address. Behind a reverse proxy, set `NECROPSY_TRUST_PROXY=1` to use the last `X-Forwarded-For` entry, which is the one your proxy appended. Do not set it without a proxy, or clients can choose their own address.
+The client address is the connecting address. Behind a reverse proxy that would always be the proxy, so set `NECROPSY_CLIENT_IP_HEADER` to the header your proxy fills with the real address, such as `X-Real-IP`. The proxy must always overwrite that header (nginx: `proxy_set_header X-Real-IP $remote_addr;`). Without a proxy, leave it unset: any client could otherwise choose its own address and dodge the limits. A value that is not an IP address is ignored, and for a list header such as `X-Forwarded-For` the last entry, the one your proxy appended, is used.
 
 ## CSRF
 

@@ -53,7 +53,7 @@ async fn main() {
     let db_path = env_or("NECROPSY_DB", "necropsy.db");
     let config = Config {
         base_url: env_or("NECROPSY_BASE_URL", "https://necropsy.urashyl.dev"),
-        trust_proxy: env_or("NECROPSY_TRUST_PROXY", "0") == "1",
+        client_ip_header: client_ip_header_from_env().unwrap_or_else(|e| fail(&e)),
     };
 
     let packs = match necropsy_pack::load_all(&packs_dir) {
@@ -99,6 +99,16 @@ async fn main() {
     })
     .await
     .expect("server error");
+}
+
+/// `NECROPSY_CLIENT_IP_HEADER`: the header name, or unset for the peer address.
+fn client_ip_header_from_env() -> Result<Option<axum::http::HeaderName>, String> {
+    match std::env::var("NECROPSY_CLIENT_IP_HEADER") {
+        Ok(v) if !v.trim().is_empty() => axum::http::HeaderName::from_bytes(v.trim().as_bytes())
+            .map(Some)
+            .map_err(|_| format!("NECROPSY_CLIENT_IP_HEADER is not a valid header name: {v}")),
+        _ => Ok(None),
+    }
 }
 
 fn fail(msg: &str) -> ! {
@@ -214,9 +224,13 @@ async fn security_headers(req: Request, next: Next) -> Response {
     res
 }
 
-/// Sets the [`ClientIp`] used for rate limiting. Behind a reverse proxy
-/// (`NECROPSY_TRUST_PROXY=1`) this is the last `X-Forwarded-For` entry, which
-/// is the one the proxy itself appended; earlier entries are client-supplied.
+/// Sets the [`ClientIp`] used for rate limiting: the peer address, or, when
+/// `NECROPSY_CLIENT_IP_HEADER` names a header, the address in that header.
+/// The header is only believed if your proxy always overwrites it (nginx
+/// `proxy_set_header X-Real-IP $remote_addr;`). A header holding a list, like
+/// `X-Forwarded-For`, uses its last entry, the one your proxy appended. A
+/// value that is not an IP address is ignored, so a client cannot make up
+/// arbitrary keys.
 async fn client_ip_layer(
     State(state): State<Arc<AppState>>,
     mut req: Request,
@@ -226,18 +240,15 @@ async fn client_ip_layer(
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
         .map(|c| c.0.ip().to_string());
-    let forwarded = state
-        .trust_proxy
-        .then(|| {
-            req.headers()
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.rsplit(',').next())
-                .map(|s| s.trim().to_owned())
-                .filter(|s| !s.is_empty())
-        })
-        .flatten();
-    let ip = forwarded.or(peer).unwrap_or_else(|| "unknown".into());
+    let from_header = state.client_ip_header.as_ref().and_then(|name| {
+        req.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.rsplit(',').next())
+            .and_then(|s| s.trim().parse::<std::net::IpAddr>().ok())
+            .map(|ip| ip.to_string())
+    });
+    let ip = from_header.or(peer).unwrap_or_else(|| "unknown".into());
     req.extensions_mut().insert(ClientIp(ip));
     next.run(req).await
 }

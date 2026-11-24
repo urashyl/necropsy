@@ -42,7 +42,7 @@ impl Reply {
     }
 }
 
-async fn site_with(mailer: Option<Mailer>) -> Site {
+async fn build(mailer: Option<Mailer>, client_ip_header: Option<&str>) -> Site {
     let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../packs"
@@ -54,7 +54,7 @@ async fn site_with(mailer: Option<Mailer>) -> Site {
         packs,
         Config {
             base_url: ORIGIN.into(),
-            trust_proxy: false,
+            client_ip_header: client_ip_header.map(|h| h.parse().unwrap()),
         },
         Db::open(":memory:").unwrap(),
         mailer,
@@ -67,7 +67,11 @@ async fn site_with(mailer: Option<Mailer>) -> Site {
 }
 
 async fn site() -> Site {
-    site_with(None).await
+    build(None, None).await
+}
+
+async fn site_with(mailer: Option<Mailer>) -> Site {
+    build(mailer, None).await
 }
 
 impl Site {
@@ -922,4 +926,101 @@ async fn unverified_accounts_are_purged_after_two_days() {
         .await
         .unwrap()
         .is_none());
+}
+
+// ---------------------------------------------------------------- client address
+
+fn login_from(ip: Option<&str>, header: &str, user: &str) -> Request<Body> {
+    let mut b = Request::post("/login")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::ORIGIN, ORIGIN);
+    if let Some(ip) = ip {
+        b = b.header(header, ip);
+    }
+    b.body(Body::from(format!("username={user}&password=x")))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn rate_limit_uses_the_configured_client_ip_header() {
+    let s = build(None, Some("X-Real-IP")).await;
+    // 30 attempts per address, each with a different username so only the
+    // per-address limit can trip.
+    for i in 0..30 {
+        let r = s
+            .send(login_from(
+                Some("203.0.113.7"),
+                "x-real-ip",
+                &format!("user{i}"),
+            ))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "attempt {i}");
+    }
+    let blocked = s
+        .send(login_from(Some("203.0.113.7"), "x-real-ip", "user99"))
+        .await;
+    assert_eq!(blocked.status, StatusCode::TOO_MANY_REQUESTS);
+    // A different address is unaffected.
+    let other = s
+        .send(login_from(Some("198.51.100.9"), "x-real-ip", "user99"))
+        .await;
+    assert_eq!(other.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn client_ip_header_is_ignored_unless_configured_and_valid() {
+    // Not configured: the header is not trusted, so every request shares the
+    // same fallback key and a spoofed header does not dodge the limit.
+    let s = build(None, None).await;
+    for i in 0..30 {
+        s.send(login_from(
+            Some(&format!("10.0.0.{i}")),
+            "x-real-ip",
+            &format!("u{i}"),
+        ))
+        .await;
+    }
+    let r = s
+        .send(login_from(Some("10.9.9.9"), "x-real-ip", "u99"))
+        .await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+
+    // Configured, but the value is not an IP address: ignored the same way.
+    let s = build(None, Some("x-real-ip")).await;
+    for i in 0..30 {
+        s.send(login_from(
+            Some(&format!("not-an-ip-{i}")),
+            "x-real-ip",
+            &format!("u{i}"),
+        ))
+        .await;
+    }
+    let r = s
+        .send(login_from(Some("also-garbage"), "x-real-ip", "u99"))
+        .await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn list_headers_use_the_last_entry() {
+    let s = build(None, Some("x-forwarded-for")).await;
+    for i in 0..30 {
+        // The client-supplied first entry varies; the proxy-appended last one does not.
+        let r = s
+            .send(login_from(
+                Some(&format!("1.2.3.{i}, 203.0.113.7")),
+                "x-forwarded-for",
+                &format!("u{i}"),
+            ))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    }
+    let r = s
+        .send(login_from(
+            Some("9.9.9.9, 203.0.113.7"),
+            "x-forwarded-for",
+            "u99",
+        ))
+        .await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
 }

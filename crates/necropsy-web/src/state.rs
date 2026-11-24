@@ -34,9 +34,10 @@ pub struct RenderedPack {
 pub struct Config {
     /// Public origin used in links and share text, without a trailing slash.
     pub base_url: String,
-    /// Trust `X-Forwarded-For` for the client address. Only enable behind a
-    /// reverse proxy that sets it, or clients can spoof their rate-limit key.
-    pub trust_proxy: bool,
+    /// Request header carrying the client address, set by your reverse proxy
+    /// (for example `X-Real-IP`). Only set it when a proxy always overwrites
+    /// it, or clients can choose their own rate-limit key.
+    pub client_ip_header: Option<axum::http::HeaderName>,
 }
 
 pub struct AppState {
@@ -45,7 +46,7 @@ pub struct AppState {
     pub base_url: String,
     /// Cookies get the `Secure` attribute when the site is served over https.
     pub secure_cookies: bool,
-    pub trust_proxy: bool,
+    pub client_ip_header: Option<axum::http::HeaderName>,
     pub db: Db,
     pub mailer: Mailer,
     pub limiter: RateLimiter,
@@ -94,7 +95,7 @@ impl AppState {
             index,
             secure_cookies: config.base_url.starts_with("https://"),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
-            trust_proxy: config.trust_proxy,
+            client_ip_header: config.client_ip_header,
             db,
             mailer,
             limiter: RateLimiter::default(),
