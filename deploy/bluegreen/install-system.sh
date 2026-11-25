@@ -22,9 +22,15 @@
 #   --branch NAME      the only branch whose commits are built: main for
 #                      production, dev for a dev server (main the first time;
 #                      kept in the settings afterwards)
-#   --prefix DIR       programs go in DIR/bin and DIR/lib/necropsy   (/usr/local)
-#   --sysconfdir DIR   settings go in DIR/necropsy                   (/etc)
-#   --statedir DIR     state goes in DIR/necropsy                    (/var/lib)
+#   --name NAME        the stack's name (necropsy). A host can run several
+#                      independent stacks, for example production as "necropsy"
+#                      and a dev server as "necropsy-dev": each has its own
+#                      program (NAME-deploy), settings, state, containers, volume,
+#                      image repository and sudo rule
+#   --prefix DIR       programs go in DIR/bin and DIR/lib/NAME       (/usr/local)
+#   --sysconfdir DIR   settings go in DIR/NAME                       (/etc)
+#   --statedir DIR     state goes in DIR/NAME                        (/var/lib)
+#   --rundir DIR       where runtime sockets go, in DIR/NAME         (/run)
 #   --sudoers-dir DIR  where the sudo rule is written                (/etc/sudoers.d)
 #   --allow-docker-group   install even though the user is in the docker group
 #   --extra-path DIR   put DIR first in the program's PATH (for tests only)
@@ -37,11 +43,12 @@ die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
 usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
-user="" repo="" branch="" prefix=/usr/local sysconfdir=/etc statedir=/var/lib sudoers_dir=/etc/sudoers.d
+name=necropsy user="" repo="" branch="" prefix=/usr/local sysconfdir=/etc statedir=/var/lib sudoers_dir=/etc/sudoers.d rundir=/run
 allow_docker_group=0 uninstall=0 safe_mode=1 extra_path=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --name) name="${2:?--name needs a name}"; shift 2 ;;
     --user) user="${2:?--user needs a name}"; shift 2 ;;
     --repo) repo="${2:?--repo needs a URL}"; shift 2 ;;
     --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
@@ -49,6 +56,7 @@ while [ $# -gt 0 ]; do
     --sysconfdir) sysconfdir="${2:?}"; shift 2 ;;
     --statedir) statedir="${2:?}"; shift 2 ;;
     --sudoers-dir) sudoers_dir="${2:?}"; shift 2 ;;
+    --rundir) rundir="${2:?}"; shift 2 ;;
     --allow-docker-group) allow_docker_group=1; shift ;;
     --extra-path) extra_path="${2:?}"; shift 2 ;;
     --uninstall) uninstall=1; shift ;;
@@ -67,15 +75,17 @@ fi
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
 
+[[ "$name" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || die "--name must be lower case letters, digits and - (like necropsy-dev)"
+
 bin_dir="$prefix/bin"
-lib_dir="$prefix/lib/necropsy"
-conf_dir="$sysconfdir/necropsy"
-state_dir="$statedir/necropsy"
-program="$bin_dir/necropsy-deploy"
-sudoers_file="$sudoers_dir/necropsy-deploy"
+lib_dir="$prefix/lib/$name"
+conf_dir="$sysconfdir/$name"
+state_dir="$statedir/$name"
+program="$bin_dir/$name-deploy"
+sudoers_file="$sudoers_dir/$name-deploy"
 
 # These are written into a shell script and a sudoers file.
-for p in "$program" "$lib_dir" "$conf_dir" "$state_dir" "$sudoers_file"; do
+for p in "$program" "$lib_dir" "$conf_dir" "$state_dir" "$sudoers_file" "$rundir"; do
   [[ "$p" =~ ^/[A-Za-z0-9._/+-]+$ ]] || die "unsafe path: $p (use absolute paths with letters, digits and . _ / + -)"
 done
 
@@ -84,7 +94,7 @@ if [ "$uninstall" -eq 1 ]; then
   rm -rf "$lib_dir"
   info "removed $program, $lib_dir and $sudoers_file"
   echo "kept: $conf_dir (settings) and $state_dir (state). The Docker containers keep running;"
-  echo "stop them with: docker rm -f necropsy-blue necropsy-green necropsy-proxy"
+  echo "stop them with: docker rm -f $name-blue $name-green $name-proxy"
   exit 0
 fi
 
@@ -138,6 +148,8 @@ install -d -m 700 "$state_dir"
 install -m 644 "$here/compose.yaml" "$lib_dir/bluegreen/compose.yaml"
 install -m 644 "$here/Caddyfile" "$lib_dir/bluegreen/Caddyfile"
 install -m 644 "$repo_root/.env.example" "$lib_dir/env.example"
+# Root-owned, so the deploy program can run it without trusting the checkout it builds.
+install -m 755 "$repo_root/deploy/range/selftest.sh" "$lib_dir/range-selftest.sh"
 
 safe_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 if [ -n "$extra_path" ]; then
@@ -153,6 +165,8 @@ sed \
   -e "s|@STATEDIR@|$statedir|g" \
   -e "s|@SAFE_PATH@|$safe_path|g" \
   -e "s|@SAFE_MODE@|$safe_mode|g" \
+  -e "s|@NAME@|$name|g" \
+  -e "s|@RUNDIR@|$rundir|g" \
   "$here/deploy.sh" > "$program.new"
 chmod 755 "$program.new"
 mv -f "$program.new" "$program"
@@ -188,7 +202,7 @@ fi
 rule="$(mktemp)"
 trap 'rm -f "$rule"' EXIT
 cat > "$rule" <<RULE
-# Managed by necropsy install-system.sh. Do not edit: rerun the installer.
+# Managed by necropsy install-system.sh ($name). Do not edit: rerun the installer.
 $user ALL=(root) NOPASSWD: $program
 RULE
 if [ "$safe_mode" = 1 ]; then
@@ -207,8 +221,8 @@ Installed.
   sudo rule  $sudoers_file
 
 $user may now run, as root and without a password, this one program:
-  sudo necropsy-deploy deploy <40-hex commit on $branch>
-  sudo necropsy-deploy rollback
-  sudo necropsy-deploy status
+  sudo $name-deploy deploy <40-hex commit on $branch>
+  sudo $name-deploy rollback
+  sudo $name-deploy status
 It accepts nothing else, and the user has no other passwordless sudo.
 MSG

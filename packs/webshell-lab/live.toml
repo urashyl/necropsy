@@ -1,0 +1,6 @@
+ttl_minutes = 45
+flag_prefix = "shell"
+
+# A real, sandboxed server for each player: range/webshell-lab.
+[container]
+image = "webshell-lab"

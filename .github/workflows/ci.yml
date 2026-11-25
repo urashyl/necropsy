@@ -43,9 +43,14 @@ jobs:
 
       - name: Script syntax
         run: |
-          for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh; do
+          for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh \
+                   deploy/install-vm.sh deploy/test/install-vm.sh deploy/range/selftest.sh deploy/range/ci-test.sh \
+                   range/build.sh range/webshell-lab/entrypoint.sh range/webshell-lab/test.sh; do
             bash -n "$f"
           done
+
+      - name: VM installer
+        run: deploy/test/install-vm.sh
 
       # As root, so the tests of the real install (clean environment, no
       # `switch`, https only, root-owned settings) run too. They use a fake
@@ -115,6 +120,27 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: docker logs smoke || true
+
+  # The range, with real Docker: builds the lab images, runs the real spawner,
+  # and checks every lab comes up locked down (no network, read-only root, no
+  # capabilities, limits), answers, passes its own test, is reaped when its
+  # time is up, and that a full range refuses another. This is the part that
+  # cannot be checked with a fake docker.
+  range:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the spawner
+        run: cargo build --release --locked -p necropsy-spawner
+
+      - name: The range
+        run: sudo env "PATH=$PATH" deploy/range/ci-test.sh
 
   # The real thing, with real Docker: installs the deploy program, deploys twice
   # (so both colors and the Caddy switch run) while requesting the site
@@ -221,13 +247,51 @@ jobs:
           curl -fsS "http://$host:$PORT/healthz"
           curl -fsS "http://127.0.0.1:$PORT/healthz"
 
+      # Production and dev share one VM, as two stacks with their own names.
+      # Deploy a dev stack beside the one above, and check neither disturbs the
+      # other: containers, ports, images, volumes, and a dev deploy while
+      # production is being requested.
+      - name: A dev stack beside production
+        env:
+          DEV_PORT: "18091"
+          DEV_DEPLOY: /usr/local/bin/necropsy-dev-deploy
+        run: |
+          sudo deploy/bluegreen/install-system.sh --unsafe-for-tests --allow-docker-group --name necropsy-dev \
+            --user "$USER" --repo "file://$RUNNER_TEMP/origin.git"
+          printf 'NECROPSY_PORT=%s\nNECROPSY_SUBNET=172.30.31.0/24\nDRAIN_SECONDS=3\nHEALTH_TIMEOUT=120\n' "$DEV_PORT" \
+            | sudo tee -a /etc/necropsy-dev/deploy.env >/dev/null
+          prod_before=$(sudo "$DEPLOY" status | grep '^live:')
+          sudo "$DEV_DEPLOY" deploy "$(git rev-parse HEAD)"
+          curl -fsS "http://127.0.0.1:$DEV_PORT/healthz"
+          curl -fsS "http://127.0.0.1:$PORT/healthz"
+          # Both sets of containers, volumes and images, side by side.
+          for c in necropsy-blue necropsy-proxy necropsy-dev-blue necropsy-dev-proxy; do
+            [ "$(docker inspect -f '{{.State.Running}}' "$c")" = true ] || { echo "$c is not running"; exit 1; }
+          done
+          docker volume inspect necropsy-data necropsy-dev-data >/dev/null
+          docker image inspect "necropsy:$(git rev-parse HEAD | cut -c1-12)" >/dev/null
+          docker image inspect "necropsy-dev:$(git rev-parse HEAD | cut -c1-12)" >/dev/null
+          [ "$(sudo "$DEPLOY" status | grep '^live:')" = "$prod_before" ] || { echo "production's live color changed"; exit 1; }
+          # A dev deploy while production is requested continuously: no failures.
+          : > "$RUNNER_TEMP/fails2"
+          ( while true; do curl -fsS -m 3 -o /dev/null "http://127.0.0.1:$PORT/healthz" || echo fail >> "$RUNNER_TEMP/fails2"; sleep 0.05; done ) &
+          hammer=$!
+          sudo "$DEV_DEPLOY" deploy "$(git rev-parse HEAD)"
+          kill "$hammer" || true
+          [ ! -s "$RUNNER_TEMP/fails2" ] || { echo "::error::production failed during a dev deploy"; exit 1; }
+          sudo "$DEV_DEPLOY" status | grep -q '^live:    green'
+          sudo "$DEV_DEPLOY" rollback
+          curl -fsS "http://127.0.0.1:$DEV_PORT/healthz"
+          curl -fsS "http://127.0.0.1:$PORT/healthz"
+
       - name: State on failure
         if: failure()
         run: |
           sudo "$DEPLOY" status || true
+          sudo /usr/local/bin/necropsy-dev-deploy status || true
           docker ps -a
           docker logs necropsy-proxy 2>&1 | tail -40 || true
           docker logs necropsy-blue 2>&1 | tail -20 || true
           docker logs necropsy-green 2>&1 | tail -20 || true
-          sudo cat /var/lib/necropsy/necropsy/bluegreen/history.log || true
+          sudo cat /var/lib/necropsy/bluegreen/history.log || true
 

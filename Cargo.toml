@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/necropsy-pack", "crates/necropsy-web"]
+members = ["crates/necropsy-pack", "crates/necropsy-web", "crates/necropsy-spawner"]
 
 [workspace.package]
 version = "0.1.0"

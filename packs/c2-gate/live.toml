@@ -1,0 +1,60 @@
+ttl_minutes = 60
+flag_prefix = "pebble"
+
+# 1. The check-in, exactly as the implant sends it.
+[[route]]
+method = "POST"
+path = "/api/v2/sync"
+sets = ["checked_in"]
+[route.when]
+header = { "user-agent" = 're:^Pebble/2\.4 \(Win64; build 5521\)$', "x-client-id" = "re:^[0-9a-f]{16}$" }
+form = { d = "re:^[A-Za-z0-9+/]{20,}={0,2}$" }
+[route.respond]
+content_type = "application/json"
+body = '{"s":"ok","i":300,"t":"/api/v2/task/{{d:task}}"}'
+
+# 2. Right implant, malformed frame: the real server says so.
+[[route]]
+method = "POST"
+path = "/api/v2/sync"
+[route.when]
+header = { "user-agent" = 're:^Pebble/2\.4 \(Win64; build 5521\)$' }
+[route.respond]
+status = 400
+content_type = "application/json"
+body = '{"s":"err","e":"bad frame"}'
+
+# 3. The tasking, for a client that has checked in.
+[[route]]
+method = "GET"
+path = "/api/v2/task/{{d:task}}"
+needs = ["checked_in"]
+[route.when]
+header = { "user-agent" = 're:^Pebble/2\.4 \(Win64; build 5521\)$', "x-client-id" = "re:^[0-9a-f]{16}$" }
+[route.respond]
+content_type = "application/json"
+body = '{"s":"ok","cmd":"stage","url":"https://{{host}}/dl/{{d:stage}}.bin","alg":"xor","key":"{{flag}}"}'
+
+# 4. The tasking path asked for by a client that never checked in.
+[[route]]
+path = "/api/v2/task/*"
+[route.when]
+header = { "user-agent" = 're:^Pebble/' }
+[route.respond]
+status = 403
+content_type = "application/json"
+body = '{"s":"err","e":"unknown client"}'
+
+# Everything else, including every browser and scanner, sees a dull web server.
+[fallback]
+status = 404
+content_type = "text/html"
+headers = { "server" = "nginx/1.24.0" }
+body = '''<html>
+<head><title>404 Not Found</title></head>
+<body>
+<center><h1>404 Not Found</h1></center>
+<hr><center>nginx/1.24.0</center>
+</body>
+</html>
+'''

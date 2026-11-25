@@ -1,0 +1,15 @@
+# Decoded string table recovered from the Pebble sample (partial).
+# Format strings use printf-style placeholders.
+
+0x0040  Pebble/%d.%d (Win64; build %d)
+0x0068  /api/v2/sync
+0x0078  /api/v2/task/
+0x0090  X-Client-Id
+0x00a0  application/x-www-form-urlencoded
+0x00c8  d=%s
+0x00d0  %s|%s|%s|%s
+0x00e0  %016llx
+0x00f0  \Microsoft\Windows\CurrentVersion\Run
+0x0120  GetComputerNameA
+0x0130  GetUserNameA
+0x0140  RtlGetVersion

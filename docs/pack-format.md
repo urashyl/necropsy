@@ -8,6 +8,8 @@ phone-home/
   brief.md        the question
   files/          the excerpt, or a file tree
   answer          sha256 of the normalized answer
+  live.toml       live puzzles only, see live.md and range.md
+  live/           live puzzles only, files a scenario can send
   explainer.md    the real finding, shown after solving
 ```
 
@@ -21,7 +23,7 @@ phone-home/
 | `number` | integer | Display number and order within its track. Unique within the track. |
 | `title` | string | |
 | `difficulty` | integer | 1 (easy) to 5 (hard). |
-| `modes` | list | `web`, `cli`. Defaults to `["web"]`. |
+| `modes` | list | `web`, `cli`, `live`. Defaults to `["web"]`. A pack with `live` is a [live puzzle](live.md): it has a `live.toml` and no `answer` file. |
 | `tags` | list | Free text, shown on the puzzle page. |
 | `hints` | list | Revealed one at a time, in order. |
 
@@ -52,9 +54,13 @@ The hash is stored in a public repository, so it only protects against casual sp
 
 ### files/
 
-Everything under `files/` is shown or handed to the player. Files are text or data only and are never executed.
+Everything under `files/` is shown or handed to the player. The site never executes a pack file.
 
-**Packs never contain working malware.** A puzzle about a real sample uses what an analyst works from: file and registry activity logs, notes, message headers, decoded strings and indicators, or a short defanged snippet. Hosts use the reserved `.invalid` domain. When an artifact is rebuilt from published analyses rather than captured, its first lines say so and name the sources, and the explainer links them.
+Real samples are welcome: captured logs, scripts, loaders, credential and cookie loggers, kit source, whatever the puzzle is about. The site never runs anything from a pack; it only shows it or hands it over. What it does make sure of is that no one runs a sample by accident:
+
+- Text files are shown with line numbers and served as `text/plain`.
+- Anything that is not valid text is served as `application/octet-stream` with `Content-Disposition: attachment`.
+- Give an executable sample a harmless name (`loader.exe.sample`, `payload.js.txt`), or ship it inside a password-protected archive, so it is never one double-click from running. Say what it is in the brief.
 
 The loader rejects:
 

@@ -14,6 +14,11 @@ cargo run -p necropsy-web
 | `NECROPSY_PACKS` | `packs` | Directory containing one subdirectory per pack. |
 | `NECROPSY_BASE_URL` | `https://necropsy.urashyl.dev` | Origin used in links, emails and canonical URLs. Change it when the domain changes. Cookies are `Secure` when it starts with `https://`. |
 | `NECROPSY_DB` | `necropsy.db` | SQLite file for accounts and solves. |
+| `NECROPSY_LIVE_DOMAIN` | unset | Turns on [live puzzles](live.md) at `<label>.<domain>`. |
+| `NECROPSY_LIVE_HOST_HEADER` | unset | Header with the original host, only if your proxy cannot pass `Host` through. |
+| `NECROPSY_SPAWNER_SOCKET` | unset | The spawner socket, for container-backed [live puzzles](range.md). |
+| `NECROPSY_RANGE_DIR` | `/run/necropsy/range` | Where the spawner puts each instance's socket. |
+| `NECROPSY_TURNSTILE_SITE_KEY`, `NECROPSY_TURNSTILE_SECRET` | unset | Cloudflare Turnstile for registration and live instances, see [accounts.md](accounts.md#captcha). Set both or neither. |
 | `NECROPSY_CLIENT_IP_HEADER` | unset | Header your reverse proxy sets to the client address, such as `X-Real-IP`. Used for rate limiting. |
 | `NECROPSY_TRUSTED_PROXIES` | unset | IPs or CIDR ranges allowed to supply that header, comma-separated. The header from any other connection is ignored. |
 | `NECROPSY_SMTP_*`, `NECROPSY_DEV_MAIL_LOG` | unset | Email, see [accounts.md](accounts.md). |

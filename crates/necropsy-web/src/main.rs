@@ -11,12 +11,15 @@
 mod accounts;
 mod admin;
 mod auth;
+mod captcha;
 mod db;
 mod ipnet;
+mod live;
 mod mail;
 mod markdown;
 mod pages;
 mod state;
+mod unixhttp;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -64,7 +67,15 @@ async fn main() {
         base_url: env_or("NECROPSY_BASE_URL", "https://necropsy.urashyl.dev"),
         client_ip_header: client_ip_header_from_env().unwrap_or_else(|e| fail(&e)),
         trusted_proxies: trusted_proxies_from_env().unwrap_or_else(|e| fail(&e)),
+        live: live_from_env().unwrap_or_else(|e| fail(&e)),
+        captcha: captcha_from_env().unwrap_or_else(|e| fail(&e)),
     };
+    if config.captcha.site_key().is_none() {
+        tracing::warn!(
+            "no captcha: set NECROPSY_TURNSTILE_SITE_KEY and NECROPSY_TURNSTILE_SECRET so scripts \
+             cannot mass-register accounts or start live instances"
+        );
+    }
 
     let packs = match necropsy_pack::load_all(&packs_dir) {
         Ok(p) => p,
@@ -120,6 +131,63 @@ async fn main() {
     })
     .await
     .expect("server error");
+}
+
+/// Both Turnstile keys, or neither.
+fn captcha_from_env() -> Result<captcha::Captcha, String> {
+    let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    match (
+        get("NECROPSY_TURNSTILE_SITE_KEY"),
+        get("NECROPSY_TURNSTILE_SECRET"),
+    ) {
+        (Some(site), Some(secret)) => Ok(captcha::Captcha::turnstile(
+            site.trim().to_owned(),
+            secret.trim().to_owned(),
+        )),
+        (None, None) => Ok(captcha::Captcha::Off),
+        _ => Err(
+            "set both NECROPSY_TURNSTILE_SITE_KEY and NECROPSY_TURNSTILE_SECRET, or neither".into(),
+        ),
+    }
+}
+
+/// `NECROPSY_LIVE_DOMAIN` turns live puzzles on; `NECROPSY_LIVE_HOST_HEADER`
+/// optionally names a header that carries the original host.
+fn live_from_env() -> Result<Option<live::LiveConfig>, String> {
+    let Some(domain) = std::env::var("NECROPSY_LIVE_DOMAIN")
+        .ok()
+        .map(|d| d.trim().trim_matches('.').to_ascii_lowercase())
+        .filter(|d| !d.is_empty())
+    else {
+        return Ok(None);
+    };
+    if domain.contains('/')
+        || domain.contains(' ')
+        || !domain.contains('.') && !domain.contains(':')
+    {
+        return Err(format!("NECROPSY_LIVE_DOMAIN {domain:?} is not a domain"));
+    }
+    let host_header = match std::env::var("NECROPSY_LIVE_HOST_HEADER") {
+        Ok(h) if !h.trim().is_empty() => Some(
+            h.trim()
+                .parse::<axum::http::HeaderName>()
+                .map_err(|_| format!("NECROPSY_LIVE_HOST_HEADER {h:?} is not a header name"))?,
+        ),
+        _ => None,
+    };
+    // Container-backed puzzles need the spawner (see docs/range.md).
+    let spawner = std::env::var("NECROPSY_SPAWNER_SOCKET")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(|socket| live::Spawner {
+            socket: socket.trim().into(),
+            range_dir: env_or("NECROPSY_RANGE_DIR", "/run/necropsy/range").into(),
+        });
+    Ok(Some(live::LiveConfig {
+        domain,
+        host_header,
+        spawner,
+    }))
 }
 
 /// `NECROPSY_CLIENT_IP_HEADER`: the header name, or unset for the peer address.
@@ -186,6 +254,9 @@ fn spawn_housekeeping(state: Arc<AppState>) {
                 tracing::error!("purge failed: {e}");
             }
             state.limiter.prune(AUTH_WINDOW);
+            if let Ok(active) = state.db.live_active_labels().await {
+                state.hub.prune(|label| active.contains(label));
+            }
         }
     });
 }
@@ -226,6 +297,11 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(check_answer).layer(DefaultBodyLimit::max(2 * 1024)),
         )
         .route("/api/p/{id}/explainer", get(explainer))
+        .route(
+            "/api/p/{id}/instance",
+            get(live::instance_get).post(live::instance_post),
+        )
+        .route("/api/p/{id}/instance/stop", post(live::instance_stop))
         .route("/api/me/progress", get(progress))
         .route("/healthz", get(|| async { "ok" }))
         .route("/static/app.css", get(pages::static_css))
@@ -246,7 +322,19 @@ pub fn router(state: Arc<AppState>) -> Router {
                 })
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        // Outermost, so requests for a live instance are answered from its
+        // scenario and skip everything above: the main site's CSP, cookies and
+        // CSRF logic have no business on those hosts.
+        .layer(middleware::from_fn_with_state(state, live_dispatch))
+}
+
+/// Sends requests whose host is under the live domain to the live handler.
+async fn live_dispatch(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
+    match live::live_label(&state, &req) {
+        Some(label) => live::handle(state, label, req).await,
+        None => next.run(req).await,
+    }
 }
 
 /// Headers for every response. The CSP allows only our own scripts plus the
@@ -259,9 +347,9 @@ async fn security_headers(req: Request, next: Next) -> Response {
     h.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
-             font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; \
-             base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; \
+             font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; \
+             frame-src https://challenges.cloudflare.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         ),
     );
     h.insert(
@@ -390,7 +478,14 @@ async fn check_answer(
         })
         .into_response();
     }
-    let correct = p.pack.check(&req.answer);
+    let correct = if p.pack.is_live() {
+        match &viewer {
+            Some(u) => live::flag_matches(&state, u.id, &p.pack, &req.answer).await,
+            None => false,
+        }
+    } else {
+        p.pack.check(&req.answer)
+    };
     if correct {
         if let Some(user) = viewer {
             let seconds = req.seconds.clamp(0, 7 * 86_400);

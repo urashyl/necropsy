@@ -233,6 +233,46 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 
 // ---------------------------------------------------------------- puzzle
 
+/// The controls of a live puzzle: spin up an instance, see its link, its
+/// time left and the requests it has had. Driven by app.js.
+fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+    let captcha_key = state.captcha.site_key();
+    let ttl = rp.pack.live.as_ref().map(|s| s.ttl_minutes).unwrap_or(60);
+    html! {
+        section #live.live-panel data-sitekey=[captcha_key] {
+            h2 { "Live instance" }
+            p.muted {
+                "This puzzle is a real server, started just for you. It lives for "
+                (ttl) " minutes, and the flag it holds is yours alone."
+            }
+            @if viewer.is_none() {
+                p.notice { a href="/login" { "Sign in" } " to start an instance." }
+            } @else {
+                div #live-idle {
+                    button #live-start.button type="button" { "Spin up instance" }
+                    div #live-captcha.live-captcha {}
+                }
+                div #live-active.hidden {
+                    p.live-url {
+                        a #live-url target="_blank" rel="noopener noreferrer" {}
+                        " "
+                        button #live-copy.link-button type="button" { "Copy" }
+                    }
+                    p.muted {
+                        span #live-left {} " left · "
+                        button #live-stop.link-button type="button" { "Stop it" }
+                    }
+                    details.live-log-box {
+                        summary { "Requests it has received" }
+                        pre #live-log.live-log {}
+                    }
+                }
+                p #live-msg.answer-msg role="status" aria-live="polite" {}
+            }
+        }
+    }
+}
+
 fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
@@ -272,6 +312,10 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                     }
                     div.prose.brief { (PreEscaped(&rp.brief_html)) }
 
+                    @if rp.pack.is_live() {
+                        (live_panel(state, viewer, rp))
+                    }
+
                     @for f in &rp.files {
                         figure.codefile {
                             figcaption.codefile-head {
@@ -296,7 +340,9 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                     }
 
                     form #answer-form.answer-form {
-                        label for="answer" { "Answer" }
+                        label for="answer" {
+                            @if rp.pack.is_live() { "Flag" } @else { "Answer" }
+                        }
                         div.answer-row {
                             input #answer name="answer" type="text" required maxlength="512"
                                 autocomplete="off" autocapitalize="off" spellcheck="false";

@@ -1,0 +1,14 @@
+# The images the spawner may run: the allowlist. A live pack's
+# `[container] image = "name"` must be a key under [images]. Install as
+# /etc/necropsy/images.toml (see docs/range.md for how to size these).
+
+# The most instances running at once, all puzzles together.
+max_instances = 20
+
+[images.webshell-lab]
+image = "necropsy-range/webshell-lab:1"
+memory_mb = 128
+cpus = 0.5
+pids = 64
+tmpfs_mb = 16
+uid = 10001
