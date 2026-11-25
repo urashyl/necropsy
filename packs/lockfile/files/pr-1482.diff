@@ -1,0 +1,189 @@
+# Illustrative: the PR, its author and the integrity hashes are made up.
+
+PR #1482  chore(deps): bump dev dependencies
+Author: @release-helper-bot (outside contributor, first PR)
+
+  Routine monthly bump of dev dependencies. No runtime changes.
+  CI is green.
+
+diff --git a/package.json b/package.json
+index 3c1f0a2..8e44b91 100644
+--- a/package.json
++++ b/package.json
+@@ -24,15 +24,15 @@
+   "devDependencies": {
+-    "@typescript-eslint/eslint-plugin": "^8.12.2",
+-    "@typescript-eslint/parser": "^8.12.2",
+-    "esbuild": "^0.24.0",
+-    "eslint": "^9.13.0",
+-    "prettier": "^3.3.3",
+-    "typescript": "^5.6.3",
+-    "vitest": "^2.1.4"
++    "@typescript-eslint/eslint-plugin": "^8.15.0",
++    "@typescript_eslint/parser": "^8.15.0",
++    "esbuild": "^0.24.0",
++    "eslint": "^9.15.0",
++    "prettier": "^3.3.3",
++    "typescript": "^5.6.3",
++    "vitest": "^2.1.5"
+   }
+ }
+diff --git a/package-lock.json b/package-lock.json
+index 71d0e3b..c29a6f0 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -12,13 +12,13 @@
+       "devDependencies": {
+-        "@typescript-eslint/eslint-plugin": "^8.12.2",
+-        "@typescript-eslint/parser": "^8.12.2",
++        "@typescript-eslint/eslint-plugin": "^8.15.0",
++        "@typescript_eslint/parser": "^8.15.0",
+         "esbuild": "^0.24.0",
+-        "eslint": "^9.13.0",
++        "eslint": "^9.15.0",
+         "prettier": "^3.3.3",
+         "typescript": "^5.6.3",
+-        "vitest": "^2.1.4"
++        "vitest": "^2.1.5"
+       }
+     },
+@@ -402,9 +402,9 @@
+     "node_modules/@esbuild/linux-x64": {
+       "version": "0.24.0",
+       "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.24.0.tgz",
+       "integrity": "sha512-vbutsFqQ+foy3wSSbmjBXXIJ6PL3scghJoM8lnIBDBeLtgo8n4MGtFmCGZm9WkH2mAOS3sMh4pkI1o0LPiTDqQ==",
+       "cpu": ["x64"],
+       "dev": true,
+       "optional": true,
+       "os": ["linux"]
+     },
+@@ -988,21 +988,21 @@
+     "node_modules/@typescript-eslint/eslint-plugin": {
+-      "version": "8.12.2",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/eslint-plugin/-/eslint-plugin-8.12.2.tgz",
+-      "integrity": "sha512-gQxbxM8mcxBwaEmWdtLCIGLfixBMHhQjBqR8sVWNTPpcj45WlYL2IObS/DNMLH1DBP0n8qz+aiiLTGfopPEebw==",
++      "version": "8.15.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/eslint-plugin/-/eslint-plugin-8.15.0.tgz",
++      "integrity": "sha512-+zkm9AR1Ds9uLWN3fkoeXgFppaQ+uEVtfOV62dDmsy9QCNqlRHWNEck4yarvRNrvRcHQLGfqBNui3cimoz8XAg==",
+       "dev": true,
+       "dependencies": {
+         "@eslint-community/regexpp": "^4.10.0",
+-        "@typescript-eslint/scope-manager": "8.12.2",
+-        "@typescript-eslint/type-utils": "8.12.2",
+-        "@typescript-eslint/utils": "8.12.2",
+-        "@typescript-eslint/visitor-keys": "8.12.2",
++        "@typescript-eslint/scope-manager": "8.15.0",
++        "@typescript-eslint/type-utils": "8.15.0",
++        "@typescript-eslint/utils": "8.15.0",
++        "@typescript-eslint/visitor-keys": "8.15.0",
+         "graphemer": "^1.4.0",
+         "ignore": "^5.3.1",
+         "natural-compare": "^1.4.0",
+         "ts-api-utils": "^1.3.0"
+       }
+     },
+-    "node_modules/@typescript-eslint/parser": {
+-      "version": "8.12.2",
+-      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.12.2.tgz",
+-      "integrity": "sha512-MrvlXNfGPLH3Z+r7Tk+Z5moZAc0dzdVjTgUgwsdGweH7lydysQsnSww3nAmsq8blFuRD5VRlAr9YdEFw3e6PBw==",
+-      "dev": true,
+-      "dependencies": {
+-        "@typescript-eslint/scope-manager": "8.12.2",
+-        "@typescript-eslint/types": "8.12.2",
+-        "@typescript-eslint/typescript-estree": "8.12.2",
+-        "@typescript-eslint/visitor-keys": "8.12.2",
+-        "debug": "^4.3.4"
+-      }
+-    },
++    "node_modules/@typescript-eslint/parser": {
++      "version": "8.15.0",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.15.0.tgz",
++      "integrity": "sha512-7n59qFpghG4uazrF9qtGKBZXn7Oz4sOMm8dwNWDQY96Xlm2oX67eipqcblDj+oY1lLCbf1oltMZFpUso66Kl1A==",
++      "dev": true,
++      "dependencies": {
++        "@typescript-eslint/scope-manager": "8.15.0",
++        "@typescript-eslint/types": "8.15.0",
++        "@typescript-eslint/typescript-estree": "8.15.0",
++        "@typescript-eslint/visitor-keys": "8.15.0",
++        "debug": "^4.3.4"
++      }
++    },
++    "node_modules/@typescript_eslint/parser": {
++      "version": "8.15.0",
++      "resolved": "https://registry.npmjs.org/@typescript_eslint/parser/-/parser-8.15.0.tgz",
++      "integrity": "sha512-Qm4kB0QkS6Zr3tY1dQ0pXn2GH6Dk8gF2b0w7ZcT1mJvE9yLx5uA3rN8sK4hP0eW2iV7tS9oR1qB6cD5fG3jH8A==",
++      "dev": true,
++      "hasInstallScript": true,
++      "dependencies": {
++        "@typescript-eslint/parser": "^8.15.0"
++      }
++    },
+@@ -1210,9 +1222,9 @@
+     "node_modules/esbuild": {
+       "version": "0.24.0",
+       "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.24.0.tgz",
+       "integrity": "sha512-FuLPevChGDshgSicjisSooU0cemp/sGXR841D5LHMB7mTVOmsEHcAxaH3irL53+8YDIeVNQEySh4DaYU/iuPqQ==",
+       "dev": true,
+       "hasInstallScript": true,
+       "bin": {
+         "esbuild": "bin/esbuild"
+       },
+@@ -1301,15 +1313,15 @@
+     "node_modules/eslint": {
+-      "version": "9.13.0",
+-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-9.13.0.tgz",
+-      "integrity": "sha512-EYZK6SX6zjFHST/HRytOdA/zE72Cq/bfw45LSyuwrdvcclb/gqV8RRQxywOBEWO2+WDpva6UZa4CcDeJKzUCFA==",
++      "version": "9.15.0",
++      "resolved": "https://registry.npmjs.org/eslint/-/eslint-9.15.0.tgz",
++      "integrity": "sha512-7CrWySmIibCgT1Os28lUU6upBshZ+GxybLOrmRzi08kS8MBuO8QA7pXEgYgY5W8vK3e74xv0lpjo9DbaGU9Rkw==",
+       "dev": true,
+       "dependencies": {
+         "@eslint-community/eslint-utils": "^4.2.0",
+         "@eslint-community/regexpp": "^4.12.1",
+-        "@eslint/config-array": "^0.18.0",
++        "@eslint/config-array": "^0.19.0",
+         "@eslint/core": "^0.9.0",
+         "@eslint/eslintrc": "^3.2.0",
+-        "@eslint/js": "9.13.0",
++        "@eslint/js": "9.15.0",
+         "@eslint/plugin-kit": "^0.2.3",
+@@ -1544,12 +1556,12 @@
+     "node_modules/fsevents": {
+       "version": "2.3.3",
+       "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+       "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
+       "dev": true,
+       "hasInstallScript": true,
+       "optional": true,
+       "os": ["darwin"],
+       "engines": {
+         "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
+       }
+     },
+@@ -2210,19 +2222,19 @@
+     "node_modules/vitest": {
+-      "version": "2.1.4",
+-      "resolved": "https://registry.npmjs.org/vitest/-/vitest-2.1.4.tgz",
+-      "integrity": "sha512-eDjxbVAJw1UJJCHr5xr/xM86Zx+YxIEXGAR+bmnEID7z9qWfoxpHw0zdobz+TQAFOLT+nEXz3+gx6nUJ7RgmlQ==",
++      "version": "2.1.5",
++      "resolved": "https://registry.npmjs.org/vitest/-/vitest-2.1.5.tgz",
++      "integrity": "sha512-P4ljsdpuzRTPI/kbND2sDZ4VmieerR2c9szEZpjc+98Z9ebvnXmM5+0tHEKqYl8Ii+n2RmC7wEA/ZTbI4/D8+A==",
+       "dev": true,
+       "dependencies": {
+-        "@vitest/expect": "2.1.4",
+-        "@vitest/mocker": "2.1.4",
+-        "@vitest/pretty-format": "^2.1.4",
+-        "@vitest/runner": "2.1.4",
+-        "@vitest/snapshot": "2.1.4",
+-        "@vitest/spy": "2.1.4",
+-        "@vitest/utils": "2.1.4",
++        "@vitest/expect": "2.1.5",
++        "@vitest/mocker": "2.1.5",
++        "@vitest/pretty-format": "^2.1.5",
++        "@vitest/runner": "2.1.5",
++        "@vitest/snapshot": "2.1.5",
++        "@vitest/spy": "2.1.5",
++        "@vitest/utils": "2.1.5",
+         "chai": "^5.1.2",
+         "debug": "^4.3.7",
+         "expect-type": "^1.1.0",

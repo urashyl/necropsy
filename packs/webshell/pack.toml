@@ -1,0 +1,12 @@
+id = "webshell"
+track = "daily"
+date = "2026-11-30"
+number = 7
+title = "Left behind"
+difficulty = 2
+modes = ["web"]
+tags = ["web", "wordpress", "logs"]
+hints = [
+  "Most `.php` requests that aren't WordPress itself are scanners guessing, and they get 404s. Look for a file that answers.",
+  "The first upload doesn't work. Look at what the attacker changed before the second one, and where they came back from later.",
+]

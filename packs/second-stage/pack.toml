@@ -3,10 +3,10 @@ track = "daily"
 date = "2026-11-28"
 number = 5
 title = "Second stage"
-difficulty = 2
+difficulty = 3
 modes = ["web"]
-tags = ["loader", "encoding", "javascript"]
+tags = ["npm", "supply chain", "javascript"]
 hints = [
-  "Nothing here runs the payload for you. Decode `s` yourself and read the result.",
-  "Base64 first, then XOR each byte with k. A shell one-liner or a few lines of Python is enough.",
+  "The XOR key isn't in `postinstall.js`. Look at what gets passed as `seed`.",
+  "The decoded code chooses a host by `process.platform` and builds the path from that and `os.arch()`. What are those on the runner?",
 ]

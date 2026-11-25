@@ -1,0 +1,24 @@
+REGEDIT4
+
+; Exported on PC-23 after the cleanup, 5 May 2000 09:40
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run]
+"ScanRegistry"="C:\\WINDOWS\\scanregw.exe /autorun"
+"TaskMonitor"="C:\\WINDOWS\\taskmon.exe"
+"SystemTray"="SysTray.Exe"
+"LoadPowerProfile"="Rundll32.exe powrprof.dll,LoadCurrentPwrScheme"
+"MSKernel32"="C:\\WINDOWS\\SYSTEM\\MSKernel32.vbs"
+"Norton Auto-Protect"="C:\\PROGRA~1\\NORTON~1\\NAVAPW32.EXE /LOADQUIET"
+"LoadQM"="loadqm.exe"
+"WIN-BUGSFIX"="C:\\WIN-BUGSFIX.exe"
+"WinFAT32"="WINFAT32.EXE"
+"PrinterMonitor"="C:\\WINDOWS\\SYSTEM\\hpzstatn.exe"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\RunServices]
+"LoadPowerProfile"="Rundll32.exe powrprof.dll,LoadCurrentPwrScheme"
+"SchedulingAgent"="mstask.exe"
+"Win32DLL"="C:\\WINDOWS\\Win32DLL.vbs"
+
+[HKEY_CURRENT_USER\Software\Microsoft\Internet Explorer\Main]
+"Start Page"="http://www.msn.com/"
+

@@ -417,8 +417,10 @@ pub fn layout(
                         a.site-name href="/" {
                             svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" {
                                 rect width="32" height="32" rx="8" fill="var(--accent)" {}
-                                path d="M9 22 23 10" stroke="var(--accent-ink)" stroke-width="2.5" stroke-linecap="round" {}
-                                circle cx="11" cy="11" r="3" fill="none" stroke="var(--accent-ink)" stroke-width="2" {}
+                                rect x="7" y="8.5" width="14" height="3.5" rx="1.75" fill="var(--accent-ink)" {}
+                                rect x="11" y="14.25" width="14" height="3.5" rx="1.75" fill="var(--accent-ink)" {}
+                                rect x="8.5" y="20" width="10" height="3.5" rx="1.75" fill="var(--accent-ink)" {}
+                                circle cx="22.5" cy="21.75" r="1.75" fill="var(--accent-ink)" {}
                             }
                             span { "necropsy" }
                         }

@@ -1,0 +1,27 @@
+root@web2:~# ps -eo pid,user,comm --sort=pid | tail -n 12
+    PID USER     COMMAND
+    611 root     cron
+    614 message+ dbus-daemon
+    640 root     sshd
+    702 root     nginx
+    703 www-data nginx
+    704 www-data nginx
+    758 postgres postgres
+    812 root     php-fpm8.2
+    813 www-data php-fpm8.2
+   1204 root     sshd
+   1231 root     bash
+   1290 root     ps
+
+root@web2:~# ss -tnp state established
+Recv-Q Send-Q  Local Address:Port    Peer Address:Port  Process
+0      0       10.30.1.12:22         10.30.0.5:51722    users:(("sshd",pid=1204,fd=4))
+0      0       10.30.1.12:443        198.51.100.31:61002 users:(("nginx",pid=703,fd=12))
+0      0       10.30.1.12:40418      203.0.113.200:443
+
+root@web2:~# cat /etc/ld.so.preload
+cat: /etc/ld.so.preload: No such file or directory
+
+root@web2:~# ls -la /etc/ | grep -i preload
+root@web2:~# ls /etc/ld.so.conf.d/
+fakeroot-x86_64-linux-gnu.conf  libc.conf  x86_64-linux-gnu.conf

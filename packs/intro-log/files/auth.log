@@ -1,30 +1,455 @@
-Nov 20 01:58:12 web1 sshd[2100]: Accepted publickey for mitch from 198.51.100.20 port 40222 ssh2: ED25519 SHA256:u3Jx0kQ1c2mWm8m9e1pVwq3b8YtqT5oJp0nQ8Vh2d4s
-Nov 20 01:58:12 web1 sshd[2101]: pam_unix(sshd:session): session opened for user mitch(uid=1000) by (uid=0)
-Nov 20 02:11:03 web1 sshd[2102]: Failed password for root from 192.0.2.15 port 50210 ssh2
-Nov 20 02:11:05 web1 sshd[2103]: Failed password for root from 192.0.2.15 port 50211 ssh2
-Nov 20 02:11:09 web1 sshd[2104]: Failed password for invalid user admin from 192.0.2.15 port 50212 ssh2
-Nov 20 02:11:12 web1 sshd[2105]: Failed password for root from 192.0.2.15 port 50213 ssh2
-Nov 20 02:11:20 web1 sshd[2106]: Failed password for invalid user test from 192.0.2.15 port 50214 ssh2
-Nov 20 02:11:21 web1 sshd[2107]: Failed password for root from 192.0.2.15 port 50215 ssh2
-Nov 20 02:11:30 web1 sshd[2108]: Failed password for invalid user ubuntu from 192.0.2.15 port 50216 ssh2
-Nov 20 02:11:33 web1 sshd[2109]: Failed password for root from 192.0.2.15 port 50217 ssh2
-Nov 20 02:11:41 web1 sshd[2110]: Failed password for invalid user oracle from 192.0.2.15 port 50218 ssh2
-Nov 20 02:11:44 web1 sshd[2111]: Failed password for root from 192.0.2.15 port 50219 ssh2
-Nov 20 02:11:52 web1 sshd[2112]: Failed password for root from 192.0.2.15 port 50220 ssh2
-Nov 20 02:11:58 web1 sshd[2113]: Failed password for invalid user admin from 192.0.2.15 port 50221 ssh2
-Nov 20 02:12:30 web1 sshd[2114]: Invalid user postgres from 203.0.113.77 port 51540
-Nov 20 02:12:31 web1 sshd[2115]: Failed password for invalid user postgres from 203.0.113.77 port 51540 ssh2
-Nov 20 02:12:36 web1 sshd[2116]: Failed password for invalid user admin from 203.0.113.77 port 51544 ssh2
-Nov 20 02:12:41 web1 sshd[2117]: Failed password for root from 203.0.113.77 port 51545 ssh2
-Nov 20 02:12:47 web1 sshd[2118]: Failed password for invalid user test from 203.0.113.77 port 51546 ssh2
-Nov 20 02:12:55 web1 sshd[2119]: Failed password for invalid user git from 203.0.113.77 port 51547 ssh2
-Nov 20 02:13:02 web1 sshd[2120]: Failed password for invalid user ftp from 203.0.113.77 port 51548 ssh2
-Nov 20 02:13:10 web1 sshd[2121]: Failed password for invalid user oracle from 203.0.113.77 port 51549 ssh2
-Nov 20 02:13:19 web1 sshd[2122]: Failed password for invalid user ubuntu from 203.0.113.77 port 51550 ssh2
-Nov 20 02:13:25 web1 sshd[2123]: Failed password for deploy from 203.0.113.77 port 51551 ssh2
-Nov 20 02:13:44 web1 sshd[2124]: Accepted password for deploy from 203.0.113.77 port 51561 ssh2
-Nov 20 02:13:44 web1 sshd[2125]: pam_unix(sshd:session): session opened for user deploy(uid=1001) by (uid=0)
-Nov 20 02:14:20 web1 sshd[2126]: Connection closed by authenticating user root 192.0.2.15 port 50222 [preauth]
-Nov 20 02:41:09 web1 sshd[2127]: pam_unix(sshd:session): session closed for user deploy
-Nov 20 03:02:00 web1 sshd[2128]: Received disconnect from 198.51.100.20 port 40222:11: disconnected by user
-Nov 20 03:02:00 web1 sshd[2129]: pam_unix(sshd:session): session closed for user mitch
+Nov 18 00:17:33 web1 sshd[2988]: Connection closed by 203.0.113.140 port 42229 [preauth]
+Nov 18 01:51:06 web1 sshd[2989]: error: kex_exchange_identification: Connection closed by remote host
+Nov 18 03:00:02 web1 sshd[2990]: Accepted publickey for backup from 198.51.100.5 port 54530 ssh2: ED25519 SHA256:Zq0n4f6c1Wb9yP2mK7tR3sV8xL5hD0gJ1aE6uB4iN9o
+Nov 18 03:00:02 web1 sshd[2990]: pam_unix(sshd:session): session opened for user backup(uid=1002) by (uid=0)
+Nov 18 03:04:26 web1 sshd[2990]: Received disconnect from 198.51.100.5 port 54530:11: disconnected by user
+Nov 18 03:04:26 web1 sshd[2990]: pam_unix(sshd:session): session closed for user backup
+Nov 18 03:28:49 web1 sshd[2994]: Received disconnect from 192.0.2.61 port 49715:11: Bye Bye [preauth]
+Nov 18 03:51:31 web1 sshd[2996]: error: kex_exchange_identification: Connection closed by remote host
+Nov 18 04:17:00 web1 sshd[3000]: Failed password for root from 192.0.2.200 port 31932 ssh2
+Nov 18 04:17:01 web1 sshd[3000]: Connection closed by authenticating user root 192.0.2.200 port 31932 [preauth]
+Nov 18 04:18:07 web1 sshd[3007]: Invalid user test from 192.0.2.200 port 64363
+Nov 18 04:18:07 web1 sshd[3007]: Failed password for invalid user test from 192.0.2.200 port 64363 ssh2
+Nov 18 04:18:08 web1 sshd[3007]: Connection closed by invalid user test 192.0.2.200 port 64363 [preauth]
+Nov 18 04:19:23 web1 sshd[3009]: Failed password for root from 192.0.2.200 port 64763 ssh2
+Nov 18 04:19:24 web1 sshd[3009]: Connection closed by authenticating user root 192.0.2.200 port 64763 [preauth]
+Nov 18 04:20:37 web1 sshd[3010]: Invalid user ubuntu from 192.0.2.200 port 60245
+Nov 18 04:20:37 web1 sshd[3010]: Failed password for invalid user ubuntu from 192.0.2.200 port 60245 ssh2
+Nov 18 04:20:38 web1 sshd[3010]: Connection closed by invalid user ubuntu 192.0.2.200 port 60245 [preauth]
+Nov 18 04:21:01 web1 sshd[3016]: Invalid user postgres from 192.0.2.200 port 47374
+Nov 18 04:21:01 web1 sshd[3016]: Failed password for invalid user postgres from 192.0.2.200 port 47374 ssh2
+Nov 18 04:21:02 web1 sshd[3016]: Connection closed by invalid user postgres 192.0.2.200 port 47374 [preauth]
+Nov 18 04:21:38 web1 sshd[3021]: Failed password for root from 192.0.2.200 port 57552 ssh2
+Nov 18 04:21:39 web1 sshd[3021]: Connection closed by authenticating user root 192.0.2.200 port 57552 [preauth]
+Nov 18 04:23:05 web1 sshd[3024]: Invalid user mysql from 192.0.2.200 port 49516
+Nov 18 04:23:05 web1 sshd[3024]: Failed password for invalid user mysql from 192.0.2.200 port 49516 ssh2
+Nov 18 04:23:06 web1 sshd[3024]: Connection closed by invalid user mysql 192.0.2.200 port 49516 [preauth]
+Nov 18 04:23:40 web1 sshd[3027]: Failed password for root from 192.0.2.200 port 40446 ssh2
+Nov 18 04:23:41 web1 sshd[3027]: Connection closed by authenticating user root 192.0.2.200 port 40446 [preauth]
+Nov 18 04:24:49 web1 sshd[3034]: Failed password for root from 192.0.2.200 port 57685 ssh2
+Nov 18 04:24:50 web1 sshd[3034]: Connection closed by authenticating user root 192.0.2.200 port 57685 [preauth]
+Nov 18 04:25:46 web1 sshd[3038]: Invalid user postgres from 192.0.2.200 port 47549
+Nov 18 04:25:46 web1 sshd[3038]: Failed password for invalid user postgres from 192.0.2.200 port 47549 ssh2
+Nov 18 04:25:47 web1 sshd[3038]: Connection closed by invalid user postgres 192.0.2.200 port 47549 [preauth]
+Nov 18 04:27:11 web1 sshd[3041]: Failed password for root from 192.0.2.200 port 53133 ssh2
+Nov 18 04:27:12 web1 sshd[3041]: Connection closed by authenticating user root 192.0.2.200 port 53133 [preauth]
+Nov 18 04:27:58 web1 sshd[3047]: Failed password for root from 192.0.2.200 port 48778 ssh2
+Nov 18 04:27:59 web1 sshd[3047]: Connection closed by authenticating user root 192.0.2.200 port 48778 [preauth]
+Nov 18 07:07:03 web1 sshd[3048]: banner exchange: Connection from 192.0.2.61 port 55181: invalid format
+Nov 18 08:57:14 web1 sshd[3049]: Accepted password for ana from 198.51.100.21 port 54899 ssh2
+Nov 18 08:57:14 web1 sshd[3049]: pam_unix(sshd:session): session opened for user ana(uid=1003) by (uid=0)
+Nov 18 09:27:49 web1 sshd[3056]: Received disconnect from 203.0.113.31 port 37896:11: Bye Bye [preauth]
+Nov 18 09:31:14 web1 sshd[3049]: pam_unix(sshd:session): session closed for user ana
+Nov 18 09:41:59 web1 sshd[3058]: Accepted publickey for mitch from 198.51.100.20 port 53906 ssh2: ED25519 SHA256:u3Jx0kQ1c2mWm8m9e1pVwq3b8YtqT5oJp0nQ8Vh2d4s
+Nov 18 09:41:59 web1 sshd[3058]: pam_unix(sshd:session): session opened for user mitch(uid=1000) by (uid=0)
+Nov 18 09:42:18 web1 sshd[3060]: banner exchange: Connection from 203.0.113.31 port 37346: invalid format
+Nov 18 10:04:54 web1 sshd[3058]: Received disconnect from 198.51.100.20 port 53906:11: disconnected by user
+Nov 18 10:04:54 web1 sshd[3058]: pam_unix(sshd:session): session closed for user mitch
+Nov 18 12:45:26 web1 sshd[3064]: error: kex_exchange_identification: Connection closed by remote host
+Nov 18 13:02:00 web1 sshd[3070]: Failed password for root from 203.0.113.9 port 58552 ssh2
+Nov 18 13:02:01 web1 sshd[3070]: Connection closed by authenticating user root 203.0.113.9 port 58552 [preauth]
+Nov 18 13:02:09 web1 sshd[3071]: Failed password for root from 203.0.113.9 port 56105 ssh2
+Nov 18 13:02:10 web1 sshd[3071]: Connection closed by authenticating user root 203.0.113.9 port 56105 [preauth]
+Nov 18 13:02:13 web1 sshd[3072]: Failed password for root from 203.0.113.9 port 63087 ssh2
+Nov 18 13:02:14 web1 sshd[3072]: Connection closed by authenticating user root 203.0.113.9 port 63087 [preauth]
+Nov 18 13:02:23 web1 sshd[3073]: Failed password for root from 203.0.113.9 port 33598 ssh2
+Nov 18 13:02:24 web1 sshd[3073]: Connection closed by authenticating user root 203.0.113.9 port 33598 [preauth]
+Nov 18 13:02:32 web1 sshd[3075]: Failed password for root from 203.0.113.9 port 51483 ssh2
+Nov 18 13:02:33 web1 sshd[3075]: Connection closed by authenticating user root 203.0.113.9 port 51483 [preauth]
+Nov 18 13:02:43 web1 sshd[3077]: Failed password for root from 203.0.113.9 port 39253 ssh2
+Nov 18 13:02:44 web1 sshd[3077]: Connection closed by authenticating user root 203.0.113.9 port 39253 [preauth]
+Nov 18 13:02:50 web1 sshd[3079]: Failed password for root from 203.0.113.9 port 52663 ssh2
+Nov 18 13:02:51 web1 sshd[3079]: Connection closed by authenticating user root 203.0.113.9 port 52663 [preauth]
+Nov 18 13:02:56 web1 sshd[3084]: Failed password for root from 203.0.113.9 port 39670 ssh2
+Nov 18 13:02:57 web1 sshd[3084]: Connection closed by authenticating user root 203.0.113.9 port 39670 [preauth]
+Nov 18 13:03:07 web1 sshd[3087]: Failed password for root from 203.0.113.9 port 39482 ssh2
+Nov 18 13:03:08 web1 sshd[3087]: Connection closed by authenticating user root 203.0.113.9 port 39482 [preauth]
+Nov 18 13:03:13 web1 sshd[3091]: Failed password for root from 203.0.113.9 port 30235 ssh2
+Nov 18 13:03:14 web1 sshd[3091]: Connection closed by authenticating user root 203.0.113.9 port 30235 [preauth]
+Nov 18 13:03:25 web1 sshd[3093]: Failed password for root from 203.0.113.9 port 57354 ssh2
+Nov 18 13:03:26 web1 sshd[3093]: Connection closed by authenticating user root 203.0.113.9 port 57354 [preauth]
+Nov 18 13:03:35 web1 sshd[3097]: Failed password for root from 203.0.113.9 port 62567 ssh2
+Nov 18 13:03:36 web1 sshd[3097]: Connection closed by authenticating user root 203.0.113.9 port 62567 [preauth]
+Nov 18 13:03:38 web1 sshd[3099]: Failed password for root from 203.0.113.9 port 64338 ssh2
+Nov 18 13:03:39 web1 sshd[3099]: Connection closed by authenticating user root 203.0.113.9 port 64338 [preauth]
+Nov 18 13:03:41 web1 sshd[3104]: Failed password for root from 203.0.113.9 port 64249 ssh2
+Nov 18 13:03:42 web1 sshd[3104]: Connection closed by authenticating user root 203.0.113.9 port 64249 [preauth]
+Nov 18 13:03:53 web1 sshd[3110]: Failed password for root from 203.0.113.9 port 60262 ssh2
+Nov 18 13:03:54 web1 sshd[3110]: Connection closed by authenticating user root 203.0.113.9 port 60262 [preauth]
+Nov 18 13:03:57 web1 sshd[3111]: Failed password for root from 203.0.113.9 port 36923 ssh2
+Nov 18 13:03:58 web1 sshd[3111]: Connection closed by authenticating user root 203.0.113.9 port 36923 [preauth]
+Nov 18 13:04:05 web1 sshd[3112]: Failed password for root from 203.0.113.9 port 49191 ssh2
+Nov 18 13:04:06 web1 sshd[3112]: Connection closed by authenticating user root 203.0.113.9 port 49191 [preauth]
+Nov 18 13:04:14 web1 sshd[3119]: Failed password for root from 203.0.113.9 port 55831 ssh2
+Nov 18 13:04:15 web1 sshd[3119]: Connection closed by authenticating user root 203.0.113.9 port 55831 [preauth]
+Nov 18 16:05:08 web1 sshd[3122]: Accepted publickey for mitch from 198.51.100.20 port 50119 ssh2: ED25519 SHA256:u3Jx0kQ1c2mWm8m9e1pVwq3b8YtqT5oJp0nQ8Vh2d4s
+Nov 18 16:05:08 web1 sshd[3122]: pam_unix(sshd:session): session opened for user mitch(uid=1000) by (uid=0)
+Nov 18 16:15:05 web1 sshd[3122]: Received disconnect from 198.51.100.20 port 50119:11: disconnected by user
+Nov 18 16:15:05 web1 sshd[3122]: pam_unix(sshd:session): session closed for user mitch
+Nov 18 16:33:23 web1 sshd[3127]: banner exchange: Connection from 203.0.113.140 port 42351: invalid format
+Nov 18 19:18:09 web1 sshd[3130]: banner exchange: Connection from 192.0.2.88 port 48647: invalid format
+Nov 18 20:09:51 web1 sshd[3133]: banner exchange: Connection from 203.0.113.31 port 30684: invalid format
+Nov 18 21:36:03 web1 sshd[3135]: Connection closed by 203.0.113.140 port 48877 [preauth]
+Nov 18 23:00:54 web1 sshd[3136]: Received disconnect from 203.0.113.140 port 62299:11: Bye Bye [preauth]
+Nov 19 00:54:02 web1 sshd[3141]: banner exchange: Connection from 203.0.113.140 port 54045: invalid format
+Nov 19 03:00:02 web1 sshd[3148]: Accepted publickey for backup from 198.51.100.5 port 49622 ssh2: ED25519 SHA256:Zq0n4f6c1Wb9yP2mK7tR3sV8xL5hD0gJ1aE6uB4iN9o
+Nov 19 03:00:02 web1 sshd[3148]: pam_unix(sshd:session): session opened for user backup(uid=1002) by (uid=0)
+Nov 19 03:04:47 web1 sshd[3148]: Received disconnect from 198.51.100.5 port 49622:11: disconnected by user
+Nov 19 03:04:47 web1 sshd[3148]: pam_unix(sshd:session): session closed for user backup
+Nov 19 06:30:00 web1 sshd[3153]: Failed password for root from 198.51.100.77 port 59797 ssh2
+Nov 19 06:30:01 web1 sshd[3153]: Connection closed by authenticating user root 198.51.100.77 port 59797 [preauth]
+Nov 19 06:31:05 web1 sshd[3157]: Invalid user user from 198.51.100.77 port 63355
+Nov 19 06:31:05 web1 sshd[3157]: Failed password for invalid user user from 198.51.100.77 port 63355 ssh2
+Nov 19 06:31:06 web1 sshd[3157]: Connection closed by invalid user user 198.51.100.77 port 63355 [preauth]
+Nov 19 06:34:15 web1 sshd[3163]: Failed password for root from 198.51.100.77 port 57755 ssh2
+Nov 19 06:34:16 web1 sshd[3163]: Connection closed by authenticating user root 198.51.100.77 port 57755 [preauth]
+Nov 19 06:37:01 web1 sshd[3167]: Invalid user ubuntu from 198.51.100.77 port 53678
+Nov 19 06:37:01 web1 sshd[3167]: Failed password for invalid user ubuntu from 198.51.100.77 port 53678 ssh2
+Nov 19 06:37:02 web1 sshd[3167]: Connection closed by invalid user ubuntu 198.51.100.77 port 53678 [preauth]
+Nov 19 06:39:49 web1 sshd[3172]: Failed password for root from 198.51.100.77 port 47689 ssh2
+Nov 19 06:39:50 web1 sshd[3172]: Connection closed by authenticating user root 198.51.100.77 port 47689 [preauth]
+Nov 19 06:42:58 web1 sshd[3175]: Failed password for root from 198.51.100.77 port 45559 ssh2
+Nov 19 06:42:59 web1 sshd[3175]: Connection closed by authenticating user root 198.51.100.77 port 45559 [preauth]
+Nov 19 06:43:57 web1 sshd[3181]: Invalid user mysql from 198.51.100.77 port 59802
+Nov 19 06:43:57 web1 sshd[3181]: Failed password for invalid user mysql from 198.51.100.77 port 59802 ssh2
+Nov 19 06:43:58 web1 sshd[3181]: Connection closed by invalid user mysql 198.51.100.77 port 59802 [preauth]
+Nov 19 06:44:31 web1 sshd[3185]: Failed password for root from 198.51.100.77 port 61687 ssh2
+Nov 19 06:44:32 web1 sshd[3185]: Connection closed by authenticating user root 198.51.100.77 port 61687 [preauth]
+Nov 19 06:45:21 web1 sshd[3188]: Failed password for root from 198.51.100.77 port 35916 ssh2
+Nov 19 06:45:22 web1 sshd[3188]: Connection closed by authenticating user root 198.51.100.77 port 35916 [preauth]
+Nov 19 08:05:30 web1 sshd[3190]: Received disconnect from 203.0.113.140 port 36280:11: Bye Bye [preauth]
+Nov 19 09:02:14 web1 sshd[3195]: Failed password for ana from 198.51.100.21 port 55667 ssh2
+Nov 19 09:02:20 web1 sshd[3195]: Accepted password for ana from 198.51.100.21 port 55667 ssh2
+Nov 19 09:02:20 web1 sshd[3195]: pam_unix(sshd:session): session opened for user ana(uid=1003) by (uid=0)
+Nov 19 10:09:20 web1 sshd[3195]: pam_unix(sshd:session): session closed for user ana
+Nov 19 10:12:29 web1 sshd[3202]: Accepted publickey for mitch from 198.51.100.20 port 52039 ssh2: ED25519 SHA256:u3Jx0kQ1c2mWm8m9e1pVwq3b8YtqT5oJp0nQ8Vh2d4s
+Nov 19 10:12:29 web1 sshd[3202]: pam_unix(sshd:session): session opened for user mitch(uid=1000) by (uid=0)
+Nov 19 10:59:39 web1 sshd[3202]: Received disconnect from 198.51.100.20 port 52039:11: disconnected by user
+Nov 19 10:59:39 web1 sshd[3202]: pam_unix(sshd:session): session closed for user mitch
+Nov 19 12:03:52 web1 sshd[3209]: banner exchange: Connection from 203.0.113.140 port 63666: invalid format
+Nov 19 16:52:05 web1 sshd[3211]: error: kex_exchange_identification: Connection closed by remote host
+Nov 19 21:37:52 web1 sshd[3213]: Received disconnect from 203.0.113.31 port 62080:11: Bye Bye [preauth]
+Nov 19 21:54:17 web1 sshd[3216]: Connection closed by 192.0.2.88 port 55047 [preauth]
+Nov 19 22:40:00 web1 sshd[3221]: Failed password for root from 192.0.2.15 port 45785 ssh2
+Nov 19 22:40:01 web1 sshd[3221]: Connection closed by authenticating user root 192.0.2.15 port 45785 [preauth]
+Nov 19 22:40:07 web1 sshd[3222]: Failed password for root from 192.0.2.15 port 33565 ssh2
+Nov 19 22:40:08 web1 sshd[3222]: Connection closed by authenticating user root 192.0.2.15 port 33565 [preauth]
+Nov 19 22:40:15 web1 sshd[3228]: Failed password for root from 192.0.2.15 port 64346 ssh2
+Nov 19 22:40:16 web1 sshd[3228]: Connection closed by authenticating user root 192.0.2.15 port 64346 [preauth]
+Nov 19 22:40:22 web1 sshd[3229]: Invalid user support from 192.0.2.15 port 55094
+Nov 19 22:40:22 web1 sshd[3229]: Failed password for invalid user support from 192.0.2.15 port 55094 ssh2
+Nov 19 22:40:23 web1 sshd[3229]: Connection closed by invalid user support 192.0.2.15 port 55094 [preauth]
+Nov 19 22:40:28 web1 sshd[3232]: Failed password for root from 192.0.2.15 port 30226 ssh2
+Nov 19 22:40:29 web1 sshd[3232]: Connection closed by authenticating user root 192.0.2.15 port 30226 [preauth]
+Nov 19 22:40:37 web1 sshd[3238]: Failed password for root from 192.0.2.15 port 36948 ssh2
+Nov 19 22:40:38 web1 sshd[3238]: Connection closed by authenticating user root 192.0.2.15 port 36948 [preauth]
+Nov 19 22:40:42 web1 sshd[3242]: Invalid user debian from 192.0.2.15 port 40112
+Nov 19 22:40:42 web1 sshd[3242]: Failed password for invalid user debian from 192.0.2.15 port 40112 ssh2
+Nov 19 22:40:43 web1 sshd[3242]: Connection closed by invalid user debian 192.0.2.15 port 40112 [preauth]
+Nov 19 22:40:49 web1 sshd[3243]: Failed password for root from 192.0.2.15 port 58036 ssh2
+Nov 19 22:40:50 web1 sshd[3243]: Connection closed by authenticating user root 192.0.2.15 port 58036 [preauth]
+Nov 19 22:40:53 web1 sshd[3249]: Failed password for root from 192.0.2.15 port 46947 ssh2
+Nov 19 22:40:54 web1 sshd[3249]: Connection closed by authenticating user root 192.0.2.15 port 46947 [preauth]
+Nov 19 22:40:55 web1 sshd[3250]: Failed password for root from 192.0.2.15 port 41469 ssh2
+Nov 19 22:40:56 web1 sshd[3250]: Connection closed by authenticating user root 192.0.2.15 port 41469 [preauth]
+Nov 19 22:40:57 web1 sshd[3254]: Invalid user admin from 192.0.2.15 port 54634
+Nov 19 22:40:57 web1 sshd[3254]: Failed password for invalid user admin from 192.0.2.15 port 54634 ssh2
+Nov 19 22:40:58 web1 sshd[3254]: Connection closed by invalid user admin 192.0.2.15 port 54634 [preauth]
+Nov 19 22:41:02 web1 sshd[3257]: Invalid user git from 192.0.2.15 port 33479
+Nov 19 22:41:02 web1 sshd[3257]: Failed password for invalid user git from 192.0.2.15 port 33479 ssh2
+Nov 19 22:41:03 web1 sshd[3257]: Connection closed by invalid user git 192.0.2.15 port 33479 [preauth]
+Nov 19 22:41:09 web1 sshd[3260]: Invalid user ubuntu from 192.0.2.15 port 32082
+Nov 19 22:41:09 web1 sshd[3260]: Failed password for invalid user ubuntu from 192.0.2.15 port 32082 ssh2
+Nov 19 22:41:10 web1 sshd[3260]: Connection closed by invalid user ubuntu 192.0.2.15 port 32082 [preauth]
+Nov 19 22:41:16 web1 sshd[3261]: Failed password for root from 192.0.2.15 port 30838 ssh2
+Nov 19 22:41:17 web1 sshd[3261]: Connection closed by authenticating user root 192.0.2.15 port 30838 [preauth]
+Nov 19 22:41:25 web1 sshd[3264]: Invalid user guest from 192.0.2.15 port 64998
+Nov 19 22:41:25 web1 sshd[3264]: Failed password for invalid user guest from 192.0.2.15 port 64998 ssh2
+Nov 19 22:41:26 web1 sshd[3264]: Connection closed by invalid user guest 192.0.2.15 port 64998 [preauth]
+Nov 19 22:41:33 web1 sshd[3266]: Invalid user mysql from 192.0.2.15 port 51088
+Nov 19 22:41:33 web1 sshd[3266]: Failed password for invalid user mysql from 192.0.2.15 port 51088 ssh2
+Nov 19 22:41:34 web1 sshd[3266]: Connection closed by invalid user mysql 192.0.2.15 port 51088 [preauth]
+Nov 19 22:41:42 web1 sshd[3271]: Failed password for root from 192.0.2.15 port 36579 ssh2
+Nov 19 22:41:43 web1 sshd[3271]: Connection closed by authenticating user root 192.0.2.15 port 36579 [preauth]
+Nov 19 22:41:45 web1 sshd[3276]: Failed password for root from 192.0.2.15 port 45905 ssh2
+Nov 19 22:41:46 web1 sshd[3276]: Connection closed by authenticating user root 192.0.2.15 port 45905 [preauth]
+Nov 19 22:41:52 web1 sshd[3280]: Failed password for root from 192.0.2.15 port 51672 ssh2
+Nov 19 22:41:53 web1 sshd[3280]: Connection closed by authenticating user root 192.0.2.15 port 51672 [preauth]
+Nov 19 22:42:01 web1 sshd[3283]: Invalid user user from 192.0.2.15 port 52900
+Nov 19 22:42:01 web1 sshd[3283]: Failed password for invalid user user from 192.0.2.15 port 52900 ssh2
+Nov 19 22:42:02 web1 sshd[3283]: Connection closed by invalid user user 192.0.2.15 port 52900 [preauth]
+Nov 19 22:42:07 web1 sshd[3284]: Failed password for root from 192.0.2.15 port 58595 ssh2
+Nov 19 22:42:08 web1 sshd[3284]: Connection closed by authenticating user root 192.0.2.15 port 58595 [preauth]
+Nov 19 22:42:15 web1 sshd[3286]: Failed password for root from 192.0.2.15 port 41676 ssh2
+Nov 19 22:42:16 web1 sshd[3286]: Connection closed by authenticating user root 192.0.2.15 port 41676 [preauth]
+Nov 19 22:42:20 web1 sshd[3288]: Failed password for root from 192.0.2.15 port 52712 ssh2
+Nov 19 22:42:21 web1 sshd[3288]: Connection closed by authenticating user root 192.0.2.15 port 52712 [preauth]
+Nov 19 22:42:24 web1 sshd[3293]: Invalid user admin from 192.0.2.15 port 62857
+Nov 19 22:42:24 web1 sshd[3293]: Failed password for invalid user admin from 192.0.2.15 port 62857 ssh2
+Nov 19 22:42:25 web1 sshd[3293]: Connection closed by invalid user admin 192.0.2.15 port 62857 [preauth]
+Nov 19 22:42:32 web1 sshd[3298]: Failed password for root from 192.0.2.15 port 47845 ssh2
+Nov 19 22:42:33 web1 sshd[3298]: Connection closed by authenticating user root 192.0.2.15 port 47845 [preauth]
+Nov 19 22:42:36 web1 sshd[3303]: Invalid user guest from 192.0.2.15 port 62429
+Nov 19 22:42:36 web1 sshd[3303]: Failed password for invalid user guest from 192.0.2.15 port 62429 ssh2
+Nov 19 22:42:37 web1 sshd[3303]: Connection closed by invalid user guest 192.0.2.15 port 62429 [preauth]
+Nov 19 22:42:40 web1 sshd[3309]: Invalid user oracle from 192.0.2.15 port 55951
+Nov 19 22:42:40 web1 sshd[3309]: Failed password for invalid user oracle from 192.0.2.15 port 55951 ssh2
+Nov 19 22:42:41 web1 sshd[3309]: Connection closed by invalid user oracle 192.0.2.15 port 55951 [preauth]
+Nov 19 22:42:43 web1 sshd[3313]: Failed password for root from 192.0.2.15 port 62087 ssh2
+Nov 19 22:42:44 web1 sshd[3313]: Connection closed by authenticating user root 192.0.2.15 port 62087 [preauth]
+Nov 19 22:42:46 web1 sshd[3318]: Failed password for root from 192.0.2.15 port 41934 ssh2
+Nov 19 22:42:47 web1 sshd[3318]: Connection closed by authenticating user root 192.0.2.15 port 41934 [preauth]
+Nov 19 22:42:48 web1 sshd[3320]: Failed password for root from 192.0.2.15 port 62320 ssh2
+Nov 19 22:42:49 web1 sshd[3320]: Connection closed by authenticating user root 192.0.2.15 port 62320 [preauth]
+Nov 19 22:42:52 web1 sshd[3325]: Failed password for root from 192.0.2.15 port 54863 ssh2
+Nov 19 22:42:53 web1 sshd[3325]: Connection closed by authenticating user root 192.0.2.15 port 54863 [preauth]
+Nov 19 22:42:58 web1 sshd[3329]: Invalid user git from 192.0.2.15 port 63503
+Nov 19 22:42:58 web1 sshd[3329]: Failed password for invalid user git from 192.0.2.15 port 63503 ssh2
+Nov 19 22:42:59 web1 sshd[3329]: Connection closed by invalid user git 192.0.2.15 port 63503 [preauth]
+Nov 19 22:43:02 web1 sshd[3334]: Invalid user ubuntu from 192.0.2.15 port 39581
+Nov 19 22:43:02 web1 sshd[3334]: Failed password for invalid user ubuntu from 192.0.2.15 port 39581 ssh2
+Nov 19 22:43:03 web1 sshd[3334]: Connection closed by invalid user ubuntu 192.0.2.15 port 39581 [preauth]
+Nov 19 22:43:07 web1 sshd[3336]: Invalid user git from 192.0.2.15 port 62637
+Nov 19 22:43:07 web1 sshd[3336]: Failed password for invalid user git from 192.0.2.15 port 62637 ssh2
+Nov 19 22:43:08 web1 sshd[3336]: Connection closed by invalid user git 192.0.2.15 port 62637 [preauth]
+Nov 19 22:43:10 web1 sshd[3340]: Failed password for root from 192.0.2.15 port 60158 ssh2
+Nov 19 22:43:11 web1 sshd[3340]: Connection closed by authenticating user root 192.0.2.15 port 60158 [preauth]
+Nov 19 22:43:17 web1 sshd[3345]: Failed password for root from 192.0.2.15 port 61431 ssh2
+Nov 19 22:43:18 web1 sshd[3345]: Connection closed by authenticating user root 192.0.2.15 port 61431 [preauth]
+Nov 19 22:43:24 web1 sshd[3348]: Failed password for root from 192.0.2.15 port 63578 ssh2
+Nov 19 22:43:25 web1 sshd[3348]: Connection closed by authenticating user root 192.0.2.15 port 63578 [preauth]
+Nov 19 22:43:29 web1 sshd[3352]: Failed password for root from 192.0.2.15 port 62094 ssh2
+Nov 19 22:43:30 web1 sshd[3352]: Connection closed by authenticating user root 192.0.2.15 port 62094 [preauth]
+Nov 19 22:43:36 web1 sshd[3357]: Invalid user ftp from 192.0.2.15 port 31135
+Nov 19 22:43:36 web1 sshd[3357]: Failed password for invalid user ftp from 192.0.2.15 port 31135 ssh2
+Nov 19 22:43:37 web1 sshd[3357]: Connection closed by invalid user ftp 192.0.2.15 port 31135 [preauth]
+Nov 19 22:43:44 web1 sshd[3363]: Failed password for root from 192.0.2.15 port 47062 ssh2
+Nov 19 22:43:45 web1 sshd[3363]: Connection closed by authenticating user root 192.0.2.15 port 47062 [preauth]
+Nov 19 22:43:49 web1 sshd[3367]: Failed password for root from 192.0.2.15 port 45354 ssh2
+Nov 19 22:43:50 web1 sshd[3367]: Connection closed by authenticating user root 192.0.2.15 port 45354 [preauth]
+Nov 19 22:43:51 web1 sshd[3371]: Invalid user test from 192.0.2.15 port 51814
+Nov 19 22:43:51 web1 sshd[3371]: Failed password for invalid user test from 192.0.2.15 port 51814 ssh2
+Nov 19 22:43:52 web1 sshd[3371]: Connection closed by invalid user test 192.0.2.15 port 51814 [preauth]
+Nov 19 22:44:00 web1 sshd[3373]: Failed password for root from 192.0.2.15 port 32090 ssh2
+Nov 19 22:44:01 web1 sshd[3373]: Connection closed by authenticating user root 192.0.2.15 port 32090 [preauth]
+Nov 19 22:44:06 web1 sshd[3376]: Invalid user ubuntu from 192.0.2.15 port 43230
+Nov 19 22:44:06 web1 sshd[3376]: Failed password for invalid user ubuntu from 192.0.2.15 port 43230 ssh2
+Nov 19 22:44:07 web1 sshd[3376]: Connection closed by invalid user ubuntu 192.0.2.15 port 43230 [preauth]
+Nov 19 22:44:10 web1 sshd[3378]: Invalid user ftp from 192.0.2.15 port 40749
+Nov 19 22:44:10 web1 sshd[3378]: Failed password for invalid user ftp from 192.0.2.15 port 40749 ssh2
+Nov 19 22:44:11 web1 sshd[3378]: Connection closed by invalid user ftp 192.0.2.15 port 40749 [preauth]
+Nov 19 22:44:12 web1 sshd[3385]: Invalid user git from 192.0.2.15 port 61667
+Nov 19 22:44:12 web1 sshd[3385]: Failed password for invalid user git from 192.0.2.15 port 61667 ssh2
+Nov 19 22:44:13 web1 sshd[3385]: Connection closed by invalid user git 192.0.2.15 port 61667 [preauth]
+Nov 19 22:44:21 web1 sshd[3392]: Failed password for root from 192.0.2.15 port 61761 ssh2
+Nov 19 22:44:22 web1 sshd[3392]: Connection closed by authenticating user root 192.0.2.15 port 61761 [preauth]
+Nov 19 22:44:24 web1 sshd[3397]: Invalid user user from 192.0.2.15 port 46949
+Nov 19 22:44:24 web1 sshd[3397]: Failed password for invalid user user from 192.0.2.15 port 46949 ssh2
+Nov 19 22:44:25 web1 sshd[3397]: Connection closed by invalid user user 192.0.2.15 port 46949 [preauth]
+Nov 19 22:44:27 web1 sshd[3401]: Invalid user support from 192.0.2.15 port 62723
+Nov 19 22:44:27 web1 sshd[3401]: Failed password for invalid user support from 192.0.2.15 port 62723 ssh2
+Nov 19 22:44:28 web1 sshd[3401]: Connection closed by invalid user support 192.0.2.15 port 62723 [preauth]
+Nov 19 22:44:29 web1 sshd[3407]: Failed password for root from 192.0.2.15 port 61329 ssh2
+Nov 19 22:44:30 web1 sshd[3407]: Connection closed by authenticating user root 192.0.2.15 port 61329 [preauth]
+Nov 19 22:44:38 web1 sshd[3409]: Invalid user pi from 192.0.2.15 port 47717
+Nov 19 22:44:38 web1 sshd[3409]: Failed password for invalid user pi from 192.0.2.15 port 47717 ssh2
+Nov 19 22:44:39 web1 sshd[3409]: Connection closed by invalid user pi 192.0.2.15 port 47717 [preauth]
+Nov 19 22:44:45 web1 sshd[3410]: Invalid user support from 192.0.2.15 port 48051
+Nov 19 22:44:45 web1 sshd[3410]: Failed password for invalid user support from 192.0.2.15 port 48051 ssh2
+Nov 19 22:44:46 web1 sshd[3410]: Connection closed by invalid user support 192.0.2.15 port 48051 [preauth]
+Nov 19 22:44:53 web1 sshd[3415]: Failed password for root from 192.0.2.15 port 44052 ssh2
+Nov 19 22:44:54 web1 sshd[3415]: Connection closed by authenticating user root 192.0.2.15 port 44052 [preauth]
+Nov 19 22:45:00 web1 sshd[3418]: Failed password for root from 192.0.2.15 port 30531 ssh2
+Nov 19 22:45:01 web1 sshd[3418]: Connection closed by authenticating user root 192.0.2.15 port 30531 [preauth]
+Nov 19 22:45:04 web1 sshd[3424]: Invalid user pi from 192.0.2.15 port 50755
+Nov 19 22:45:04 web1 sshd[3424]: Failed password for invalid user pi from 192.0.2.15 port 50755 ssh2
+Nov 19 22:45:05 web1 sshd[3424]: Connection closed by invalid user pi 192.0.2.15 port 50755 [preauth]
+Nov 19 22:45:10 web1 sshd[3431]: Invalid user mysql from 192.0.2.15 port 56190
+Nov 19 22:45:10 web1 sshd[3431]: Failed password for invalid user mysql from 192.0.2.15 port 56190 ssh2
+Nov 19 22:45:11 web1 sshd[3431]: Connection closed by invalid user mysql 192.0.2.15 port 56190 [preauth]
+Nov 19 22:45:13 web1 sshd[3435]: Invalid user pi from 192.0.2.15 port 45838
+Nov 19 22:45:13 web1 sshd[3435]: Failed password for invalid user pi from 192.0.2.15 port 45838 ssh2
+Nov 19 22:45:14 web1 sshd[3435]: Connection closed by invalid user pi 192.0.2.15 port 45838 [preauth]
+Nov 19 22:45:19 web1 sshd[3436]: Failed password for root from 192.0.2.15 port 38987 ssh2
+Nov 19 22:45:20 web1 sshd[3436]: Connection closed by authenticating user root 192.0.2.15 port 38987 [preauth]
+Nov 19 22:45:26 web1 sshd[3442]: Invalid user oracle from 192.0.2.15 port 56222
+Nov 19 22:45:26 web1 sshd[3442]: Failed password for invalid user oracle from 192.0.2.15 port 56222 ssh2
+Nov 19 22:45:27 web1 sshd[3442]: Connection closed by invalid user oracle 192.0.2.15 port 56222 [preauth]
+Nov 19 22:45:32 web1 sshd[3443]: Failed password for root from 192.0.2.15 port 32710 ssh2
+Nov 19 22:45:33 web1 sshd[3443]: Connection closed by authenticating user root 192.0.2.15 port 32710 [preauth]
+Nov 19 22:45:37 web1 sshd[3448]: Invalid user ubuntu from 192.0.2.15 port 35559
+Nov 19 22:45:37 web1 sshd[3448]: Failed password for invalid user ubuntu from 192.0.2.15 port 35559 ssh2
+Nov 19 22:45:38 web1 sshd[3448]: Connection closed by invalid user ubuntu 192.0.2.15 port 35559 [preauth]
+Nov 19 22:45:46 web1 sshd[3453]: Invalid user user from 192.0.2.15 port 38759
+Nov 19 22:45:46 web1 sshd[3453]: Failed password for invalid user user from 192.0.2.15 port 38759 ssh2
+Nov 19 22:45:47 web1 sshd[3453]: Connection closed by invalid user user 192.0.2.15 port 38759 [preauth]
+Nov 19 22:45:53 web1 sshd[3459]: Failed password for root from 192.0.2.15 port 56532 ssh2
+Nov 19 22:45:54 web1 sshd[3459]: Connection closed by authenticating user root 192.0.2.15 port 56532 [preauth]
+Nov 19 22:46:01 web1 sshd[3466]: Failed password for root from 192.0.2.15 port 57255 ssh2
+Nov 19 22:46:02 web1 sshd[3466]: Connection closed by authenticating user root 192.0.2.15 port 57255 [preauth]
+Nov 19 22:46:05 web1 sshd[3470]: Invalid user debian from 192.0.2.15 port 45913
+Nov 19 22:46:05 web1 sshd[3470]: Failed password for invalid user debian from 192.0.2.15 port 45913 ssh2
+Nov 19 22:46:06 web1 sshd[3470]: Connection closed by invalid user debian 192.0.2.15 port 45913 [preauth]
+Nov 19 22:46:13 web1 sshd[3472]: Failed password for root from 192.0.2.15 port 44772 ssh2
+Nov 19 22:46:14 web1 sshd[3472]: Connection closed by authenticating user root 192.0.2.15 port 44772 [preauth]
+Nov 19 22:46:19 web1 sshd[3479]: Failed password for root from 192.0.2.15 port 51930 ssh2
+Nov 19 22:46:20 web1 sshd[3479]: Connection closed by authenticating user root 192.0.2.15 port 51930 [preauth]
+Nov 19 22:46:21 web1 sshd[3480]: Failed password for root from 192.0.2.15 port 39707 ssh2
+Nov 19 22:46:22 web1 sshd[3480]: Connection closed by authenticating user root 192.0.2.15 port 39707 [preauth]
+Nov 19 22:46:24 web1 sshd[3487]: Invalid user ftp from 192.0.2.15 port 60550
+Nov 19 22:46:24 web1 sshd[3487]: Failed password for invalid user ftp from 192.0.2.15 port 60550 ssh2
+Nov 19 22:46:25 web1 sshd[3487]: Connection closed by invalid user ftp 192.0.2.15 port 60550 [preauth]
+Nov 19 22:46:28 web1 sshd[3494]: Invalid user debian from 192.0.2.15 port 40335
+Nov 19 22:46:28 web1 sshd[3494]: Failed password for invalid user debian from 192.0.2.15 port 40335 ssh2
+Nov 19 22:46:29 web1 sshd[3494]: Connection closed by invalid user debian 192.0.2.15 port 40335 [preauth]
+Nov 19 23:36:39 web1 sshd[3496]: Received disconnect from 203.0.113.140 port 44571:11: Bye Bye [preauth]
+Nov 19 23:37:17 web1 sshd[3497]: Connection closed by 192.0.2.88 port 36276 [preauth]
+Nov 20 01:58:37 web1 sshd[3498]: Accepted publickey for mitch from 198.51.100.20 port 57925 ssh2: ED25519 SHA256:u3Jx0kQ1c2mWm8m9e1pVwq3b8YtqT5oJp0nQ8Vh2d4s
+Nov 20 01:58:37 web1 sshd[3498]: pam_unix(sshd:session): session opened for user mitch(uid=1000) by (uid=0)
+Nov 20 02:11:00 web1 sshd[3503]: Failed password for root from 192.0.2.15 port 31255 ssh2
+Nov 20 02:11:01 web1 sshd[3503]: Connection closed by authenticating user root 192.0.2.15 port 31255 [preauth]
+Nov 20 02:11:05 web1 sshd[3506]: Invalid user ubuntu from 192.0.2.15 port 40332
+Nov 20 02:11:05 web1 sshd[3506]: Failed password for invalid user ubuntu from 192.0.2.15 port 40332 ssh2
+Nov 20 02:11:06 web1 sshd[3506]: Connection closed by invalid user ubuntu 192.0.2.15 port 40332 [preauth]
+Nov 20 02:11:12 web1 sshd[3508]: Failed password for root from 192.0.2.15 port 43592 ssh2
+Nov 20 02:11:13 web1 sshd[3508]: Connection closed by authenticating user root 192.0.2.15 port 43592 [preauth]
+Nov 20 02:11:15 web1 sshd[3515]: Failed password for root from 192.0.2.15 port 63205 ssh2
+Nov 20 02:11:16 web1 sshd[3515]: Connection closed by authenticating user root 192.0.2.15 port 63205 [preauth]
+Nov 20 02:11:18 web1 sshd[3521]: Invalid user support from 192.0.2.15 port 38533
+Nov 20 02:11:18 web1 sshd[3521]: Failed password for invalid user support from 192.0.2.15 port 38533 ssh2
+Nov 20 02:11:19 web1 sshd[3521]: Connection closed by invalid user support 192.0.2.15 port 38533 [preauth]
+Nov 20 02:11:21 web1 sshd[3522]: Failed password for root from 192.0.2.15 port 41444 ssh2
+Nov 20 02:11:22 web1 sshd[3522]: Connection closed by authenticating user root 192.0.2.15 port 41444 [preauth]
+Nov 20 02:11:26 web1 sshd[3526]: Invalid user pi from 192.0.2.15 port 55122
+Nov 20 02:11:26 web1 sshd[3526]: Failed password for invalid user pi from 192.0.2.15 port 55122 ssh2
+Nov 20 02:11:27 web1 sshd[3526]: Connection closed by invalid user pi 192.0.2.15 port 55122 [preauth]
+Nov 20 02:11:35 web1 sshd[3529]: Failed password for root from 192.0.2.15 port 48722 ssh2
+Nov 20 02:11:36 web1 sshd[3529]: Connection closed by authenticating user root 192.0.2.15 port 48722 [preauth]
+Nov 20 02:11:44 web1 sshd[3534]: Invalid user oracle from 192.0.2.15 port 33124
+Nov 20 02:11:44 web1 sshd[3534]: Failed password for invalid user oracle from 192.0.2.15 port 33124 ssh2
+Nov 20 02:11:45 web1 sshd[3534]: Connection closed by invalid user oracle 192.0.2.15 port 33124 [preauth]
+Nov 20 02:11:48 web1 sshd[3536]: Failed password for root from 192.0.2.15 port 48738 ssh2
+Nov 20 02:11:49 web1 sshd[3536]: Connection closed by authenticating user root 192.0.2.15 port 48738 [preauth]
+Nov 20 02:11:56 web1 sshd[3537]: Failed password for root from 192.0.2.15 port 43250 ssh2
+Nov 20 02:11:57 web1 sshd[3537]: Connection closed by authenticating user root 192.0.2.15 port 43250 [preauth]
+Nov 20 02:12:02 web1 sshd[3544]: Failed password for root from 192.0.2.15 port 43986 ssh2
+Nov 20 02:12:03 web1 sshd[3544]: Connection closed by authenticating user root 192.0.2.15 port 43986 [preauth]
+Nov 20 02:12:09 web1 sshd[3550]: Failed password for root from 192.0.2.15 port 51407 ssh2
+Nov 20 02:12:10 web1 sshd[3550]: Connection closed by authenticating user root 192.0.2.15 port 51407 [preauth]
+Nov 20 02:12:13 web1 sshd[3557]: Invalid user guest from 192.0.2.15 port 30487
+Nov 20 02:12:13 web1 sshd[3557]: Failed password for invalid user guest from 192.0.2.15 port 30487 ssh2
+Nov 20 02:12:14 web1 sshd[3557]: Connection closed by invalid user guest 192.0.2.15 port 30487 [preauth]
+Nov 20 02:12:18 web1 sshd[3558]: Invalid user user from 192.0.2.15 port 56986
+Nov 20 02:12:18 web1 sshd[3558]: Failed password for invalid user user from 192.0.2.15 port 56986 ssh2
+Nov 20 02:12:19 web1 sshd[3558]: Connection closed by invalid user user 192.0.2.15 port 56986 [preauth]
+Nov 20 02:12:22 web1 sshd[3562]: Invalid user mysql from 192.0.2.15 port 40406
+Nov 20 02:12:22 web1 sshd[3562]: Failed password for invalid user mysql from 192.0.2.15 port 40406 ssh2
+Nov 20 02:12:23 web1 sshd[3562]: Connection closed by invalid user mysql 192.0.2.15 port 40406 [preauth]
+Nov 20 02:12:25 web1 sshd[3563]: Failed password for root from 192.0.2.15 port 45618 ssh2
+Nov 20 02:12:26 web1 sshd[3563]: Connection closed by authenticating user root 192.0.2.15 port 45618 [preauth]
+Nov 20 02:12:27 web1 sshd[3568]: Failed password for root from 192.0.2.15 port 59383 ssh2
+Nov 20 02:12:28 web1 sshd[3568]: Connection closed by authenticating user root 192.0.2.15 port 59383 [preauth]
+Nov 20 02:12:30 web1 sshd[3569]: Invalid user postgres from 203.0.113.77 port 51747
+Nov 20 02:12:30 web1 sshd[3569]: Failed password for invalid user postgres from 203.0.113.77 port 51747 ssh2
+Nov 20 02:12:31 web1 sshd[3569]: Connection closed by invalid user postgres 203.0.113.77 port 51747 [preauth]
+Nov 20 02:12:33 web1 sshd[3570]: Invalid user pi from 192.0.2.15 port 31598
+Nov 20 02:12:33 web1 sshd[3570]: Failed password for invalid user pi from 192.0.2.15 port 31598 ssh2
+Nov 20 02:12:34 web1 sshd[3570]: Connection closed by invalid user pi 192.0.2.15 port 31598 [preauth]
+Nov 20 02:12:35 web1 sshd[3575]: Invalid user pi from 192.0.2.15 port 49336
+Nov 20 02:12:35 web1 sshd[3575]: Failed password for invalid user pi from 192.0.2.15 port 49336 ssh2
+Nov 20 02:12:35 web1 sshd[3577]: Invalid user admin from 203.0.113.77 port 51599
+Nov 20 02:12:35 web1 sshd[3577]: Failed password for invalid user admin from 203.0.113.77 port 51599 ssh2
+Nov 20 02:12:36 web1 sshd[3575]: Connection closed by invalid user pi 192.0.2.15 port 49336 [preauth]
+Nov 20 02:12:36 web1 sshd[3577]: Connection closed by invalid user admin 203.0.113.77 port 51599 [preauth]
+Nov 20 02:12:40 web1 sshd[3581]: Failed password for root from 192.0.2.15 port 54831 ssh2
+Nov 20 02:12:41 web1 sshd[3581]: Connection closed by authenticating user root 192.0.2.15 port 54831 [preauth]
+Nov 20 02:12:41 web1 sshd[3582]: Failed password for root from 203.0.113.77 port 51262 ssh2
+Nov 20 02:12:42 web1 sshd[3582]: Connection closed by authenticating user root 203.0.113.77 port 51262 [preauth]
+Nov 20 02:12:45 web1 sshd[3583]: Invalid user support from 192.0.2.15 port 46285
+Nov 20 02:12:45 web1 sshd[3583]: Failed password for invalid user support from 192.0.2.15 port 46285 ssh2
+Nov 20 02:12:46 web1 sshd[3583]: Connection closed by invalid user support 192.0.2.15 port 46285 [preauth]
+Nov 20 02:12:47 web1 sshd[3584]: Invalid user test from 203.0.113.77 port 51761
+Nov 20 02:12:47 web1 sshd[3584]: Failed password for invalid user test from 203.0.113.77 port 51761 ssh2
+Nov 20 02:12:48 web1 sshd[3584]: Connection closed by invalid user test 203.0.113.77 port 51761 [preauth]
+Nov 20 02:12:51 web1 sshd[3590]: Invalid user mysql from 192.0.2.15 port 58840
+Nov 20 02:12:51 web1 sshd[3590]: Failed password for invalid user mysql from 192.0.2.15 port 58840 ssh2
+Nov 20 02:12:52 web1 sshd[3590]: Connection closed by invalid user mysql 192.0.2.15 port 58840 [preauth]
+Nov 20 02:12:53 web1 sshd[3594]: Invalid user git from 203.0.113.77 port 51668
+Nov 20 02:12:53 web1 sshd[3594]: Failed password for invalid user git from 203.0.113.77 port 51668 ssh2
+Nov 20 02:12:54 web1 sshd[3594]: Connection closed by invalid user git 203.0.113.77 port 51668 [preauth]
+Nov 20 02:12:57 web1 sshd[3597]: Failed password for root from 192.0.2.15 port 33104 ssh2
+Nov 20 02:12:58 web1 sshd[3597]: Connection closed by authenticating user root 192.0.2.15 port 33104 [preauth]
+Nov 20 02:13:02 web1 sshd[3599]: Invalid user ftp from 203.0.113.77 port 51552
+Nov 20 02:13:02 web1 sshd[3599]: Failed password for invalid user ftp from 203.0.113.77 port 51552 ssh2
+Nov 20 02:13:03 web1 sshd[3605]: Invalid user pi from 192.0.2.15 port 57217
+Nov 20 02:13:03 web1 sshd[3605]: Failed password for invalid user pi from 192.0.2.15 port 57217 ssh2
+Nov 20 02:13:03 web1 sshd[3599]: Connection closed by invalid user ftp 203.0.113.77 port 51552 [preauth]
+Nov 20 02:13:04 web1 sshd[3605]: Connection closed by invalid user pi 192.0.2.15 port 57217 [preauth]
+Nov 20 02:13:07 web1 sshd[3608]: Invalid user ftp from 192.0.2.15 port 41064
+Nov 20 02:13:07 web1 sshd[3608]: Failed password for invalid user ftp from 192.0.2.15 port 41064 ssh2
+Nov 20 02:13:08 web1 sshd[3608]: Connection closed by invalid user ftp 192.0.2.15 port 41064 [preauth]
+Nov 20 02:13:09 web1 sshd[3609]: Invalid user oracle from 203.0.113.77 port 51253
+Nov 20 02:13:09 web1 sshd[3609]: Failed password for invalid user oracle from 203.0.113.77 port 51253 ssh2
+Nov 20 02:13:10 web1 sshd[3611]: Failed password for root from 192.0.2.15 port 54754 ssh2
+Nov 20 02:13:10 web1 sshd[3609]: Connection closed by invalid user oracle 203.0.113.77 port 51253 [preauth]
+Nov 20 02:13:11 web1 sshd[3611]: Connection closed by authenticating user root 192.0.2.15 port 54754 [preauth]
+Nov 20 02:13:16 web1 sshd[3616]: Failed password for root from 192.0.2.15 port 36197 ssh2
+Nov 20 02:13:17 web1 sshd[3616]: Connection closed by authenticating user root 192.0.2.15 port 36197 [preauth]
+Nov 20 02:13:18 web1 sshd[3622]: Invalid user ubuntu from 203.0.113.77 port 51294
+Nov 20 02:13:18 web1 sshd[3622]: Failed password for invalid user ubuntu from 203.0.113.77 port 51294 ssh2
+Nov 20 02:13:19 web1 sshd[3622]: Connection closed by invalid user ubuntu 203.0.113.77 port 51294 [preauth]
+Nov 20 02:13:22 web1 sshd[3629]: Invalid user guest from 192.0.2.15 port 44375
+Nov 20 02:13:22 web1 sshd[3629]: Failed password for invalid user guest from 192.0.2.15 port 44375 ssh2
+Nov 20 02:13:23 web1 sshd[3629]: Connection closed by invalid user guest 192.0.2.15 port 44375 [preauth]
+Nov 20 02:13:24 web1 sshd[3631]: Invalid user jenkins from 203.0.113.77 port 51818
+Nov 20 02:13:24 web1 sshd[3631]: Failed password for invalid user jenkins from 203.0.113.77 port 51818 ssh2
+Nov 20 02:13:25 web1 sshd[3635]: Failed password for root from 192.0.2.15 port 31063 ssh2
+Nov 20 02:13:25 web1 sshd[3631]: Connection closed by invalid user jenkins 203.0.113.77 port 51818 [preauth]
+Nov 20 02:13:26 web1 sshd[3635]: Connection closed by authenticating user root 192.0.2.15 port 31063 [preauth]
+Nov 20 02:13:30 web1 sshd[3637]: Failed password for root from 192.0.2.15 port 56777 ssh2
+Nov 20 02:13:31 web1 sshd[3637]: Connection closed by authenticating user root 192.0.2.15 port 56777 [preauth]
+Nov 20 02:13:31 web1 sshd[3641]: Invalid user www from 203.0.113.77 port 51224
+Nov 20 02:13:31 web1 sshd[3641]: Failed password for invalid user www from 203.0.113.77 port 51224 ssh2
+Nov 20 02:13:32 web1 sshd[3641]: Connection closed by invalid user www 203.0.113.77 port 51224 [preauth]
+Nov 20 02:13:36 web1 sshd[3644]: Failed password for root from 192.0.2.15 port 43132 ssh2
+Nov 20 02:13:37 web1 sshd[3644]: Connection closed by authenticating user root 192.0.2.15 port 43132 [preauth]
+Nov 20 02:13:39 web1 sshd[3650]: Invalid user dev from 203.0.113.77 port 51472
+Nov 20 02:13:39 web1 sshd[3650]: Failed password for invalid user dev from 203.0.113.77 port 51472 ssh2
+Nov 20 02:13:40 web1 sshd[3650]: Connection closed by invalid user dev 203.0.113.77 port 51472 [preauth]
+Nov 20 02:13:42 web1 sshd[3651]: Invalid user admin from 192.0.2.15 port 51450
+Nov 20 02:13:42 web1 sshd[3651]: Failed password for invalid user admin from 192.0.2.15 port 51450 ssh2
+Nov 20 02:13:43 web1 sshd[3651]: Connection closed by invalid user admin 192.0.2.15 port 51450 [preauth]
+Nov 20 02:13:45 web1 sshd[3653]: Invalid user pi from 192.0.2.15 port 60424
+Nov 20 02:13:45 web1 sshd[3653]: Failed password for invalid user pi from 192.0.2.15 port 60424 ssh2
+Nov 20 02:13:45 web1 sshd[3660]: Failed password for deploy from 203.0.113.77 port 51549 ssh2
+Nov 20 02:13:46 web1 sshd[3653]: Connection closed by invalid user pi 192.0.2.15 port 60424 [preauth]
+Nov 20 02:13:46 web1 sshd[3660]: Connection closed by authenticating user deploy 203.0.113.77 port 51549 [preauth]
+Nov 20 02:13:52 web1 sshd[3661]: Failed password for deploy from 203.0.113.77 port 51746 ssh2
+Nov 20 02:13:53 web1 sshd[3661]: Connection closed by authenticating user deploy 203.0.113.77 port 51746 [preauth]
+Nov 20 02:13:54 web1 sshd[3668]: Invalid user test from 192.0.2.15 port 56772
+Nov 20 02:13:54 web1 sshd[3668]: Failed password for invalid user test from 192.0.2.15 port 56772 ssh2
+Nov 20 02:13:55 web1 sshd[3668]: Connection closed by invalid user test 192.0.2.15 port 56772 [preauth]
+Nov 20 02:14:00 web1 sshd[3671]: Invalid user guest from 192.0.2.15 port 32405
+Nov 20 02:14:00 web1 sshd[3671]: Failed password for invalid user guest from 192.0.2.15 port 32405 ssh2
+Nov 20 02:14:01 web1 sshd[3671]: Connection closed by invalid user guest 192.0.2.15 port 32405 [preauth]
+Nov 20 02:14:01 web1 sshd[3672]: Failed password for deploy from 203.0.113.77 port 51651 ssh2
+Nov 20 02:14:02 web1 sshd[3672]: Connection closed by authenticating user deploy 203.0.113.77 port 51651 [preauth]
+Nov 20 02:14:06 web1 sshd[3679]: Invalid user ftp from 192.0.2.15 port 53779
+Nov 20 02:14:06 web1 sshd[3679]: Failed password for invalid user ftp from 192.0.2.15 port 53779 ssh2
+Nov 20 02:14:06 web1 sshd[3684]: Accepted password for deploy from 203.0.113.77 port 51561 ssh2
+Nov 20 02:14:06 web1 sshd[3684]: pam_unix(sshd:session): session opened for user deploy(uid=1001) by (uid=0)
+Nov 20 02:14:07 web1 sshd[3679]: Connection closed by invalid user ftp 192.0.2.15 port 53779 [preauth]
+Nov 20 02:14:14 web1 sshd[3691]: Failed password for root from 192.0.2.15 port 32408 ssh2
+Nov 20 02:14:15 web1 sshd[3691]: Connection closed by authenticating user root 192.0.2.15 port 32408 [preauth]
+Nov 20 02:14:18 web1 sshd[3694]: Failed password for root from 192.0.2.15 port 54115 ssh2
+Nov 20 02:14:19 web1 sshd[3694]: Connection closed by authenticating user root 192.0.2.15 port 54115 [preauth]
+Nov 20 02:14:21 web1 sshd[3699]: Failed password for root from 192.0.2.15 port 43011 ssh2
+Nov 20 02:14:22 web1 sshd[3699]: Connection closed by authenticating user root 192.0.2.15 port 43011 [preauth]
+Nov 20 02:41:31 web1 sshd[3684]: pam_unix(sshd:session): session closed for user deploy
+Nov 20 03:00:02 web1 sshd[3702]: Accepted publickey for backup from 198.51.100.5 port 44556 ssh2: ED25519 SHA256:Zq0n4f6c1Wb9yP2mK7tR3sV8xL5hD0gJ1aE6uB4iN9o
+Nov 20 03:00:02 web1 sshd[3702]: pam_unix(sshd:session): session opened for user backup(uid=1002) by (uid=0)
+Nov 20 03:01:42 web1 sshd[3498]: Received disconnect from 198.51.100.20 port 57925:11: disconnected by user
+Nov 20 03:01:42 web1 sshd[3498]: pam_unix(sshd:session): session closed for user mitch
+Nov 20 03:04:08 web1 sshd[3702]: Received disconnect from 198.51.100.5 port 44556:11: disconnected by user
+Nov 20 03:04:08 web1 sshd[3702]: pam_unix(sshd:session): session closed for user backup
+Nov 20 03:27:21 web1 sshd[3708]: Connection closed by 192.0.2.88 port 42179 [preauth]

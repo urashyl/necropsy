@@ -5,8 +5,8 @@ number = 3
 title = "ILOVEYOU: the password stealer"
 difficulty = 3
 modes = ["web"]
-tags = ["worm", "trojan", "persistence"]
+tags = ["worm", "trojan", "persistence", "registry"]
 hints = [
-  "Two different names appear for two different jobs: the one it arrives as, and the one it installs itself as. You want the second.",
-  "The installed name is the copy that the Run entry starts at boot. Ignore the names that appear in the download directory.",
+  "Go through every `Run` and `RunServices` value. Does the file it points at still exist? Is it part of Windows, or of software that belongs on this PC?",
+  "One value has no folder in it. Windows looks for it in the Windows folder, then the System folder.",
 ]

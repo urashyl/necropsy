@@ -1,0 +1,15 @@
+# Illustrative: the host, the incident and the output are made up.
+
+web2.corp.example.invalid (Debian 12), incident 2026-11-27
+
+Firewall: web2 opens a TLS connection to 203.0.113.200:443 every few minutes.
+Nothing on web2 is supposed to talk to that address.
+
+27 Nov 10:05  Found and removed a cron entry for www-data that ran
+              /tmp/.ICE-unix/.d every 10 minutes. Deleted /tmp/.ICE-unix/.d.
+27 Nov 10:20  Rebooted.
+27 Nov 11:40  The connections are back. ps and top show nothing unusual, and ss shows
+              the connection with no process attached.
+27 Nov 12:10  Copied a statically linked busybox onto the box from a USB stick
+              and ran the commands in busybox.txt with it, next to the normal
+              tools (normal.txt).

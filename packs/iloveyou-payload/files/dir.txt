@@ -1,0 +1,69 @@
+# dir.txt: SYSTEM listing trimmed to the files that matter. Illustrative.
+
+C:\>dir C:\WINDOWS\*.EXE
+
+ Volume in drive C has no label
+ Volume Serial Number is 2A1F-0C33
+ Directory of C:\WINDOWS
+
+SCANREGW EXE      110,592 04-23-99  10:56a scanregw.exe
+TASKMON  EXE       27,648 04-23-99  10:49a taskmon.exe
+RUNDLL32 EXE        8,704 04-23-99  10:56a rundll32.exe
+LOADQM   EXE      108,544 02-11-00   9:42a loadqm.exe
+EXPLORER EXE      204,288 04-23-99  10:56a explorer.exe
+REGEDIT  EXE      120,320 04-23-99  11:49a regedit.exe
+NOTEPAD  EXE       53,248 04-23-99   9:49a notepad.exe
+        7 file(s)        633,344 bytes
+        0 dir(s)     1,204,486,144 bytes free
+
+C:\>dir C:\WINDOWS\SYSTEM\*.*
+
+ Volume in drive C has no label
+ Volume Serial Number is 2A1F-0C33
+ Directory of C:\WINDOWS\SYSTEM
+
+SYSTRAY  EXE       13,824 04-23-99   9:49a systray.exe
+MSTASK   EXE      117,008 04-23-99   9:42a mstask.exe
+HPZSTATN EXE      225,328 11-02-99   9:56a hpzstatn.exe
+WINFAT32 EXE       29,184 05-04-00  11:56a winfat32.exe
+DDHELP   EXE        9,216 04-23-99  11:42a ddhelp.exe
+KERNEL32 DLL      471,040 04-23-99   9:56a kernel32.dll
+MSHTA    EXE        6,144 04-23-99  11:35a mshta.exe
+WSCRIPT  EXE      130,048 04-23-99  11:49a wscript.exe
+        8 file(s)      1,001,792 bytes
+        0 dir(s)     1,204,486,144 bytes free
+
+C:\>dir C:\WINDOWS\SYSTEM\MSKernel32.vbs
+
+ Volume in drive C has no label
+ Volume Serial Number is 2A1F-0C33
+ Directory of C:\WINDOWS\SYSTEM
+
+File not found
+
+C:\>dir C:\WINDOWS\Win32DLL.vbs
+
+ Volume in drive C has no label
+ Volume Serial Number is 2A1F-0C33
+ Directory of C:\WINDOWS
+
+File not found
+
+C:\>dir C:\WIN-BUGSFIX.exe
+
+ Volume in drive C has no label
+ Volume Serial Number is 2A1F-0C33
+ Directory of C:\
+
+File not found
+
+C:\>dir C:\PROGRA~1\NORTON~1\NAVAPW32.EXE
+
+ Volume in drive C has no label
+ Volume Serial Number is 2A1F-0C33
+ Directory of C:\PROGRA~1\NORTON~1
+
+NAVAPW32 EXE        348,160 03-14-00  10:02a NAVAPW32.EXE
+        1 file(s)        348,160 bytes
+        0 dir(s)     1,204,486,144 bytes free
+

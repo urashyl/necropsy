@@ -2,10 +2,10 @@ id = "intro-javascript"
 track = "intro"
 number = 3
 title = "Hidden in numbers"
-difficulty = 1
+difficulty = 2
 modes = ["web"]
-tags = ["javascript", "obfuscation"]
+tags = ["javascript", "obfuscation", "skimming"]
 hints = [
-  "Skip the cookie banner and the analytics. Look at what is built up in `u`, and where it ends up.",
-  "`String.fromCharCode` turns a number into a letter. Run it on the whole list in the browser console, or use `chr()` in Python.",
+  "Running `String.fromCharCode` on those numbers as they are gives you nonsense. Look at what is subtracted first.",
+  "`off` is the length of the first part of the page's path, and that branch only runs when that part is `checkout`.",
 ]

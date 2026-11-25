@@ -6,6 +6,6 @@ difficulty = 1
 modes = ["web"]
 tags = ["logs", "ssh"]
 hints = [
-  "A successful login says `Accepted`. Not every `Accepted` line is a problem.",
-  "You want an address that failed again and again and then got in. Compare how each one logged in: a key, or a guessed password.",
+  "Leave the failures for now. List every login that worked, and who it was for.",
+  "Two addresses fail and then get in. One mistyped a password once. The other worked through a list of user names first.",
 ]

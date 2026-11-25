@@ -1,0 +1,12 @@
+id = "password-spray"
+track = "daily"
+date = "2026-12-05"
+number = 12
+title = "One password, everyone"
+difficulty = 3
+modes = ["web"]
+tags = ["cloud", "identity", "logs"]
+hints = [
+  "Ignore the user with lots of failures in a row. A spray tries one password against many users, a few minutes apart, from many addresses.",
+  "Look at how each sprayed attempt signed in, not only whether it failed. Some protocols can't do MFA.",
+]

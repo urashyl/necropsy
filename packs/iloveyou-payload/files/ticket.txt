@@ -1,0 +1,21 @@
+Ticket 2000-0517 / PC-23 (M. Lindqvist, accounts)
+Opened 4 May 2000 11:52
+
+4 May 14:10  Followed the IT bulletin for the LoveLetter worm:
+             - deleted C:\WINDOWS\SYSTEM\MSKernel32.vbs
+             - deleted C:\WINDOWS\SYSTEM\LOVE-LETTER-FOR-YOU.TXT.vbs
+             - deleted C:\WINDOWS\Win32DLL.vbs
+             - deleted C:\WIN-BUGSFIX.exe (IE saves downloads to C:\ on this PC)
+             - set the IE start page back to msn.com
+             - Norton definitions updated, full scan: clean
+             Rebooted, closed the ticket.
+
+5 May 09:15  Reopened. The relay log shows PC-23 sending one message to an
+             outside address after every boot since yesterday afternoon,
+             including two this morning. It is not the worm's burst, just one
+             small message each time. M. Lindqvist's dial-up and webmail
+             passwords were changed again last night and the new ones were in
+             use from elsewhere within the hour.
+
+5 May 09:40  Exported the Run keys (run-keys.reg) and listed the folders they
+             point at (dir.txt). Did not delete anything else yet.

@@ -47,7 +47,7 @@ async fn build(mailer: Option<Mailer>, client_ip_header: Option<&str>) -> Site {
 }
 
 /// Every daily puzzle is released by this day.
-const ALL_RELEASED: &str = "2026-12-01";
+const ALL_RELEASED: &str = "2026-12-08";
 
 async fn build_trusting(
     mailer: Option<Mailer>,
@@ -1342,7 +1342,7 @@ async fn unreleased_dailies_are_hidden_everywhere() {
         StatusCode::NOT_FOUND
     );
     assert_eq!(
-        s.get(&format!("/p/{hidden}/files/analysis-notes.txt"), None)
+        s.get(&format!("/p/{hidden}/files/run-keys.reg"), None)
             .await
             .status,
         StatusCode::NOT_FOUND,
@@ -1351,7 +1351,7 @@ async fn unreleased_dailies_are_hidden_everywhere() {
     let r = s
         .post_json(
             &format!("/api/p/{hidden}/answer"),
-            r#"{"answer":"winfat32.exe"}"#,
+            r#"{"answer":"C:\\WINDOWS\\SYSTEM\\WINFAT32.EXE"}"#,
             None,
         )
         .await;
@@ -1403,9 +1403,9 @@ async fn today_is_the_latest_released_daily() {
         .contains("ILOVEYOU: the password stealer"));
 
     // After the last daily, the latest one stays up but is no longer "Today".
-    let s = site_on("2026-12-05").await;
+    let s = site_on("2026-12-08").await;
     let home = s.get("/", None).await.body;
-    assert!(home.contains("Second stage"));
+    assert!(home.contains("One password, everyone"));
     assert!(
         !home.contains(r#"class="badge">Today<"#),
         "not dated today, so no badge"
@@ -1453,10 +1453,10 @@ async fn learn_lists_the_intro_stages_in_order() {
 #[tokio::test]
 async fn archive_lists_released_dailies_newest_first_with_dates() {
     let body = site().await.get("/archive", None).await.body;
-    let newest = body.find("Second stage").unwrap();
+    let newest = body.find("One password, everyone").unwrap();
     let oldest = body.find("ILOVEYOU: the source").unwrap();
     assert!(newest < oldest);
-    assert!(body.contains("2026-11-24") && body.contains("2026-11-28"));
+    assert!(body.contains("2026-11-24") && body.contains("2026-12-05"));
     assert!(
         !body.contains("Who got in?"),
         "intro stages are not in the archive"
@@ -1473,8 +1473,8 @@ async fn the_pager_stays_in_its_track_and_the_last_intro_leads_to_today() {
 
     let last = s.get("/p/intro-redirects", None).await.body;
     assert!(
-        last.contains("Today&#39;s puzzle: Second stage")
-            || last.contains("Today's puzzle: Second stage")
+        last.contains("Today&#39;s puzzle: One password, everyone")
+            || last.contains("Today's puzzle: One password, everyone")
     );
     assert!(last.contains(r#"href="/""#));
 

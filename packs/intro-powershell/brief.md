@@ -1,5 +1,3 @@
-Process logs from an office PC. One of these events is the start of an attack.
+Process creation events from an office PC on the morning someone opened an invoice from their email. Shortly afterwards, PowerShell downloaded the attacker's next script.
 
-PowerShell was told to run a command that is hidden inside the log line. **Which host does it download from?**
-
-Answer with the hostname only.
+Which host did it come from? Answer with the hostname only.

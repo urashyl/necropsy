@@ -6,6 +6,6 @@ difficulty = 2
 modes = ["web"]
 tags = ["network", "phishing", "redirects"]
 hints = [
-  "There are four requests. For each one, work out how the browser is sent to the next: a header, a tag, or a script.",
-  "Request 3 hides the next address with `atob`, which is base64. Decode that string to get the last step.",
+  "Each hop sends the browser on in a different way. Hop 3 chooses between two places.",
+  "Both strings in hop 3 are base64. Work out which one a phone would get.",
 ]

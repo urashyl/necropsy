@@ -1,17 +1,14 @@
 The answer is `203.0.113.77`.
 
-Three addresses appear. `198.51.100.20` logged in once, with a key (`Accepted publickey`) as `mitch`, which is normal. `192.0.2.15` tried hardest, with a dozen failed passwords, but never got in. `203.0.113.77` tried a list of common user names (`postgres`, `admin`, `test`, `git`, `ftp`...) and finally got in as `deploy` with a password (`Accepted password`).
+Ten logins worked. Seven used a key: `mitch` from 198.51.100.20, and the nightly `backup` job. Two are `ana` with a password from the office address next door, and on the 19th she gets it wrong once and right six seconds later on the same connection. That's a typo, not an attack.
 
-The pattern to look for is **failures, then a success from the same address**. Most failures are background noise from scanners, so counting failures finds the loudest address, not the one that matters. The success after failures is the incident.
+The tenth is `deploy` from 203.0.113.77 at 02:14 on the 20th. In the minute and a half before that, the same address tried `postgres`, `admin`, `root`, `git`, `jenkins` and a handful of others, then `deploy` three times. The fourth password for `deploy` worked.
 
-With the log in a file, you can find it without reading every line:
+If you answered 192.0.2.15, you found the loudest address in the file. It failed over a hundred times and never got in. Every server with port 22 open gets traffic like that, so counting failures will always lead you to a scanner. Start from what succeeded and ask whether it should have.
 
 ```bash
-grep Accepted auth.log                       # every successful login
-grep 'Failed password' auth.log \
-  | grep -o 'from [0-9.]*' | sort | uniq -c | sort -rn   # failures per address
+grep Accepted auth.log
+grep 203.0.113.77 auth.log
 ```
 
-Then connect the two lists: the address with an `Accepted password` line that also has failures above it.
-
-What you would do next on a real server: end the `deploy` session, check what it ran (`last`, shell history, new cron jobs and SSH keys), change that password, and turn off password logins so only keys work.
+On a real server, you'd end that session, then go through what `deploy` did in its 27 minutes: shell history, its crontab, and `~/.ssh/authorized_keys`, which is where a second way back in usually goes. Then change the password and set `PasswordAuthentication no`.

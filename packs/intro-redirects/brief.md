@@ -1,5 +1,3 @@
-A link in a text message led to a bank login page. This is the browser's traffic, written out.
+A customer reported a text message with a link that looked like it was from their bank. Our sandbox opened the link in a desktop browser, landed on the bank's real home page, and the report was closed as harmless.
 
-A link can pass through several hosts before the page you actually see. **Which host serves the final page?**
-
-Answer with the hostname only.
+The customer had opened it on their iPhone. Which host did the phone end up on? Answer with the hostname only.

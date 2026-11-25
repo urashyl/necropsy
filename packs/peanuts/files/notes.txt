@@ -1,6 +1,11 @@
 host: kiosk-04 (Debian 12, no desktop environment)
-browser: Chromium 120, launched with --user-data-dir=/srv/kiosk/profile
+browser: Chromium 131, launched with --user-data-dir=/srv/kiosk/profile
 libsecret / kwallet: not installed
 
+$ sqlite3 /srv/kiosk/profile/Default/Cookies "SELECT key, value FROM meta"
+mmap_status|-1
+version|24
+last_compatible_version|24
+
 $ sqlite3 /srv/kiosk/profile/Default/Cookies \
-    "SELECT host_key, name, hex(encrypted_value) FROM cookies"
+    "SELECT host_key, name, hex(encrypted_value) FROM cookies" > cookies.txt

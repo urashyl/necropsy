@@ -1,0 +1,756 @@
+# Mail relay log, 4 May 2000. Illustrative: the people and hosts are made up. The worm's
+# behaviour (one message per address-book entry, all sent at once) is the real worm's;
+# see spreadtoemail() in the source from the first ILOVEYOU puzzle.
+May  4 07:49:28 mx1 sendmail[3172]: HFA03172: from=<d.chen@supplier.example.invalid>, size=2057, class=0, pri=32057, nrcpts=1, msgid=<d44f3901bf27f5$3baf6022$2b01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 07:49:28 mx1 sendmail[3176]: HFA03172: to=<y.tanaka@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 07:51:45 mx1 sendmail[3177]: HCA03177: from=<s.muller@office.example.invalid>, size=3461, class=0, pri=33461, nrcpts=1, msgid=<44f90a01bfbdaf$326583df$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-29.office.example.invalid [10.1.0.49]
+May  4 07:51:47 mx1 sendmail[3179]: HCA03177: to=<o.walsh@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 07:53:03 mx1 sendmail[3183]: HHA03183: from=<f.nakamura@office.example.invalid>, size=2463, class=0, pri=62463, nrcpts=2, msgid=<33c14c01bffba3$417fafe6$2601010a@office.example.invalid>, proto=SMTP, relay=pc-16.office.example.invalid [10.1.0.36]
+May  4 07:53:05 mx1 sendmail[3186]: HHA03183: to=<o.walsh@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 07:53:05 mx1 sendmail[3186]: HHA03183: to=<r.santos@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 07:54:32 mx1 sendmail[3188]: HFA03188: from=<x.hughes@office.example.invalid>, size=2001, class=0, pri=32001, nrcpts=1, msgid=<2a49de01bfbcd0$cfb65519$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-34.office.example.invalid [10.1.0.54]
+May  4 07:54:33 mx1 sendmail[3189]: HFA03188: to=<billing@isp.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 07:56:19 mx1 sendmail[3191]: HBA03191: from=<y.tanaka@office.example.invalid>, size=4173, class=0, pri=34173, nrcpts=1, msgid=<97c91601bfc283$b30c222c$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 07:56:21 mx1 sendmail[3194]: HBA03191: to=<info@printshop.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.printshop.example.invalid. [192.0.2.140], stat=Sent (Ok)
+May  4 07:59:49 mx1 sendmail[3198]: HDA03198: from=<j.okafor@office.example.invalid>, size=2687, class=0, pri=32687, nrcpts=1, msgid=<8a609101bff836$d6a8b33b$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 07:59:49 mx1 sendmail[3199]: HDA03198: to=<i.romero@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:01:25 mx1 sendmail[3202]: IBA03202: from=<r.santos@office.example.invalid>, size=120126, class=0, pri=150126, nrcpts=1, msgid=<72b2c001bf7ab5$07b970ad$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-28.office.example.invalid [10.1.0.48]
+May  4 08:01:27 mx1 sendmail[3204]: IBA03202: to=<p.kowalski@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:02:55 mx1 sendmail[3206]: IBA03206: from=<w.berg@office.example.invalid>, size=3668, class=0, pri=33668, nrcpts=1, msgid=<b02f3a01bf3a8c$b7b565da$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-33.office.example.invalid [10.1.0.53]
+May  4 08:02:57 mx1 sendmail[3207]: IBA03206: to=<sam.rivera@partner.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 08:06:25 mx1 sendmail[3209]: IFA03209: from=<sam.rivera@partner.example.invalid>, size=3451, class=0, pri=33451, nrcpts=1, msgid=<dca6d701bfecc7$25336b36$2b01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 08:06:27 mx1 sendmail[3212]: IFA03209: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:10:42 mx1 sendmail[3215]: IHA03215: from=<z.novak@office.example.invalid>, size=1825, class=0, pri=31825, nrcpts=1, msgid=<6ead8601bff663$9f123265$2601010a@office.example.invalid>, proto=SMTP, relay=pc-36.office.example.invalid [10.1.0.56]
+May  4 08:10:43 mx1 sendmail[3219]: IHA03215: to=<f.nakamura@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:11:40 mx1 sendmail[3221]: IBA03221: from=<n.ivanova@office.example.invalid>, size=1467, class=0, pri=31467, nrcpts=1, msgid=<afb8d001bf5779$c947e093$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-24.office.example.invalid [10.1.0.44]
+May  4 08:11:40 mx1 sendmail[3223]: IBA03221: to=<k.adeyemi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:12:38 mx1 sendmail[3225]: IBA03225: from=<y.tanaka@office.example.invalid>, size=3504, class=0, pri=33504, nrcpts=1, msgid=<12f4b501bf53eb$074933e2$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 08:12:40 mx1 sendmail[3226]: IBA03225: to=<press@agency.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 08:15:02 mx1 sendmail[3229]: IGA03229: from=<p.kowalski@office.example.invalid>, size=2068, class=0, pri=62068, nrcpts=2, msgid=<a3798801bf68c7$1f192834$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-26.office.example.invalid [10.1.0.46]
+May  4 08:15:02 mx1 sendmail[3231]: IGA03229: to=<r.santos@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:15:02 mx1 sendmail[3231]: IGA03229: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:17:36 mx1 sendmail[3232]: IGA03232: from=<v.rossi@office.example.invalid>, size=2228, class=0, pri=32228, nrcpts=1, msgid=<1d504401bf0710$f256f0ca$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-32.office.example.invalid [10.1.0.52]
+May  4 08:17:36 mx1 sendmail[3235]: IGA03232: to=<a.brennan@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:20:31 mx1 sendmail[3239]: IHA03239: from=<orders@supplier.example.invalid>, size=2217, class=0, pri=32217, nrcpts=1, msgid=<d0f0b501bfa0c8$f6b0749f$2b01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 08:20:32 mx1 sendmail[3240]: IHA03239: to=<k.adeyemi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:23:42 mx1 sendmail[3244]: IAA03244: from=<j.fox@lawfirm.example.invalid>, size=2282, class=0, pri=32282, nrcpts=1, msgid=<a6075001bfba5c$660f8057$2b01010a@lawfirm.example.invalid>, proto=ESMTP, relay=mail.lawfirm.example.invalid [198.51.100.66]
+May  4 08:23:42 mx1 sendmail[3247]: IAA03244: to=<i.romero@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:27:52 mx1 sendmail[3248]: IEA03248: from=<info@printshop.example.invalid>, size=2107, class=0, pri=32107, nrcpts=1, msgid=<dbb9b901bf090b$cdc190f0$2601010a@printshop.example.invalid>, proto=ESMTP, relay=mail.printshop.example.invalid [192.0.2.140]
+May  4 08:27:52 mx1 sendmail[3250]: IEA03248: to=<d.haas@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3253]: IFA03253: from=<newsletter@office.example.invalid>, size=6211, class=0, pri=786211, nrcpts=26, msgid=<53db2601bfbba6$687ad7b8$2a01010a@office.example.invalid>, proto=SMTP, relay=intranet.office.example.invalid [10.1.0.5]
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<a.brennan@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<b.costa@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<c.dubois@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<d.haas@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<e.moreau@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<f.nakamura@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<g.osei@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<h.patel@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<i.romero@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<k.adeyemi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<l.schmidt@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<m.lindqvist@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<n.ivanova@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<o.walsh@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<p.kowalski@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<q.zhang@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<r.santos@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<s.muller@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<t.oconnor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<u.yilmaz@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<v.rossi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<w.berg@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<x.hughes@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<y.tanaka@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:04 mx1 sendmail[3255]: IFA03253: to=<z.novak@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:30:14 mx1 sendmail[3256]: IFA03256: from=<a.kumar@university.example.invalid>, size=3507, class=0, pri=33507, nrcpts=1, msgid=<aa661701bf3141$f461e1aa$2a01010a@university.example.invalid>, proto=ESMTP, relay=smtp.university.example.invalid [198.51.100.9]
+May  4 08:30:14 mx1 sendmail[3257]: IFA03256: to=<r.santos@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:32:18 mx1 sendmail[3259]: ICA03259: from=<l.schmidt@office.example.invalid>, size=1269, class=0, pri=31269, nrcpts=1, msgid=<3fa45e01bfee1e$245d4e23$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-22.office.example.invalid [10.1.0.42]
+May  4 08:32:19 mx1 sendmail[3263]: ICA03259: to=<j.fox@lawfirm.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.lawfirm.example.invalid. [198.51.100.66], stat=Sent (Ok)
+May  4 08:35:26 mx1 sendmail[3266]: IHA03266: from=<v.rossi@office.example.invalid>, size=2709, class=0, pri=32709, nrcpts=1, msgid=<bbdd5801bf9498$d3dc001a$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-32.office.example.invalid [10.1.0.52]
+May  4 08:35:26 mx1 sendmail[3269]: IHA03266: to=<u.yilmaz@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:36:57 mx1 sendmail[3270]: IEA03270: from=<info@printshop.example.invalid>, size=2704, class=0, pri=32704, nrcpts=1, msgid=<ae829901bfac9d$39706fef$2a01010a@printshop.example.invalid>, proto=ESMTP, relay=mail.printshop.example.invalid [192.0.2.140]
+May  4 08:36:58 mx1 sendmail[3273]: IEA03270: to=<c.dubois@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:38:30 mx1 sendmail[3274]: IEA03274: from=<sam.rivera@partner.example.invalid>, size=2642, class=0, pri=32642, nrcpts=1, msgid=<5a8b1a01bf7dd1$58174968$2b01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 08:38:30 mx1 sendmail[3278]: IEA03274: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:42:40 mx1 sendmail[3280]: IFA03280: from=<g.osei@office.example.invalid>, size=1356, class=0, pri=61356, nrcpts=2, msgid=<ece59701bfe12a$c2f64fa0$2601010a@office.example.invalid>, proto=SMTP, relay=pc-17.office.example.invalid [10.1.0.37]
+May  4 08:42:41 mx1 sendmail[3281]: IFA03280: to=<sam.rivera@partner.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 08:42:41 mx1 sendmail[3281]: IFA03280: to=<k.ito@agency.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 08:45:44 mx1 sendmail[3284]: IAA03284: from=<v.rossi@office.example.invalid>, size=3671, class=0, pri=63671, nrcpts=2, msgid=<e7ae3101bfa2b9$aed4ff3d$2601010a@office.example.invalid>, proto=SMTP, relay=pc-32.office.example.invalid [10.1.0.52]
+May  4 08:45:45 mx1 sendmail[3286]: IAA03284: to=<billing@isp.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 08:45:45 mx1 sendmail[3286]: IAA03284: to=<orders@supplier.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 08:47:19 mx1 sendmail[3289]: IGA03289: from=<m.grant@partner.example.invalid>, size=125368, class=0, pri=155368, nrcpts=1, msgid=<08b0ee01bf2215$8b293726$2601010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 08:47:19 mx1 sendmail[3292]: IGA03289: to=<z.novak@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:51:26 mx1 sendmail[3295]: ICA03295: from=<sam.rivera@partner.example.invalid>, size=1829, class=0, pri=31829, nrcpts=1, msgid=<fa99b801bfc10d$59a4fd59$2601010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 08:51:28 mx1 sendmail[3299]: ICA03295: to=<p.kowalski@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:52:07 mx1 sendmail[3300]: IAA03300: from=<sam.rivera@partner.example.invalid>, size=14659, class=0, pri=44659, nrcpts=1, msgid=<4503df01bf8ac1$1577a21d$2a01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 08:52:08 mx1 sendmail[3302]: IAA03300: to=<j.okafor@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:53:45 mx1 sendmail[3303]: IGA03303: from=<a.kumar@university.example.invalid>, size=2074, class=0, pri=32074, nrcpts=1, msgid=<aea1a601bf56fe$92c49052$2601010a@university.example.invalid>, proto=ESMTP, relay=smtp.university.example.invalid [198.51.100.9]
+May  4 08:53:45 mx1 sendmail[3306]: IGA03303: to=<d.haas@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:55:45 mx1 sendmail[3307]: IBA03307: from=<x.hughes@office.example.invalid>, size=1571, class=0, pri=91571, nrcpts=3, msgid=<74309101bfecd0$47997724$2601010a@office.example.invalid>, proto=SMTP, relay=pc-34.office.example.invalid [10.1.0.54]
+May  4 08:55:45 mx1 sendmail[3308]: IBA03307: to=<n.ivanova@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 08:55:45 mx1 sendmail[3308]: IBA03307: to=<k.ito@agency.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 08:55:45 mx1 sendmail[3308]: IBA03307: to=<a.kumar@university.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.university.example.invalid. [198.51.100.9], stat=Sent (Ok)
+May  4 08:58:50 mx1 sendmail[3310]: IAA03310: from=<t.reyes@client.example.invalid>, size=1538, class=0, pri=31538, nrcpts=1, msgid=<ca33d001bff62a$b44a5378$2b01010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 08:58:51 mx1 sendmail[3314]: IAA03310: to=<c.dubois@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:02:38 mx1 sendmail[3316]: JAA03316: from=<m.lindqvist@office.example.invalid>, size=2274, class=0, pri=32274, nrcpts=1, msgid=<bb328a01bf8e48$0ef196a4$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:02:40 mx1 sendmail[3319]: JAA03316: to=<z.novak@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:06:40 mx1 sendmail[3323]: JHA03323: from=<d.chen@supplier.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<d7956501bf3e8c$b9d4dd5f$2a01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 09:06:42 mx1 sendmail[3327]: JHA03323: to=<m.lindqvist@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:06:56 mx1 sendmail[3329]: JBA03329: from=<w.berg@office.example.invalid>, size=3977, class=0, pri=93977, nrcpts=3, msgid=<8f941b01bf55a4$fdff2ada$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-33.office.example.invalid [10.1.0.53]
+May  4 09:06:57 mx1 sendmail[3330]: JBA03329: to=<g.osei@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:06:57 mx1 sendmail[3330]: JBA03329: to=<a.kumar@university.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=smtp.university.example.invalid. [198.51.100.9], stat=Sent (Ok)
+May  4 09:06:57 mx1 sendmail[3330]: JBA03329: to=<u.yilmaz@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:09:12 mx1 sendmail[3333]: JFA03333: from=<d.chen@supplier.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<4204fb01bfb97f$3b9698db$2601010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 09:09:12 mx1 sendmail[3337]: JFA03333: to=<q.zhang@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:10:54 mx1 sendmail[3341]: JCA03341: from=<h.lund@client.example.invalid>, size=3920, class=0, pri=33920, nrcpts=1, msgid=<30347d01bfbed6$75259a51$2b01010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 09:10:54 mx1 sendmail[3344]: JCA03341: to=<n.ivanova@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:12:42 mx1 sendmail[3346]: JAA03346: from=<press@agency.example.invalid>, size=2167, class=0, pri=32167, nrcpts=1, msgid=<d6132401bfed92$c9de1b43$2b01010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 09:12:43 mx1 sendmail[3350]: JAA03346: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:17:00 mx1 sendmail[3351]: JFA03351: from=<j.okafor@office.example.invalid>, size=3270, class=0, pri=33270, nrcpts=1, msgid=<47467d01bf274f$83ac4545$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 09:17:02 mx1 sendmail[3353]: JFA03351: to=<b.costa@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:19:35 mx1 sendmail[3355]: JEA03355: from=<g.osei@office.example.invalid>, size=95519, class=0, pri=185519, nrcpts=3, msgid=<d725b201bf95c0$ed0cbe07$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-17.office.example.invalid [10.1.0.37]
+May  4 09:19:37 mx1 sendmail[3356]: JEA03355: to=<z.novak@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:19:37 mx1 sendmail[3356]: JEA03355: to=<n.ivanova@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:19:37 mx1 sendmail[3356]: JEA03355: to=<k.ito@agency.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 09:21:34 mx1 sendmail[3357]: JHA03357: from=<l.schmidt@office.example.invalid>, size=2438, class=0, pri=62438, nrcpts=2, msgid=<a3a13f01bf2b95$749d3781$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-22.office.example.invalid [10.1.0.42]
+May  4 09:21:34 mx1 sendmail[3359]: JHA03357: to=<v.rossi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:21:34 mx1 sendmail[3359]: JHA03357: to=<sam.rivera@partner.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 09:24:17 mx1 sendmail[3363]: JHA03363: from=<k.adeyemi@office.example.invalid>, size=3331, class=0, pri=33331, nrcpts=1, msgid=<1a085201bfdb01$bbb7d4be$2601010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 09:24:17 mx1 sendmail[3365]: JHA03363: to=<info@printshop.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.printshop.example.invalid. [192.0.2.140], stat=Sent (Ok)
+May  4 09:25:17 mx1 sendmail[3368]: JCA03368: from=<n.ivanova@office.example.invalid>, size=108927, class=0, pri=138927, nrcpts=1, msgid=<9f125b01bfc45f$30c74e02$2601010a@office.example.invalid>, proto=SMTP, relay=pc-24.office.example.invalid [10.1.0.44]
+May  4 09:25:17 mx1 sendmail[3372]: JCA03368: to=<f.nakamura@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:27:40 mx1 sendmail[3373]: JFA03373: from=<t.reyes@client.example.invalid>, size=150506, class=0, pri=180506, nrcpts=1, msgid=<e0cc0001bfce07$4e29b68e$2a01010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 09:27:42 mx1 sendmail[3376]: JFA03373: to=<h.patel@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:28:55 mx1 sendmail[3377]: JAA03377: from=<o.walsh@office.example.invalid>, size=3856, class=0, pri=33856, nrcpts=1, msgid=<9db83301bfd766$84e863b8$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-25.office.example.invalid [10.1.0.45]
+May  4 09:28:57 mx1 sendmail[3381]: JAA03377: to=<t.reyes@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 09:29:40 mx1 sendmail[3382]: JFA03382: from=<y.tanaka@office.example.invalid>, size=1461, class=0, pri=31461, nrcpts=1, msgid=<8932ff01bfcb3b$96eaff05$2601010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 09:29:40 mx1 sendmail[3385]: JFA03382: to=<e.moreau@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:18 mx1 sendmail[3387]: JEA03387: from=<m.lindqvist@office.example.invalid>, size=14661, class=0, pri=44661, nrcpts=1, msgid=<d0cf7101bf2d05$bb8b9b92$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:18 mx1 sendmail[3389]: JEA03387: to=<c.dubois@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:20 mx1 sendmail[3390]: JAA03390: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<387e2801bf5f07$a388b3d9$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:20 mx1 sendmail[3392]: JAA03390: to=<b.costa@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:23 mx1 sendmail[3396]: JDA03396: from=<m.lindqvist@office.example.invalid>, size=14660, class=0, pri=44660, nrcpts=1, msgid=<10bcee01bf43ad$90fa06e4$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:25 mx1 sendmail[3397]: JDA03396: to=<d.haas@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:25 mx1 sendmail[3398]: JDA03398: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<fc0ba301bff809$102eed0d$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:27 mx1 sendmail[3401]: JDA03398: to=<i.romero@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:28 mx1 sendmail[3403]: JBA03403: from=<m.lindqvist@office.example.invalid>, size=14659, class=0, pri=44659, nrcpts=1, msgid=<f7c2e201bfff1b$e23806b2$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:30 mx1 sendmail[3405]: JBA03403: to=<k.adeyemi@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:31 mx1 sendmail[3408]: JCA03408: from=<m.lindqvist@office.example.invalid>, size=14659, class=0, pri=44659, nrcpts=1, msgid=<9d12be01bfe534$925b0799$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:33 mx1 sendmail[3410]: JCA03408: to=<s.muller@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:34 mx1 sendmail[3411]: JEA03411: from=<m.lindqvist@office.example.invalid>, size=14660, class=0, pri=44660, nrcpts=1, msgid=<01c38201bf46a8$614cd5dc$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:34 mx1 sendmail[3413]: JEA03411: to=<w.berg@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:35 mx1 sendmail[3414]: JFA03414: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<a1bca101bf0723$4abb9d68$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:36 mx1 sendmail[3418]: JFA03414: to=<f.nakamura@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:36 mx1 sendmail[3421]: JEA03421: from=<m.lindqvist@office.example.invalid>, size=14659, class=0, pri=44659, nrcpts=1, msgid=<ec9d1e01bf48de$0a0d6e92$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:36 mx1 sendmail[3422]: JEA03421: to=<p.kowalski@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:38 mx1 sendmail[3424]: JFA03424: from=<m.lindqvist@office.example.invalid>, size=14659, class=0, pri=44659, nrcpts=1, msgid=<c0c6e201bf27d7$e2e376d8$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:40 mx1 sendmail[3426]: JFA03424: to=<o.walsh@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:41 mx1 sendmail[3429]: JBA03429: from=<m.lindqvist@office.example.invalid>, size=14660, class=0, pri=44660, nrcpts=1, msgid=<03445101bf4989$188a4db5$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:43 mx1 sendmail[3431]: JBA03429: to=<e.moreau@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:43 mx1 sendmail[3435]: JBA03435: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<83abf301bf02d5$436b93cd$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:44 mx1 sendmail[3436]: JCA03436: from=<m.lindqvist@office.example.invalid>, size=14660, class=0, pri=44660, nrcpts=1, msgid=<81c0e501bf0ee2$7d272bab$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:45 mx1 sendmail[3440]: JBA03435: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:46 mx1 sendmail[3442]: JCA03436: to=<t.oconnor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:46 mx1 sendmail[3445]: JEA03445: from=<m.lindqvist@office.example.invalid>, size=14659, class=0, pri=44659, nrcpts=1, msgid=<b8978801bf8166$3457994e$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:47 mx1 sendmail[3447]: JEA03445: to=<u.yilmaz@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:49 mx1 sendmail[3450]: JFA03450: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<2d601201bf2e11$d5b8bb77$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:51 mx1 sendmail[3453]: JFA03450: to=<z.novak@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:51 mx1 sendmail[3457]: JDA03457: from=<m.lindqvist@office.example.invalid>, size=14659, class=0, pri=44659, nrcpts=1, msgid=<24d80f01bf30c3$47e4b720$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:52 mx1 sendmail[3458]: JDA03457: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:31:52 mx1 sendmail[3460]: JHA03460: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<b8fbbd01bf130d$8df794af$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:53 mx1 sendmail[3463]: JHA03460: to=<info@printshop.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.printshop.example.invalid. [192.0.2.140], stat=Sent (Ok)
+May  4 09:31:53 mx1 sendmail[3465]: JAA03465: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<2ad15e01bfe041$ad607acf$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:55 mx1 sendmail[3469]: JAA03465: to=<d.chen@supplier.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 09:31:56 mx1 sendmail[3470]: JCA03470: from=<m.lindqvist@office.example.invalid>, size=14661, class=0, pri=44661, nrcpts=1, msgid=<432ba601bfb96e$66d648c5$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:31:57 mx1 sendmail[3473]: JCA03470: to=<m.grant@partner.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 09:31:59 mx1 sendmail[3477]: JAA03477: from=<m.lindqvist@office.example.invalid>, size=14658, class=0, pri=44658, nrcpts=1, msgid=<789c8101bfb03d$c913d912$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:32:00 mx1 sendmail[3479]: JCA03479: from=<m.lindqvist@office.example.invalid>, size=14661, class=0, pri=44661, nrcpts=1, msgid=<cfc89d01bfd09d$8e33459b$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:32:01 mx1 sendmail[3482]: JAA03477: to=<h.lund@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 09:32:01 mx1 sendmail[3486]: JCA03479: to=<orders@supplier.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 09:32:03 mx1 sendmail[3487]: JAA03487: from=<m.lindqvist@office.example.invalid>, size=14661, class=0, pri=44661, nrcpts=1, msgid=<8fa14801bfd07c$0097fbd1$2601010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:32:03 mx1 sendmail[3488]: JAA03487: to=<press@agency.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 09:32:06 mx1 sendmail[3491]: JFA03491: from=<m.lindqvist@office.example.invalid>, size=14660, class=0, pri=44660, nrcpts=1, msgid=<bc51a301bfaf50$3a77921d$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:32:08 mx1 sendmail[3492]: JFA03491: to=<billing@isp.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 09:32:34 mx1 sendmail[3494]: JGA03494: from=<t.reyes@client.example.invalid>, size=2425, class=0, pri=32425, nrcpts=1, msgid=<ab371c01bf5538$93801fbc$2b01010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 09:32:36 mx1 sendmail[3496]: JGA03494: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:34:01 mx1 sendmail[3497]: JAA03497: from=<m.lindqvist@office.example.invalid>, size=2243, class=0, pri=32243, nrcpts=1, msgid=<f8088901bf3f34$4b800cba$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 09:34:02 mx1 sendmail[3500]: JAA03497: to=<o.walsh@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:35:33 mx1 sendmail[3503]: JAA03503: from=<h.patel@office.example.invalid>, size=103308, class=0, pri=133308, nrcpts=1, msgid=<eff7a701bf1822$3211f612$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 09:35:33 mx1 sendmail[3506]: JAA03503: to=<z.novak@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:38:23 mx1 sendmail[3510]: JCA03510: from=<h.lund@client.example.invalid>, size=1752, class=0, pri=31752, nrcpts=1, msgid=<c4de0901bf0417$e2a119b8$2b01010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 09:38:25 mx1 sendmail[3514]: JCA03510: to=<s.muller@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:39:40 mx1 sendmail[3518]: JAA03518: from=<k.adeyemi@office.example.invalid>, size=211958, class=0, pri=241958, nrcpts=1, msgid=<ad92ad01bf6948$acc693c9$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 09:39:41 mx1 sendmail[3521]: JAA03518: to=<i.romero@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:40:37 mx1 sendmail[3524]: JCA03524: from=<info@printshop.example.invalid>, size=1696, class=0, pri=31696, nrcpts=1, msgid=<9a05f501bf3454$e60546bd$2a01010a@printshop.example.invalid>, proto=ESMTP, relay=mail.printshop.example.invalid [192.0.2.140]
+May  4 09:40:39 mx1 sendmail[3527]: JCA03524: to=<y.tanaka@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:43:44 mx1 sendmail[3529]: JEA03529: from=<a.brennan@office.example.invalid>, size=4134, class=0, pri=34134, nrcpts=1, msgid=<c896d501bf18ce$411643ee$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-11.office.example.invalid [10.1.0.31]
+May  4 09:43:46 mx1 sendmail[3530]: JEA03529: to=<b.costa@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:45:12 mx1 sendmail[3531]: JCA03531: from=<y.tanaka@office.example.invalid>, size=3729, class=0, pri=33729, nrcpts=1, msgid=<d772d801bf6b68$86ff9566$2601010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 09:45:13 mx1 sendmail[3534]: JCA03531: to=<r.santos@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:47:20 mx1 sendmail[3536]: JFA03536: from=<j.fox@lawfirm.example.invalid>, size=2783, class=0, pri=32783, nrcpts=1, msgid=<367cc101bf4363$b73b745d$2b01010a@lawfirm.example.invalid>, proto=ESMTP, relay=mail.lawfirm.example.invalid [198.51.100.66]
+May  4 09:47:22 mx1 sendmail[3539]: JFA03536: to=<x.hughes@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:50:58 mx1 sendmail[3542]: JHA03542: from=<billing@isp.example.invalid>, size=80646, class=0, pri=110646, nrcpts=1, msgid=<d7a3ee01bffbbb$581ebf4a$2b01010a@isp.example.invalid>, proto=ESMTP, relay=mail.isp.example.invalid [192.0.2.80]
+May  4 09:50:59 mx1 sendmail[3545]: JHA03542: to=<d.haas@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:53:21 mx1 sendmail[3546]: JAA03546: from=<n.ivanova@office.example.invalid>, size=3506, class=0, pri=33506, nrcpts=1, msgid=<f8bc8901bfd695$5fa8be5b$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-24.office.example.invalid [10.1.0.44]
+May  4 09:53:23 mx1 sendmail[3549]: JAA03546: to=<m.grant@partner.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 09:56:38 mx1 sendmail[3552]: JGA03552: from=<q.zhang@office.example.invalid>, size=2337, class=0, pri=32337, nrcpts=1, msgid=<2f513401bfffb6$87f30efb$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 09:56:39 mx1 sendmail[3554]: JGA03552: to=<j.okafor@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 09:58:44 mx1 sendmail[3555]: JFA03555: from=<x.hughes@office.example.invalid>, size=1878, class=0, pri=31878, nrcpts=1, msgid=<2484ca01bfaaab$6b4713c1$2601010a@office.example.invalid>, proto=SMTP, relay=pc-34.office.example.invalid [10.1.0.54]
+May  4 09:58:46 mx1 sendmail[3558]: JFA03555: to=<m.grant@partner.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 09:59:30 mx1 sendmail[3559]: JBA03559: from=<m.grant@partner.example.invalid>, size=192000, class=0, pri=222000, nrcpts=1, msgid=<0ca17a01bf2dfe$044d216f$2b01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 09:59:31 mx1 sendmail[3562]: JBA03559: to=<b.costa@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:02:51 mx1 sendmail[3563]: KAA03563: from=<k.adeyemi@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<26314b01bfce9e$d4d774f5$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:02:51 mx1 sendmail[3565]: KAA03563: to=<t.oconnor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:02:53 mx1 sendmail[3568]: KEA03568: from=<k.adeyemi@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<6ee72001bf7b42$4a8d5fbe$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:02:54 mx1 sendmail[3571]: KHA03571: from=<k.adeyemi@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<3bc17201bff789$14b80025$2601010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:02:54 mx1 sendmail[3573]: KHA03571: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:02:55 mx1 sendmail[3575]: KEA03568: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:02:56 mx1 sendmail[3576]: KAA03576: from=<k.adeyemi@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<3a0b7801bf691e$c6e6336a$2601010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:02:56 mx1 sendmail[3578]: KAA03576: to=<g.osei@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:02:58 mx1 sendmail[3579]: KHA03579: from=<k.adeyemi@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<a1ff9e01bfdb60$cdce4adb$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:02:59 mx1 sendmail[3580]: KHA03579: to=<v.rossi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:00 mx1 sendmail[3582]: KDA03582: from=<k.adeyemi@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<8702aa01bfad8c$4b695c58$2601010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:02 mx1 sendmail[3584]: KDA03582: to=<c.dubois@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:03 mx1 sendmail[3585]: KDA03585: from=<k.adeyemi@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<1f87cf01bf106c$963e382d$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:04 mx1 sendmail[3587]: KDA03585: to=<o.walsh@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:04 mx1 sendmail[3591]: KHA03591: from=<k.adeyemi@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<e8faf801bf72dd$fe00f073$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:05 mx1 sendmail[3593]: KHA03591: to=<b.costa@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:05 mx1 sendmail[3597]: KAA03597: from=<k.adeyemi@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<465d3001bfd72d$e132f014$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:06 mx1 sendmail[3599]: KAA03597: to=<h.patel@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:06 mx1 sendmail[3600]: KFA03600: from=<k.adeyemi@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<64ad0601bfe620$b0b73640$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:06 mx1 sendmail[3601]: KFA03600: to=<i.romero@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:07 mx1 sendmail[3603]: KAA03603: from=<d.haas@office.example.invalid>, size=3664, class=0, pri=93664, nrcpts=3, msgid=<38183e01bfb6bc$276cdd13$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-14.office.example.invalid [10.1.0.34]
+May  4 10:03:07 mx1 sendmail[3605]: KAA03603: to=<m.lindqvist@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:07 mx1 sendmail[3605]: KAA03603: to=<press@agency.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 10:03:07 mx1 sendmail[3605]: KAA03603: to=<q.zhang@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:07 mx1 sendmail[3606]: KCA03606: from=<k.adeyemi@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<28fc8301bf716b$671f1ff7$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:07 mx1 sendmail[3608]: KCA03606: to=<f.nakamura@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:09 mx1 sendmail[3609]: KCA03609: from=<k.adeyemi@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<cbe18e01bf4419$64967fa5$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:10 mx1 sendmail[3610]: KCA03609: to=<n.ivanova@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:12 mx1 sendmail[3614]: KEA03614: from=<k.adeyemi@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<fd085401bfc710$7a5f27d0$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:12 mx1 sendmail[3618]: KEA03614: to=<m.lindqvist@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:03:15 mx1 sendmail[3619]: KFA03619: from=<k.adeyemi@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<85f15801bff2d4$ab43591c$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:15 mx1 sendmail[3620]: KFA03619: to=<h.lund@client.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 10:03:17 mx1 sendmail[3624]: KEA03624: from=<k.adeyemi@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<daaa1701bfaf83$13b90a7c$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:18 mx1 sendmail[3627]: KEA03624: to=<billing@isp.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 10:03:18 mx1 sendmail[3628]: KGA03628: from=<k.adeyemi@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<a1696c01bf0f1c$98229010$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:18 mx1 sendmail[3629]: KGA03628: to=<t.reyes@client.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 10:03:19 mx1 sendmail[3630]: KHA03630: from=<k.adeyemi@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<181b9e01bf41a6$42a4d2f8$2601010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:20 mx1 sendmail[3631]: KHA03630: to=<j.fox@lawfirm.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.lawfirm.example.invalid. [198.51.100.66], stat=Sent (Ok)
+May  4 10:03:21 mx1 sendmail[3633]: KBA03633: from=<k.adeyemi@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<8ee28001bfffa4$8399016a$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:21 mx1 sendmail[3634]: KBA03633: to=<info@printshop.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.printshop.example.invalid. [192.0.2.140], stat=Sent (Ok)
+May  4 10:03:23 mx1 sendmail[3636]: KFA03636: from=<k.adeyemi@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<4b82ae01bff81f$b18dfbd3$2601010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:23 mx1 sendmail[3638]: KFA03636: to=<m.grant@partner.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 10:03:26 mx1 sendmail[3639]: KGA03639: from=<k.adeyemi@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<c41aa501bf08c3$ce4e45cb$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:03:27 mx1 sendmail[3642]: KGA03639: to=<press@agency.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 10:06:36 mx1 sendmail[3644]: KDA03644: from=<d.chen@supplier.example.invalid>, size=1658, class=0, pri=31658, nrcpts=1, msgid=<77a4c901bfa5fd$1c4e372c$2a01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 10:06:38 mx1 sendmail[3645]: KDA03644: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:10:48 mx1 sendmail[3648]: KAA03648: from=<r.santos@office.example.invalid>, size=3593, class=0, pri=33593, nrcpts=1, msgid=<8b483001bfc9f3$6739436a$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-28.office.example.invalid [10.1.0.48]
+May  4 10:10:49 mx1 sendmail[3650]: KAA03648: to=<x.hughes@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:12:33 mx1 sendmail[3653]: KHA03653: from=<e.moreau@office.example.invalid>, size=2694, class=0, pri=32694, nrcpts=1, msgid=<194a2f01bfbda6$975304af$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-15.office.example.invalid [10.1.0.35]
+May  4 10:12:33 mx1 sendmail[3654]: KHA03653: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:15:47 mx1 sendmail[3655]: KBA03655: from=<b.costa@office.example.invalid>, size=3401, class=0, pri=33401, nrcpts=1, msgid=<88fa9001bf783e$9a32cd0c$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 10:15:47 mx1 sendmail[3658]: KBA03655: to=<t.reyes@client.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 10:17:05 mx1 sendmail[3661]: KAA03661: from=<i.romero@office.example.invalid>, size=2399, class=0, pri=62399, nrcpts=2, msgid=<7f8f9901bf43ef$ab049ea9$2601010a@office.example.invalid>, proto=SMTP, relay=pc-19.office.example.invalid [10.1.0.39]
+May  4 10:17:05 mx1 sendmail[3665]: KAA03661: to=<billing@isp.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 10:17:05 mx1 sendmail[3665]: KAA03661: to=<j.fox@lawfirm.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.lawfirm.example.invalid. [198.51.100.66], stat=Sent (Ok)
+May  4 10:18:01 mx1 sendmail[3668]: KHA03668: from=<sam.rivera@partner.example.invalid>, size=150868, class=0, pri=180868, nrcpts=1, msgid=<14070401bf8d47$d69846d8$2b01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 10:18:01 mx1 sendmail[3669]: KHA03668: to=<z.novak@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:14 mx1 sendmail[3671]: KBA03671: from=<orders@supplier.example.invalid>, size=3280, class=0, pri=33280, nrcpts=1, msgid=<58e4fb01bf0a00$352e6ffc$2601010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 10:19:16 mx1 sendmail[3672]: KBA03671: to=<z.novak@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:33 mx1 sendmail[3673]: KEA03673: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<20324201bf7f71$7cfaa6a1$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:34 mx1 sendmail[3677]: KEA03677: from=<j.okafor@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<fec6fb01bfbc3e$1d4a3552$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:34 mx1 sendmail[3679]: KEA03677: to=<w.berg@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:35 mx1 sendmail[3681]: KEA03673: to=<t.oconnor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:35 mx1 sendmail[3683]: KDA03683: from=<j.okafor@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<ac9a9101bf1a0a$42070ee5$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:35 mx1 sendmail[3686]: KDA03683: to=<u.yilmaz@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:38 mx1 sendmail[3688]: KFA03688: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<05f5fb01bf583a$6a2814a4$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:40 mx1 sendmail[3691]: KFA03688: to=<y.tanaka@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:40 mx1 sendmail[3693]: KFA03693: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<919b0801bfb9d3$7a0e4639$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:41 mx1 sendmail[3694]: KFA03693: to=<b.costa@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:42 mx1 sendmail[3698]: KHA03698: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<f3aaab01bf49ef$be84e14b$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:43 mx1 sendmail[3702]: KHA03698: to=<o.walsh@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:44 mx1 sendmail[3703]: KHA03703: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<ee846201bfc476$247f87a7$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:46 mx1 sendmail[3704]: KHA03703: to=<n.ivanova@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:46 mx1 sendmail[3708]: KEA03708: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<956a3901bfd7c0$19038854$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:47 mx1 sendmail[3710]: KGA03710: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<a3213701bf59d6$5ee101c3$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:47 mx1 sendmail[3711]: KGA03710: to=<i.romero@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:48 mx1 sendmail[3714]: KEA03708: to=<f.nakamura@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:49 mx1 sendmail[3716]: KBA03716: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<d7ad7e01bfbdea$da867eb8$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:50 mx1 sendmail[3717]: KAA03717: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<ac0c7e01bff2c1$006e6bf0$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:51 mx1 sendmail[3719]: KBA03716: to=<m.lindqvist@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:52 mx1 sendmail[3723]: KAA03717: to=<d.haas@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:52 mx1 sendmail[3726]: KBA03726: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<4e130101bf85f8$8aad7302$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:54 mx1 sendmail[3729]: KBA03726: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:54 mx1 sendmail[3733]: KDA03733: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<69ae9601bf13c8$f19bf7a0$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:55 mx1 sendmail[3735]: KDA03733: to=<h.patel@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:55 mx1 sendmail[3739]: KCA03739: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<20cc2c01bf9d70$42bb0a0a$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:56 mx1 sendmail[3740]: KCA03739: to=<q.zhang@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:58 mx1 sendmail[3742]: KCA03742: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<1f4abb01bf10d6$274e1b99$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:19:59 mx1 sendmail[3744]: KCA03742: to=<k.adeyemi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:19:59 mx1 sendmail[3747]: KCA03747: from=<j.okafor@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<d3e76e01bf1fae$2ad71030$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:20:00 mx1 sendmail[3748]: KCA03747: to=<billing@isp.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 10:20:02 mx1 sendmail[3752]: KGA03752: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<2c125001bf7da7$1a293928$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:20:02 mx1 sendmail[3753]: KGA03752: to=<j.fox@lawfirm.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.lawfirm.example.invalid. [198.51.100.66], stat=Sent (Ok)
+May  4 10:20:04 mx1 sendmail[3754]: KEA03754: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<f0f7af01bf9dfc$cab13d47$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:20:04 mx1 sendmail[3757]: KEA03754: to=<orders@supplier.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 10:20:07 mx1 sendmail[3761]: KDA03761: from=<j.okafor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<f0cdeb01bf6fd8$648bf448$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:20:08 mx1 sendmail[3764]: KDA03761: to=<sam.rivera@partner.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 10:20:10 mx1 sendmail[3765]: KBA03765: from=<j.okafor@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<162d8801bf7fd1$a3c72976$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:20:11 mx1 sendmail[3769]: KBA03765: to=<k.ito@agency.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 10:20:12 mx1 sendmail[3772]: KHA03772: from=<j.okafor@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<05464e01bfaf50$e6b35963$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:20:13 mx1 sendmail[3776]: KGA03776: from=<j.okafor@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<0883f401bfc205$d1369215$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 10:20:14 mx1 sendmail[3780]: KHA03772: to=<press@agency.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 10:20:15 mx1 sendmail[3783]: KGA03776: to=<m.grant@partner.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 10:20:54 mx1 sendmail[3787]: KCA03787: from=<y.tanaka@office.example.invalid>, size=3786, class=0, pri=63786, nrcpts=2, msgid=<7a31e801bf56c2$1f7062ea$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 10:20:55 mx1 sendmail[3791]: KCA03787: to=<info@printshop.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.printshop.example.invalid. [192.0.2.140], stat=Sent (Ok)
+May  4 10:20:55 mx1 sendmail[3791]: KCA03787: to=<a.brennan@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:23:38 mx1 sendmail[3794]: KGA03794: from=<m.grant@partner.example.invalid>, size=1080, class=0, pri=31080, nrcpts=1, msgid=<4f5eeb01bfc635$000de7c6$2601010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 10:23:39 mx1 sendmail[3796]: KGA03794: to=<j.okafor@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:26:48 mx1 sendmail[3799]: KGA03799: from=<sam.rivera@partner.example.invalid>, size=185929, class=0, pri=215929, nrcpts=1, msgid=<1b7fad01bf4f8f$55509d3c$2601010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 10:26:49 mx1 sendmail[3802]: KGA03799: to=<k.adeyemi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:28:26 mx1 sendmail[3806]: KAA03806: from=<z.novak@office.example.invalid>, size=2482, class=0, pri=32482, nrcpts=1, msgid=<d672d201bf7d51$9dabc31f$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-36.office.example.invalid [10.1.0.56]
+May  4 10:28:26 mx1 sendmail[3809]: KAA03806: to=<b.costa@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:29:11 mx1 sendmail[3811]: KEA03811: from=<a.kumar@university.example.invalid>, size=1056, class=0, pri=31056, nrcpts=1, msgid=<e8a2d901bfb2f4$86271df0$2b01010a@university.example.invalid>, proto=ESMTP, relay=smtp.university.example.invalid [198.51.100.9]
+May  4 10:29:11 mx1 sendmail[3812]: KEA03811: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:32:45 mx1 sendmail[3814]: KDA03814: from=<z.novak@office.example.invalid>, size=1370, class=0, pri=31370, nrcpts=1, msgid=<a6873401bf37ab$45e798e8$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-36.office.example.invalid [10.1.0.56]
+May  4 10:32:46 mx1 sendmail[3817]: KDA03814: to=<p.kowalski@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:36:40 mx1 sendmail[3819]: KEA03819: from=<b.costa@office.example.invalid>, size=1375, class=0, pri=31375, nrcpts=1, msgid=<2f609701bf124c$64bcedfb$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 10:36:42 mx1 sendmail[3822]: KEA03819: to=<a.kumar@university.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.university.example.invalid. [198.51.100.9], stat=Sent (Ok)
+May  4 10:39:46 mx1 sendmail[3826]: KCA03826: from=<h.lund@client.example.invalid>, size=2094, class=0, pri=32094, nrcpts=1, msgid=<9b57e701bf6411$77b2a133$2601010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 10:39:47 mx1 sendmail[3830]: KCA03826: to=<u.yilmaz@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:00 mx1 sendmail[3833]: KBA03833: from=<helpdesk@office.example.invalid>, size=2388, class=0, pri=782388, nrcpts=26, msgid=<00260201bf5e2a$ace91278$2b01010a@office.example.invalid>, proto=SMTP, relay=intranet.office.example.invalid [10.1.0.5]
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<a.brennan@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<b.costa@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<c.dubois@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<d.haas@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<e.moreau@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<f.nakamura@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<g.osei@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<h.patel@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<i.romero@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<j.okafor@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<k.adeyemi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<l.schmidt@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<m.lindqvist@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<n.ivanova@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<o.walsh@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<p.kowalski@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<q.zhang@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<r.santos@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<s.muller@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<t.oconnor@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<u.yilmaz@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<v.rossi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<w.berg@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<x.hughes@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:01 mx1 sendmail[3834]: KBA03833: to=<z.novak@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:41:55 mx1 sendmail[3835]: KGA03835: from=<press@agency.example.invalid>, size=46863, class=0, pri=76863, nrcpts=1, msgid=<38aaf301bff35e$92d58ee6$2601010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 10:41:57 mx1 sendmail[3836]: KGA03835: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:09 mx1 sendmail[3837]: KEA03837: from=<h.patel@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<7980f001bffe98$448ce190$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:10 mx1 sendmail[3840]: KEA03837: to=<r.santos@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:12 mx1 sendmail[3841]: KEA03841: from=<h.patel@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<3f38e301bfd2eb$5383514d$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:12 mx1 sendmail[3844]: KEA03841: to=<f.nakamura@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:14 mx1 sendmail[3848]: KHA03848: from=<h.patel@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<d9059e01bfc28c$a8c3eaad$2601010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:16 mx1 sendmail[3849]: KHA03848: to=<e.moreau@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:16 mx1 sendmail[3852]: KAA03852: from=<h.patel@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<8fe35e01bfea59$89eab9a7$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:17 mx1 sendmail[3855]: KAA03852: to=<n.ivanova@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:19 mx1 sendmail[3856]: KHA03856: from=<h.patel@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<c24c3901bf5685$9c62a91d$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:20 mx1 sendmail[3857]: KBA03857: from=<h.patel@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<70820201bfd44a$586ad513$2601010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:20 mx1 sendmail[3861]: KBA03857: to=<w.berg@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:21 mx1 sendmail[3863]: KHA03856: to=<q.zhang@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:21 mx1 sendmail[3865]: KDA03865: from=<h.patel@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<2b0c4301bfc7fd$56e58959$2601010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:21 mx1 sendmail[3869]: KDA03865: to=<s.muller@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:23 mx1 sendmail[3871]: KHA03871: from=<h.patel@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<d8bc6c01bf3465$887c60ae$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:23 mx1 sendmail[3875]: KHA03871: to=<d.haas@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:26 mx1 sendmail[3876]: KEA03876: from=<h.patel@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<ebb56b01bfe34a$f5f92a6d$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:26 mx1 sendmail[3880]: KEA03876: to=<v.rossi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:29 mx1 sendmail[3883]: KBA03883: from=<h.patel@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<37c64901bfe8fc$0972358c$2601010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:30 mx1 sendmail[3886]: KBA03883: to=<z.novak@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:30 mx1 sendmail[3890]: KEA03890: from=<h.patel@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<4fe27701bfca01$ebe6cfc2$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:31 mx1 sendmail[3891]: KEA03890: to=<t.oconnor@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:32 mx1 sendmail[3895]: KEA03895: from=<h.patel@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<a76d2f01bf7fd2$4a4e9d1c$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:33 mx1 sendmail[3898]: KBA03898: from=<h.patel@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<a3b0aa01bf9581$50db7827$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:34 mx1 sendmail[3900]: KEA03895: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:34 mx1 sendmail[3904]: KGA03904: from=<h.patel@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<0b7ae501bf3a8d$d3e545df$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:35 mx1 sendmail[3908]: KBA03898: to=<x.hughes@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:44:36 mx1 sendmail[3911]: KGA03904: to=<j.fox@lawfirm.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.lawfirm.example.invalid. [198.51.100.66], stat=Sent (Ok)
+May  4 10:44:36 mx1 sendmail[3913]: KHA03913: from=<h.patel@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<f39e7d01bf5357$b8a0dbd2$2601010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:36 mx1 sendmail[3915]: KHA03913: to=<sam.rivera@partner.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 10:44:37 mx1 sendmail[3916]: KGA03916: from=<h.patel@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<c2992801bfe076$ec299345$2601010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:38 mx1 sendmail[3920]: KEA03920: from=<h.patel@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<1181d401bfc830$46c8b9da$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-18.office.example.invalid [10.1.0.38]
+May  4 10:44:39 mx1 sendmail[3924]: KGA03916: to=<m.grant@partner.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 10:44:40 mx1 sendmail[3928]: KEA03920: to=<t.reyes@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 10:45:11 mx1 sendmail[3932]: KCA03932: from=<v.rossi@office.example.invalid>, size=200225, class=0, pri=260225, nrcpts=2, msgid=<0b338801bfb42a$0d06fbfa$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-32.office.example.invalid [10.1.0.52]
+May  4 10:45:11 mx1 sendmail[3934]: KCA03932: to=<q.zhang@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:45:11 mx1 sendmail[3934]: KCA03932: to=<t.oconnor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:47:57 mx1 sendmail[3935]: KCA03935: from=<press@agency.example.invalid>, size=2943, class=0, pri=32943, nrcpts=1, msgid=<e5833c01bfed11$2ed572b9$2b01010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 10:47:57 mx1 sendmail[3936]: KCA03935: to=<k.adeyemi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:51:26 mx1 sendmail[3939]: KFA03939: from=<e.moreau@office.example.invalid>, size=180092, class=0, pri=210092, nrcpts=1, msgid=<ab22f001bf496f$59dae9a1$2601010a@office.example.invalid>, proto=SMTP, relay=pc-15.office.example.invalid [10.1.0.35]
+May  4 10:51:27 mx1 sendmail[3941]: KFA03939: to=<s.muller@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:55:44 mx1 sendmail[3945]: KBA03945: from=<v.rossi@office.example.invalid>, size=1956, class=0, pri=31956, nrcpts=1, msgid=<aa1b1201bf070a$5022d0a2$2601010a@office.example.invalid>, proto=SMTP, relay=pc-32.office.example.invalid [10.1.0.52]
+May  4 10:55:46 mx1 sendmail[3948]: KBA03945: to=<u.yilmaz@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:56:34 mx1 sendmail[3952]: KFA03952: from=<h.lund@client.example.invalid>, size=4034, class=0, pri=34034, nrcpts=1, msgid=<d6a39401bf350f$09f1fb35$2b01010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 10:56:34 mx1 sendmail[3956]: KFA03952: to=<h.patel@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 10:59:57 mx1 sendmail[3958]: KFA03958: from=<k.adeyemi@office.example.invalid>, size=4026, class=0, pri=34026, nrcpts=1, msgid=<c9d91b01bfe640$aa179913$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 10:59:58 mx1 sendmail[3961]: KFA03958: to=<t.reyes@client.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 11:00:47 mx1 sendmail[3963]: LFA03963: from=<g.osei@office.example.invalid>, size=2353, class=0, pri=32353, nrcpts=1, msgid=<55643f01bf357c$18f5d92a$2601010a@office.example.invalid>, proto=SMTP, relay=pc-17.office.example.invalid [10.1.0.37]
+May  4 11:00:47 mx1 sendmail[3964]: LFA03963: to=<h.patel@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:40 mx1 sendmail[3965]: LDA03965: from=<q.zhang@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<ad614e01bfb153$5e64f9f3$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:42 mx1 sendmail[3967]: LDA03965: to=<r.santos@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:42 mx1 sendmail[3968]: LAA03968: from=<q.zhang@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<4a7a0401bf83f5$50f5a18f$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:43 mx1 sendmail[3971]: LBA03971: from=<q.zhang@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<71bd9001bf34d9$2b6c557d$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:44 mx1 sendmail[3972]: LAA03968: to=<i.romero@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:44 mx1 sendmail[3974]: LBA03971: to=<s.muller@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:46 mx1 sendmail[3976]: LAA03976: from=<q.zhang@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<26de3401bf1995$b1dcc3b7$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:47 mx1 sendmail[3978]: LAA03976: to=<m.lindqvist@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:49 mx1 sendmail[3979]: LAA03979: from=<q.zhang@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<e777fa01bf8022$05c7ffb4$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:49 mx1 sendmail[3980]: LAA03979: to=<o.walsh@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:51 mx1 sendmail[3982]: LEA03982: from=<q.zhang@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<cde97e01bf5ae9$19a67798$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:52 mx1 sendmail[3985]: LEA03982: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:54 mx1 sendmail[3987]: LBA03987: from=<q.zhang@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<d9cf8f01bf8646$b42ae08a$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:55 mx1 sendmail[3991]: LFA03991: from=<q.zhang@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<e687a801bfa337$f710526d$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:56 mx1 sendmail[3995]: LBA03987: to=<j.okafor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:56 mx1 sendmail[3996]: LFA03991: to=<c.dubois@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:03:58 mx1 sendmail[4000]: LAA04000: from=<q.zhang@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<90084601bf9937$060ac61a$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:03:58 mx1 sendmail[4004]: LAA04000: to=<t.oconnor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:04:00 mx1 sendmail[4005]: LCA04005: from=<q.zhang@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<ecddfc01bf3875$740973ce$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:00 mx1 sendmail[4006]: LCA04005: to=<n.ivanova@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:04:02 mx1 sendmail[4009]: LEA04009: from=<q.zhang@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<412d8901bf204e$2f21fc25$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:04 mx1 sendmail[4013]: LEA04009: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:04:05 mx1 sendmail[4015]: LHA04015: from=<q.zhang@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<82d0e401bf7912$737cac78$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:06 mx1 sendmail[4016]: LHA04015: to=<e.moreau@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:04:07 mx1 sendmail[4017]: LFA04017: from=<q.zhang@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<12effe01bf7da4$a32b12f1$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:08 mx1 sendmail[4018]: LEA04018: from=<q.zhang@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<05dd5401bf7b5a$f4a77e4c$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:09 mx1 sendmail[4021]: LFA04017: to=<w.berg@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:04:09 mx1 sendmail[4025]: LEA04018: to=<a.brennan@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:04:09 mx1 sendmail[4029]: LDA04029: from=<q.zhang@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<09dd3101bfee7d$2a1ffa49$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:10 mx1 sendmail[4033]: LDA04029: to=<v.rossi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:04:10 mx1 sendmail[4037]: LHA04037: from=<q.zhang@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<c1f74101bf9145$b707a916$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:10 mx1 sendmail[4040]: LHA04037: to=<info@printshop.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.printshop.example.invalid. [192.0.2.140], stat=Sent (Ok)
+May  4 11:04:13 mx1 sendmail[4044]: LEA04044: from=<q.zhang@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<6d26b301bf8d92$87069a4c$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:15 mx1 sendmail[4047]: LEA04044: to=<h.lund@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 11:04:16 mx1 sendmail[4049]: LBA04049: from=<q.zhang@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<fdf48701bf582e$4b131320$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:16 mx1 sendmail[4050]: LBA04049: to=<m.grant@partner.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 11:04:17 mx1 sendmail[4052]: LAA04052: from=<q.zhang@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<e8eda101bf6d5a$f2ef55f7$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:17 mx1 sendmail[4053]: LAA04052: to=<orders@supplier.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 11:04:19 mx1 sendmail[4054]: LBA04054: from=<q.zhang@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<e6e78401bf1039$7c546cd7$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:19 mx1 sendmail[4057]: LBA04054: to=<j.fox@lawfirm.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.lawfirm.example.invalid. [198.51.100.66], stat=Sent (Ok)
+May  4 11:04:21 mx1 sendmail[4060]: LFA04060: from=<q.zhang@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<e2fc4d01bfad80$ed4c45a9$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:23 mx1 sendmail[4063]: LFA04060: to=<billing@isp.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 11:04:24 mx1 sendmail[4064]: LAA04064: from=<q.zhang@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<b635a301bf6157$f20ae4e8$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:04:26 mx1 sendmail[4066]: LAA04064: to=<k.ito@agency.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mx.agency.example.invalid. [203.0.113.12], stat=Sent (Ok)
+May  4 11:04:49 mx1 sendmail[4068]: LGA04068: from=<k.ito@agency.example.invalid>, size=153235, class=0, pri=183235, nrcpts=1, msgid=<67452801bf8f0f$382ab7ee$2b01010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 11:04:51 mx1 sendmail[4071]: LGA04068: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:05:54 mx1 sendmail[4072]: LCA04072: from=<h.lund@client.example.invalid>, size=1228, class=0, pri=31228, nrcpts=1, msgid=<92077401bfc947$060189ae$2b01010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 11:05:56 mx1 sendmail[4075]: LCA04072: to=<a.brennan@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:07:34 mx1 sendmail[4076]: LEA04076: from=<q.zhang@office.example.invalid>, size=3822, class=0, pri=33822, nrcpts=1, msgid=<eea10901bf9003$875ea83d$2601010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 11:07:34 mx1 sendmail[4078]: LEA04076: to=<h.lund@client.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 11:11:51 mx1 sendmail[4080]: LBA04080: from=<d.chen@supplier.example.invalid>, size=1246, class=0, pri=31246, nrcpts=1, msgid=<d58a0d01bff08b$168c3c5c$2a01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 11:11:52 mx1 sendmail[4081]: LBA04080: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:13:27 mx1 sendmail[4085]: LFA04085: from=<j.fox@lawfirm.example.invalid>, size=3455, class=0, pri=33455, nrcpts=1, msgid=<4a737b01bf9b30$892b8e77$2a01010a@lawfirm.example.invalid>, proto=ESMTP, relay=mail.lawfirm.example.invalid [198.51.100.66]
+May  4 11:13:28 mx1 sendmail[4086]: LFA04085: to=<d.haas@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:22 mx1 sendmail[4089]: LCA04089: from=<helpdesk@office.example.invalid>, size=3104, class=0, pri=783104, nrcpts=26, msgid=<61e96b01bfd343$e842a32f$2601010a@office.example.invalid>, proto=SMTP, relay=intranet.office.example.invalid [10.1.0.5]
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<a.brennan@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<b.costa@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<c.dubois@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<d.haas@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<e.moreau@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<f.nakamura@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<h.patel@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<i.romero@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<j.okafor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<k.adeyemi@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<m.lindqvist@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<n.ivanova@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<o.walsh@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<p.kowalski@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<q.zhang@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<r.santos@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<s.muller@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<t.oconnor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<u.yilmaz@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<v.rossi@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<w.berg@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<x.hughes@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<y.tanaka@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:15:24 mx1 sendmail[4092]: LCA04089: to=<z.novak@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:16:47 mx1 sendmail[4093]: LFA04093: from=<j.fox@lawfirm.example.invalid>, size=3595, class=0, pri=33595, nrcpts=1, msgid=<2e8da701bf2670$018a0c49$2a01010a@lawfirm.example.invalid>, proto=ESMTP, relay=mail.lawfirm.example.invalid [198.51.100.66]
+May  4 11:16:49 mx1 sendmail[4095]: LFA04093: to=<k.adeyemi@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:18:41 mx1 sendmail[4098]: LEA04098: from=<info@printshop.example.invalid>, size=145957, class=0, pri=175957, nrcpts=1, msgid=<ce4c5801bf9f9c$9dc68b23$2a01010a@printshop.example.invalid>, proto=ESMTP, relay=mail.printshop.example.invalid [192.0.2.140]
+May  4 11:18:41 mx1 sendmail[4101]: LEA04098: to=<f.nakamura@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:21:42 mx1 sendmail[4102]: LDA04102: from=<y.tanaka@office.example.invalid>, size=2061, class=0, pri=32061, nrcpts=1, msgid=<8aadb901bfaac0$04a988f8$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 11:21:43 mx1 sendmail[4103]: LDA04102: to=<e.moreau@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:24:08 mx1 sendmail[4105]: LHA04105: from=<r.santos@office.example.invalid>, size=106910, class=0, pri=136910, nrcpts=1, msgid=<2a3fd301bf1e68$4e926a44$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-28.office.example.invalid [10.1.0.48]
+May  4 11:24:10 mx1 sendmail[4106]: LHA04105: to=<a.kumar@university.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.university.example.invalid. [198.51.100.9], stat=Sent (Ok)
+May  4 11:27:02 mx1 sendmail[4108]: LFA04108: from=<t.oconnor@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<3f7bb901bf84f6$b0301048$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:03 mx1 sendmail[4110]: LFA04108: to=<k.adeyemi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:03 mx1 sendmail[4112]: LGA04112: from=<t.oconnor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<efa66101bfba8d$99863ef4$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:03 mx1 sendmail[4114]: LGA04112: to=<b.costa@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:05 mx1 sendmail[4115]: LAA04115: from=<t.oconnor@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<61d7a701bfcf5f$4bbcb4d4$2601010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:07 mx1 sendmail[4116]: LAA04115: to=<a.brennan@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:08 mx1 sendmail[4117]: LFA04117: from=<t.oconnor@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<16f18701bfca8c$5efea7d0$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:08 mx1 sendmail[4121]: LFA04117: to=<h.patel@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:10 mx1 sendmail[4125]: LBA04125: from=<t.oconnor@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<e221ea01bfa387$bb8b03f4$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:10 mx1 sendmail[4129]: LBA04125: to=<p.kowalski@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:11 mx1 sendmail[4132]: LBA04132: from=<t.oconnor@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<9b95e901bfa978$37196d4d$2601010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:11 mx1 sendmail[4135]: LBA04132: to=<m.lindqvist@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:12 mx1 sendmail[4137]: LDA04137: from=<t.oconnor@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<2a87e601bf3da1$36a81aa3$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:13 mx1 sendmail[4139]: LBA04139: from=<t.oconnor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<a205af01bfc525$f437f09c$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:13 mx1 sendmail[4142]: LBA04139: to=<d.haas@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:14 mx1 sendmail[4143]: LDA04137: to=<j.okafor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:15 mx1 sendmail[4147]: LBA04147: from=<t.oconnor@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<66fb9b01bff68d$58b29a8b$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:16 mx1 sendmail[4150]: LBA04147: to=<g.osei@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:17 mx1 sendmail[4153]: LDA04153: from=<t.oconnor@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<b01b0b01bf4d15$1969a06b$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:18 mx1 sendmail[4156]: LDA04153: to=<u.yilmaz@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:19 mx1 sendmail[4158]: LFA04158: from=<t.oconnor@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<7712b501bf11a3$ef120a4b$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:20 mx1 sendmail[4160]: LFA04158: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:20 mx1 sendmail[4162]: LBA04162: from=<t.oconnor@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<36810401bf5766$b51bdf16$2601010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:22 mx1 sendmail[4163]: LBA04162: to=<i.romero@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:23 mx1 sendmail[4166]: LFA04166: from=<t.oconnor@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<c92ff801bfa798$d0c35910$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:24 mx1 sendmail[4168]: LFA04166: to=<w.berg@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:26 mx1 sendmail[4170]: LEA04170: from=<t.oconnor@office.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<178ac901bfd6b1$3fa8aec9$2601010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:26 mx1 sendmail[4172]: LEA04170: to=<n.ivanova@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:29 mx1 sendmail[4174]: LCA04174: from=<t.oconnor@office.example.invalid>, size=14656, class=0, pri=44656, nrcpts=1, msgid=<2786ca01bf4f2a$67796359$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:31 mx1 sendmail[4177]: LCA04174: to=<x.hughes@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:27:32 mx1 sendmail[4180]: LFA04180: from=<t.oconnor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<17262901bff484$6d681e1e$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:34 mx1 sendmail[4182]: LFA04180: to=<t.reyes@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 11:27:35 mx1 sendmail[4183]: LCA04183: from=<t.oconnor@office.example.invalid>, size=14657, class=0, pri=44657, nrcpts=1, msgid=<c4f11901bf08b8$9f004fa9$2601010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:36 mx1 sendmail[4185]: LCA04183: to=<sam.rivera@partner.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 11:27:38 mx1 sendmail[4186]: LCA04186: from=<t.oconnor@office.example.invalid>, size=14655, class=0, pri=44655, nrcpts=1, msgid=<bb2df101bf02b7$b6478f8c$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-30.office.example.invalid [10.1.0.50]
+May  4 11:27:38 mx1 sendmail[4188]: LCA04186: to=<billing@isp.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 11:27:45 mx1 sendmail[4191]: LCA04191: from=<press@agency.example.invalid>, size=4048, class=0, pri=34048, nrcpts=1, msgid=<534ac701bfe848$32dc1bf3$2601010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 11:27:47 mx1 sendmail[4194]: LCA04191: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:31:32 mx1 sendmail[4198]: LAA04198: from=<press@agency.example.invalid>, size=1109, class=0, pri=31109, nrcpts=1, msgid=<2dcc6801bf9842$f80c873d$2a01010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 11:31:32 mx1 sendmail[4201]: LAA04198: to=<k.adeyemi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:34:19 mx1 sendmail[4202]: LHA04202: from=<a.brennan@office.example.invalid>, size=2483, class=0, pri=32483, nrcpts=1, msgid=<ca711e01bf8637$254b97a4$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-11.office.example.invalid [10.1.0.31]
+May  4 11:34:19 mx1 sendmail[4204]: LHA04202: to=<m.grant@partner.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 11:35:08 mx1 sendmail[4206]: LAA04206: from=<p.kowalski@office.example.invalid>, size=1265, class=0, pri=31265, nrcpts=1, msgid=<ce0bd501bff31e$d6e7c905$2601010a@office.example.invalid>, proto=SMTP, relay=pc-26.office.example.invalid [10.1.0.46]
+May  4 11:35:09 mx1 sendmail[4208]: LAA04206: to=<l.schmidt@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:37:59 mx1 sendmail[4209]: LDA04209: from=<k.ito@agency.example.invalid>, size=2287, class=0, pri=32287, nrcpts=1, msgid=<6f5ea801bf96e1$c915e367$2601010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 11:37:59 mx1 sendmail[4211]: LDA04209: to=<p.kowalski@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:41:39 mx1 sendmail[4213]: LHA04213: from=<press@agency.example.invalid>, size=4038, class=0, pri=34038, nrcpts=1, msgid=<3cefce01bfa16d$fa73d773$2601010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 11:41:39 mx1 sendmail[4214]: LHA04213: to=<x.hughes@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:43:50 mx1 sendmail[4216]: LBA04216: from=<y.tanaka@office.example.invalid>, size=1406, class=0, pri=61406, nrcpts=2, msgid=<e67f3f01bf4b7a$70ead0af$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 11:43:50 mx1 sendmail[4218]: LBA04216: to=<g.osei@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:43:50 mx1 sendmail[4218]: LBA04216: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:47:02 mx1 sendmail[4219]: LCA04219: from=<z.novak@office.example.invalid>, size=1293, class=0, pri=31293, nrcpts=1, msgid=<3952df01bff98d$3f5f925f$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-36.office.example.invalid [10.1.0.56]
+May  4 11:47:03 mx1 sendmail[4223]: LCA04219: to=<r.santos@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:48:53 mx1 sendmail[4225]: LHA04225: from=<l.schmidt@office.example.invalid>, size=50901, class=0, pri=110901, nrcpts=2, msgid=<35b90f01bfebe5$947aa62a$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-22.office.example.invalid [10.1.0.42]
+May  4 11:48:54 mx1 sendmail[4226]: LHA04225: to=<x.hughes@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:48:54 mx1 sendmail[4226]: LHA04225: to=<s.muller@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:53:04 mx1 sendmail[4229]: LCA04229: from=<j.okafor@office.example.invalid>, size=3080, class=0, pri=63080, nrcpts=2, msgid=<5b1c5601bfd00b$8311dae9$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 11:53:05 mx1 sendmail[4232]: LCA04229: to=<l.schmidt@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:53:05 mx1 sendmail[4232]: LCA04229: to=<m.grant@partner.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 11:57:15 mx1 sendmail[4233]: LAA04233: from=<d.chen@supplier.example.invalid>, size=2003, class=0, pri=32003, nrcpts=1, msgid=<26c4b401bf62b3$2787c5bc$2b01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 11:57:17 mx1 sendmail[4237]: LAA04233: to=<u.yilmaz@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 11:57:59 mx1 sendmail[4241]: LFA04241: from=<u.yilmaz@office.example.invalid>, size=3583, class=0, pri=33583, nrcpts=1, msgid=<6c1e2601bf56bd$2647e20d$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-31.office.example.invalid [10.1.0.51]
+May  4 11:58:00 mx1 sendmail[4243]: LFA04241: to=<t.oconnor@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:01:43 mx1 sendmail[4244]: MAA04244: from=<o.walsh@office.example.invalid>, size=3115, class=0, pri=33115, nrcpts=1, msgid=<cf517b01bf18f0$15c48bcf$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-25.office.example.invalid [10.1.0.45]
+May  4 12:01:45 mx1 sendmail[4246]: MAA04244: to=<t.oconnor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:03:57 mx1 sendmail[4247]: MCA04247: from=<p.kowalski@office.example.invalid>, size=3572, class=0, pri=33572, nrcpts=1, msgid=<cb403a01bfaa59$c57fa8d5$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-26.office.example.invalid [10.1.0.46]
+May  4 12:03:58 mx1 sendmail[4249]: MCA04247: to=<l.schmidt@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:05:36 mx1 sendmail[4250]: MDA04250: from=<a.brennan@office.example.invalid>, size=1201, class=0, pri=31201, nrcpts=1, msgid=<5ab3c601bf08a1$0dc7355b$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-11.office.example.invalid [10.1.0.31]
+May  4 12:05:36 mx1 sendmail[4252]: MDA04250: to=<billing@isp.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 12:06:36 mx1 sendmail[4254]: MEA04254: from=<billing@isp.example.invalid>, size=4028, class=0, pri=34028, nrcpts=1, msgid=<7fcaad01bf20fe$4d497333$2b01010a@isp.example.invalid>, proto=ESMTP, relay=mail.isp.example.invalid [192.0.2.80]
+May  4 12:06:36 mx1 sendmail[4258]: MEA04254: to=<o.walsh@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:09:43 mx1 sendmail[4262]: MHA04262: from=<t.reyes@client.example.invalid>, size=29091, class=0, pri=59091, nrcpts=1, msgid=<6db32a01bff7a8$3f252e22$2601010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 12:09:45 mx1 sendmail[4266]: MHA04262: to=<u.yilmaz@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:14:03 mx1 sendmail[4268]: MDA04268: from=<l.schmidt@office.example.invalid>, size=1975, class=0, pri=31975, nrcpts=1, msgid=<23dfd001bf8ff0$8f23841e$2601010a@office.example.invalid>, proto=SMTP, relay=pc-22.office.example.invalid [10.1.0.42]
+May  4 12:14:03 mx1 sendmail[4270]: MDA04268: to=<t.oconnor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:16 mx1 sendmail[4272]: MAA04272: from=<a.kumar@university.example.invalid>, size=3939, class=0, pri=33939, nrcpts=1, msgid=<88c37501bf96e6$298b0711$2b01010a@university.example.invalid>, proto=ESMTP, relay=smtp.university.example.invalid [198.51.100.9]
+May  4 12:15:16 mx1 sendmail[4273]: MAA04272: to=<f.nakamura@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:30 mx1 sendmail[4274]: MFA04274: from=<b.costa@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<a62e4601bf4903$e43bc4af$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:32 mx1 sendmail[4276]: MFA04274: to=<t.oconnor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:32 mx1 sendmail[4279]: MBA04279: from=<b.costa@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<a3c8a001bf759d$1633fee5$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:34 mx1 sendmail[4281]: MBA04279: to=<j.okafor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:35 mx1 sendmail[4282]: MCA04282: from=<b.costa@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<afcfb201bf3d0c$55622fab$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:36 mx1 sendmail[4286]: MCA04282: to=<o.walsh@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:37 mx1 sendmail[4290]: MBA04290: from=<b.costa@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<bdf21501bfb784$689f4314$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:39 mx1 sendmail[4292]: MBA04290: to=<w.berg@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:39 mx1 sendmail[4296]: MDA04296: from=<b.costa@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<3aa2b501bfe547$157670d7$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:40 mx1 sendmail[4300]: MDA04296: to=<g.osei@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:41 mx1 sendmail[4302]: MGA04302: from=<b.costa@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<91f28f01bfc077$79653d29$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:41 mx1 sendmail[4306]: MGA04302: to=<i.romero@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:42 mx1 sendmail[4310]: MBA04310: from=<b.costa@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<55c19501bf2739$1a258e7c$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:44 mx1 sendmail[4314]: MBA04310: to=<y.tanaka@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:44 mx1 sendmail[4318]: MDA04318: from=<b.costa@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<f2298f01bf2571$6ec3b862$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:44 mx1 sendmail[4319]: MDA04318: to=<k.adeyemi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:47 mx1 sendmail[4323]: MGA04323: from=<b.costa@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<976ba101bfe00a$d0a26d99$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:48 mx1 sendmail[4326]: MGA04323: to=<n.ivanova@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:49 mx1 sendmail[4330]: MAA04330: from=<b.costa@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<b0fb4b01bf68be$7a38748c$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:51 mx1 sendmail[4333]: MAA04330: to=<r.santos@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:52 mx1 sendmail[4334]: MAA04334: from=<b.costa@office.example.invalid>, size=14652, class=0, pri=44652, nrcpts=1, msgid=<2af5f201bfd8ab$dfb837c0$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:53 mx1 sendmail[4336]: MFA04336: from=<b.costa@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<f7b9ab01bffcf1$3d8c582d$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:54 mx1 sendmail[4339]: MAA04334: to=<f.nakamura@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:54 mx1 sendmail[4343]: MFA04336: to=<p.kowalski@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:55 mx1 sendmail[4347]: MGA04347: from=<b.costa@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<1594ac01bfa941$86c8f7c8$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:57 mx1 sendmail[4349]: MGA04347: to=<m.lindqvist@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:15:58 mx1 sendmail[4350]: MDA04350: from=<b.costa@office.example.invalid>, size=14650, class=0, pri=44650, nrcpts=1, msgid=<67e0f301bfaa22$13afe79b$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:15:59 mx1 sendmail[4352]: MDA04350: to=<z.novak@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:16:00 mx1 sendmail[4353]: MFA04353: from=<b.costa@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<bdb01f01bfece8$ae39f347$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:16:00 mx1 sendmail[4355]: MFA04353: to=<orders@supplier.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 12:16:03 mx1 sendmail[4359]: MEA04359: from=<b.costa@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<fa74ab01bf8fa8$1d630a4a$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:16:04 mx1 sendmail[4363]: MEA04359: to=<a.kumar@university.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=smtp.university.example.invalid. [198.51.100.9], stat=Sent (Ok)
+May  4 12:16:06 mx1 sendmail[4364]: MDA04364: from=<b.costa@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<2b8c4601bf609b$d37edca4$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:16:07 mx1 sendmail[4366]: MDA04364: to=<d.chen@supplier.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 12:16:08 mx1 sendmail[4369]: MEA04369: from=<b.costa@office.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<e1f6fa01bffc92$d5a35fdc$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:16:10 mx1 sendmail[4370]: MEA04369: to=<t.reyes@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 12:16:11 mx1 sendmail[4371]: MGA04371: from=<b.costa@office.example.invalid>, size=14651, class=0, pri=44651, nrcpts=1, msgid=<a4560501bf3a41$b09dff57$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:16:13 mx1 sendmail[4373]: MGA04371: to=<billing@isp.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 12:19:04 mx1 sendmail[4374]: MAA04374: from=<sam.rivera@partner.example.invalid>, size=92391, class=0, pri=122391, nrcpts=1, msgid=<3d8bf701bf26ce$ab53a7ad$2601010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 12:19:05 mx1 sendmail[4375]: MAA04374: to=<l.schmidt@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:21:01 mx1 sendmail[4378]: MHA04378: from=<m.lindqvist@office.example.invalid>, size=3795, class=0, pri=63795, nrcpts=2, msgid=<c5c0d601bf9c90$c9efc810$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 12:21:03 mx1 sendmail[4381]: MHA04378: to=<h.lund@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 12:21:03 mx1 sendmail[4381]: MHA04378: to=<e.moreau@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:22:34 mx1 sendmail[4385]: MCA04385: from=<z.novak@office.example.invalid>, size=183329, class=0, pri=273329, nrcpts=3, msgid=<e2a01801bfb416$d4fb1375$2601010a@office.example.invalid>, proto=SMTP, relay=pc-36.office.example.invalid [10.1.0.56]
+May  4 12:22:36 mx1 sendmail[4388]: MCA04385: to=<r.santos@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:22:36 mx1 sendmail[4388]: MCA04385: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:22:36 mx1 sendmail[4388]: MCA04385: to=<m.lindqvist@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:24:31 mx1 sendmail[4390]: MBA04390: from=<m.lindqvist@office.example.invalid>, size=2296, class=0, pri=32296, nrcpts=1, msgid=<01435b01bf3e73$e832cc1d$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-23.office.example.invalid [10.1.0.43]
+May  4 12:24:32 mx1 sendmail[4392]: MBA04390: to=<m.grant@partner.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.partner.example.invalid. [192.0.2.25], stat=Sent (Ok)
+May  4 12:28:43 mx1 sendmail[4396]: MHA04396: from=<o.walsh@office.example.invalid>, size=3489, class=0, pri=93489, nrcpts=3, msgid=<d9f55d01bfb84a$a22ef3f3$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-25.office.example.invalid [10.1.0.45]
+May  4 12:28:44 mx1 sendmail[4398]: MHA04396: to=<c.dubois@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:28:44 mx1 sendmail[4398]: MHA04396: to=<x.hughes@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:28:44 mx1 sendmail[4398]: MHA04396: to=<q.zhang@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:30:43 mx1 sendmail[4399]: MAA04399: from=<s.muller@office.example.invalid>, size=185293, class=0, pri=215293, nrcpts=1, msgid=<718c1601bf80a7$aa2127c9$2601010a@office.example.invalid>, proto=SMTP, relay=pc-29.office.example.invalid [10.1.0.49]
+May  4 12:30:45 mx1 sendmail[4403]: MAA04399: to=<t.reyes@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 12:33:05 mx1 sendmail[4405]: MHA04405: from=<press@agency.example.invalid>, size=2421, class=0, pri=32421, nrcpts=1, msgid=<5a31d001bf1f40$9e8141d4$2601010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 12:33:07 mx1 sendmail[4409]: MHA04405: to=<x.hughes@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:34:42 mx1 sendmail[4413]: MDA04413: from=<s.muller@office.example.invalid>, size=3918, class=0, pri=63918, nrcpts=2, msgid=<383ccd01bf1b09$03abfdb3$2601010a@office.example.invalid>, proto=SMTP, relay=pc-29.office.example.invalid [10.1.0.49]
+May  4 12:34:42 mx1 sendmail[4414]: MDA04413: to=<a.brennan@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:34:42 mx1 sendmail[4414]: MDA04413: to=<u.yilmaz@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:36:06 mx1 sendmail[4417]: MFA04417: from=<u.yilmaz@office.example.invalid>, size=3011, class=0, pri=93011, nrcpts=3, msgid=<33ffa801bf75af$ca043cb2$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-31.office.example.invalid [10.1.0.51]
+May  4 12:36:08 mx1 sendmail[4418]: MFA04417: to=<f.nakamura@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:36:08 mx1 sendmail[4418]: MFA04417: to=<m.lindqvist@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:36:08 mx1 sendmail[4418]: MFA04417: to=<o.walsh@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:38:05 mx1 sendmail[4419]: MGA04419: from=<m.grant@partner.example.invalid>, size=2781, class=0, pri=32781, nrcpts=1, msgid=<58951001bf8c4b$4df453d4$2601010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 12:38:06 mx1 sendmail[4421]: MGA04419: to=<h.patel@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:38:56 mx1 sendmail[4424]: MAA04424: from=<info@printshop.example.invalid>, size=3281, class=0, pri=33281, nrcpts=1, msgid=<25046e01bf25fd$6b3b016f$2a01010a@printshop.example.invalid>, proto=ESMTP, relay=mail.printshop.example.invalid [192.0.2.140]
+May  4 12:38:57 mx1 sendmail[4426]: MAA04424: to=<z.novak@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:41:04 mx1 sendmail[4427]: MGA04427: from=<press@agency.example.invalid>, size=2457, class=0, pri=32457, nrcpts=1, msgid=<1afe4e01bf567e$93d806af$2b01010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 12:41:06 mx1 sendmail[4429]: MGA04427: to=<x.hughes@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:42:38 mx1 sendmail[4430]: MDA04430: from=<m.grant@partner.example.invalid>, size=168712, class=0, pri=198712, nrcpts=1, msgid=<6ebfb701bfe756$e57454ac$2b01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 12:42:39 mx1 sendmail[4433]: MDA04430: to=<q.zhang@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:46:13 mx1 sendmail[4437]: MGA04437: from=<j.fox@lawfirm.example.invalid>, size=1985, class=0, pri=31985, nrcpts=1, msgid=<cdb91301bf7dc1$8fa4e177$2a01010a@lawfirm.example.invalid>, proto=ESMTP, relay=mail.lawfirm.example.invalid [198.51.100.66]
+May  4 12:46:14 mx1 sendmail[4440]: MGA04437: to=<l.schmidt@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:50:17 mx1 sendmail[4441]: MBA04441: from=<info@printshop.example.invalid>, size=1739, class=0, pri=31739, nrcpts=1, msgid=<bc383e01bfa77e$965fb88e$2b01010a@printshop.example.invalid>, proto=ESMTP, relay=mail.printshop.example.invalid [192.0.2.140]
+May  4 12:50:19 mx1 sendmail[4445]: MBA04441: to=<k.adeyemi@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:53:54 mx1 sendmail[4448]: MHA04448: from=<q.zhang@office.example.invalid>, size=1887, class=0, pri=91887, nrcpts=3, msgid=<1abda201bf35c3$c41ebebb$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-27.office.example.invalid [10.1.0.47]
+May  4 12:53:55 mx1 sendmail[4449]: MHA04448: to=<billing@isp.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 12:53:55 mx1 sendmail[4449]: MHA04448: to=<o.walsh@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:53:55 mx1 sendmail[4449]: MHA04448: to=<s.muller@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:55:10 mx1 sendmail[4450]: MEA04450: from=<c.dubois@office.example.invalid>, size=985, class=0, pri=60985, nrcpts=2, msgid=<2d4edf01bf4a5b$d0647295$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-13.office.example.invalid [10.1.0.33]
+May  4 12:55:10 mx1 sendmail[4451]: MEA04450: to=<d.haas@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:55:10 mx1 sendmail[4451]: MEA04450: to=<j.okafor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:57:25 mx1 sendmail[4455]: MGA04455: from=<f.nakamura@office.example.invalid>, size=66028, class=0, pri=156028, nrcpts=3, msgid=<852f7c01bf0283$de298b5f$2601010a@office.example.invalid>, proto=SMTP, relay=pc-16.office.example.invalid [10.1.0.36]
+May  4 12:57:25 mx1 sendmail[4456]: MGA04455: to=<u.yilmaz@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:57:25 mx1 sendmail[4456]: MGA04455: to=<k.adeyemi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:57:25 mx1 sendmail[4456]: MGA04455: to=<x.hughes@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:58:29 mx1 sendmail[4457]: MCA04457: from=<b.costa@office.example.invalid>, size=2240, class=0, pri=32240, nrcpts=1, msgid=<6d7ca501bfc5fc$14392755$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 12:58:31 mx1 sendmail[4460]: MCA04457: to=<r.santos@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 12:59:39 mx1 sendmail[4463]: MFA04463: from=<g.osei@office.example.invalid>, size=1621, class=0, pri=31621, nrcpts=1, msgid=<f8443601bfe945$54c7a5e4$2601010a@office.example.invalid>, proto=SMTP, relay=pc-17.office.example.invalid [10.1.0.37]
+May  4 12:59:41 mx1 sendmail[4467]: MFA04463: to=<n.ivanova@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:01:18 mx1 sendmail[4470]: NFA04470: from=<info@printshop.example.invalid>, size=1566, class=0, pri=31566, nrcpts=1, msgid=<36bf9401bfbfdb$3792421e$2b01010a@printshop.example.invalid>, proto=ESMTP, relay=mail.printshop.example.invalid [192.0.2.140]
+May  4 13:01:20 mx1 sendmail[4471]: NFA04470: to=<o.walsh@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:02:22 mx1 sendmail[4472]: NDA04472: from=<p.kowalski@office.example.invalid>, size=905, class=0, pri=30905, nrcpts=1, msgid=<8c038e01bf2213$f23acfcd$2601010a@office.example.invalid>, proto=SMTP, relay=pc-26.office.example.invalid [10.1.0.46]
+May  4 13:02:24 mx1 sendmail[4473]: NDA04472: to=<j.okafor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:03:41 mx1 sendmail[4474]: NAA04474: from=<k.ito@agency.example.invalid>, size=41504, class=0, pri=71504, nrcpts=1, msgid=<a352c901bfd882$4ea939b0$2601010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 13:03:41 mx1 sendmail[4476]: NAA04474: to=<t.oconnor@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:04:00 mx1 vscan[3011]: signature update loaded (VBS/LoveLetter added), scanning enabled
+May  4 13:07:12 mx1 sendmail[4480]: NGA04480: from=<m.grant@partner.example.invalid>, size=3383, class=0, pri=33383, nrcpts=1, msgid=<0bb07301bf5f1e$e4b92707$2a01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 13:07:12 mx1 sendmail[4483]: NGA04480: to=<q.zhang@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:10:40 mx1 sendmail[4484]: NFA04484: from=<w.berg@office.example.invalid>, size=2790, class=0, pri=62790, nrcpts=2, msgid=<2ca77f01bf55ba$cb8354b7$2601010a@office.example.invalid>, proto=SMTP, relay=pc-33.office.example.invalid [10.1.0.53]
+May  4 13:10:41 mx1 sendmail[4485]: NFA04484: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:10:41 mx1 sendmail[4485]: NFA04484: to=<x.hughes@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:12:05 mx1 sendmail[4488]: NGA04488: from=<sam.rivera@partner.example.invalid>, size=14661, class=0, pri=44661, nrcpts=1, msgid=<765f5b01bfa8ea$161668c4$2a01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 13:12:06 mx1 vscan[4489]: NGA04488: VIRUS VBS/LoveLetter in attachment LOVE-LETTER-FOR-YOU.TXT.vbs, quarantined
+May  4 13:12:06 mx1 sendmail[4492]: NGA04488: to=<a.brennan@office.example.invalid>, delay=00:00:01, mailer=local, stat=Quarantined by vscan
+May  4 13:12:19 mx1 sendmail[4495]: NGA04495: from=<j.okafor@office.example.invalid>, size=4014, class=0, pri=34014, nrcpts=1, msgid=<0a79a001bf2664$456e3258$2601010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 13:12:19 mx1 sendmail[4497]: NGA04495: to=<y.tanaka@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:13:54 mx1 sendmail[4498]: NBA04498: from=<x.hughes@office.example.invalid>, size=43843, class=0, pri=73843, nrcpts=1, msgid=<ae580301bf0c02$62e8c395$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-34.office.example.invalid [10.1.0.54]
+May  4 13:13:54 mx1 sendmail[4502]: NBA04498: to=<h.lund@client.example.invalid>, delay=00:00:00, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 13:15:47 mx1 sendmail[4503]: NAA04503: from=<d.haas@office.example.invalid>, size=1559, class=0, pri=31559, nrcpts=1, msgid=<b5571001bfed7c$3d70188f$2601010a@office.example.invalid>, proto=SMTP, relay=pc-14.office.example.invalid [10.1.0.34]
+May  4 13:15:49 mx1 sendmail[4507]: NAA04503: to=<p.kowalski@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:18:12 mx1 sendmail[4511]: NHA04511: from=<o.walsh@office.example.invalid>, size=2701, class=0, pri=32701, nrcpts=1, msgid=<7a126601bf69a0$161d9d76$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-25.office.example.invalid [10.1.0.45]
+May  4 13:18:13 mx1 sendmail[4512]: NHA04511: to=<y.tanaka@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:20:32 mx1 sendmail[4513]: NHA04513: from=<k.ito@agency.example.invalid>, size=14649, class=0, pri=44649, nrcpts=1, msgid=<86d04601bf56e1$c2bd88fb$2601010a@agency.example.invalid>, proto=ESMTP, relay=mx.agency.example.invalid [203.0.113.12]
+May  4 13:20:33 mx1 vscan[4517]: NHA04513: VIRUS VBS/LoveLetter in attachment LOVE-LETTER-FOR-YOU.TXT.vbs, quarantined
+May  4 13:20:33 mx1 sendmail[4519]: NHA04513: to=<e.moreau@office.example.invalid>, delay=00:00:01, mailer=local, stat=Quarantined by vscan
+May  4 13:22:32 mx1 sendmail[4522]: NDA04522: from=<orders@supplier.example.invalid>, size=2128, class=0, pri=32128, nrcpts=1, msgid=<ded89a01bfef2a$af370385$2b01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 13:22:34 mx1 sendmail[4523]: NDA04522: to=<o.walsh@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:24:14 mx1 sendmail[4526]: NBA04526: from=<j.fox@lawfirm.example.invalid>, size=2403, class=0, pri=32403, nrcpts=1, msgid=<d3566501bf1a48$a7395c75$2b01010a@lawfirm.example.invalid>, proto=ESMTP, relay=mail.lawfirm.example.invalid [198.51.100.66]
+May  4 13:24:15 mx1 sendmail[4530]: NBA04526: to=<u.yilmaz@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:26:03 mx1 sendmail[4533]: NDA04533: from=<b.costa@office.example.invalid>, size=4156, class=0, pri=64156, nrcpts=2, msgid=<f79ab101bfe147$10815c15$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 13:26:05 mx1 sendmail[4537]: NDA04533: to=<r.santos@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:26:05 mx1 sendmail[4537]: NDA04533: to=<t.reyes@client.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.client.example.invalid. [203.0.113.90], stat=Sent (Ok)
+May  4 13:29:27 mx1 sendmail[4541]: NCA04541: from=<k.adeyemi@office.example.invalid>, size=974, class=0, pri=90974, nrcpts=3, msgid=<d2b36601bf98f4$0e4999bd$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 13:29:27 mx1 sendmail[4545]: NCA04541: to=<b.costa@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:29:27 mx1 sendmail[4545]: NCA04541: to=<c.dubois@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:29:27 mx1 sendmail[4545]: NCA04541: to=<v.rossi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:32:47 mx1 sendmail[4546]: NFA04546: from=<billing@isp.example.invalid>, size=2349, class=0, pri=32349, nrcpts=1, msgid=<8c200701bf597d$94676f6e$2b01010a@isp.example.invalid>, proto=ESMTP, relay=mail.isp.example.invalid [192.0.2.80]
+May  4 13:32:49 mx1 sendmail[4547]: NFA04546: to=<h.patel@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:34:56 mx1 sendmail[4550]: NDA04550: from=<j.fox@lawfirm.example.invalid>, size=2092, class=0, pri=32092, nrcpts=1, msgid=<e7648501bf3e17$2a0c93ff$2a01010a@lawfirm.example.invalid>, proto=ESMTP, relay=mail.lawfirm.example.invalid [198.51.100.66]
+May  4 13:34:57 mx1 sendmail[4552]: NDA04550: to=<x.hughes@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:35:45 mx1 sendmail[4553]: NCA04553: from=<d.chen@supplier.example.invalid>, size=14654, class=0, pri=44654, nrcpts=1, msgid=<ffde4901bfebbd$8855b97b$2b01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 13:35:46 mx1 vscan[4554]: NCA04553: VIRUS VBS/LoveLetter in attachment LOVE-LETTER-FOR-YOU.TXT.vbs, quarantined
+May  4 13:35:46 mx1 sendmail[4556]: NCA04553: to=<p.kowalski@office.example.invalid>, delay=00:00:01, mailer=local, stat=Quarantined by vscan
+May  4 13:38:34 mx1 sendmail[4558]: NEA04558: from=<v.rossi@office.example.invalid>, size=32772, class=0, pri=62772, nrcpts=1, msgid=<89985401bf58c5$e740ddd6$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-32.office.example.invalid [10.1.0.52]
+May  4 13:38:36 mx1 sendmail[4559]: NEA04558: to=<q.zhang@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:40:35 mx1 sendmail[4561]: NBA04561: from=<g.osei@office.example.invalid>, size=167699, class=0, pri=257699, nrcpts=3, msgid=<37d71a01bfbbc8$17f0da40$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-17.office.example.invalid [10.1.0.37]
+May  4 13:40:37 mx1 sendmail[4563]: NBA04561: to=<l.schmidt@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:40:37 mx1 sendmail[4563]: NBA04561: to=<u.yilmaz@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:40:37 mx1 sendmail[4563]: NBA04561: to=<n.ivanova@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:43:41 mx1 sendmail[4565]: NGA04565: from=<r.santos@office.example.invalid>, size=1836, class=0, pri=61836, nrcpts=2, msgid=<9a69e001bfb88a$f57aa2cf$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-28.office.example.invalid [10.1.0.48]
+May  4 13:43:43 mx1 sendmail[4568]: NGA04565: to=<q.zhang@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:43:43 mx1 sendmail[4568]: NGA04565: to=<c.dubois@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:44:56 mx1 sendmail[4571]: NEA04571: from=<a.kumar@university.example.invalid>, size=2195, class=0, pri=32195, nrcpts=1, msgid=<169cf901bf6cdb$bd1e164c$2b01010a@university.example.invalid>, proto=ESMTP, relay=smtp.university.example.invalid [198.51.100.9]
+May  4 13:44:56 mx1 sendmail[4574]: NEA04571: to=<k.adeyemi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:47:33 mx1 sendmail[4576]: NBA04576: from=<n.ivanova@office.example.invalid>, size=3201, class=0, pri=33201, nrcpts=1, msgid=<2b3ef501bf6657$e284ddc2$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-24.office.example.invalid [10.1.0.44]
+May  4 13:47:35 mx1 sendmail[4578]: NBA04576: to=<j.okafor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:48:22 mx1 sendmail[4580]: NFA04580: from=<t.reyes@client.example.invalid>, size=14653, class=0, pri=44653, nrcpts=1, msgid=<16d36e01bf2744$d1f3d608$2601010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 13:48:23 mx1 vscan[4581]: NFA04580: VIRUS VBS/LoveLetter in attachment LOVE-LETTER-FOR-YOU.TXT.vbs, quarantined
+May  4 13:48:23 mx1 sendmail[4582]: NFA04580: to=<l.schmidt@office.example.invalid>, delay=00:00:01, mailer=local, stat=Quarantined by vscan
+May  4 13:50:27 mx1 sendmail[4585]: NEA04585: from=<orders@supplier.example.invalid>, size=1122, class=0, pri=31122, nrcpts=1, msgid=<cbbb2c01bf1a9d$accc3702$2601010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 13:50:27 mx1 sendmail[4588]: NEA04585: to=<m.lindqvist@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:54:18 mx1 sendmail[4592]: NGA04592: from=<j.okafor@office.example.invalid>, size=2120, class=0, pri=92120, nrcpts=3, msgid=<d631e301bf0d44$3a809bb2$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-20.office.example.invalid [10.1.0.40]
+May  4 13:54:20 mx1 sendmail[4593]: NGA04592: to=<n.ivanova@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:54:20 mx1 sendmail[4593]: NGA04592: to=<b.costa@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:54:20 mx1 sendmail[4593]: NGA04592: to=<f.nakamura@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 13:57:47 mx1 sendmail[4596]: NBA04596: from=<o.walsh@office.example.invalid>, size=2536, class=0, pri=32536, nrcpts=1, msgid=<83d5c501bf1c72$99765550$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-25.office.example.invalid [10.1.0.45]
+May  4 13:57:48 mx1 sendmail[4599]: NBA04596: to=<g.osei@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:01:05 mx1 sendmail[4603]: OBA04603: from=<l.schmidt@office.example.invalid>, size=2758, class=0, pri=92758, nrcpts=3, msgid=<1c405301bf1cfc$e74617b8$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-22.office.example.invalid [10.1.0.42]
+May  4 14:01:05 mx1 sendmail[4604]: OBA04603: to=<v.rossi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:01:05 mx1 sendmail[4604]: OBA04603: to=<x.hughes@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:01:05 mx1 sendmail[4604]: OBA04603: to=<y.tanaka@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:01:48 mx1 sendmail[4608]: OCA04608: from=<y.tanaka@office.example.invalid>, size=4043, class=0, pri=34043, nrcpts=1, msgid=<b9aece01bfd8b3$2d00562e$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-35.office.example.invalid [10.1.0.55]
+May  4 14:01:49 mx1 sendmail[4610]: OCA04608: to=<v.rossi@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:02:53 mx1 sendmail[4612]: OBA04612: from=<sam.rivera@partner.example.invalid>, size=2042, class=0, pri=32042, nrcpts=1, msgid=<7d519c01bfbeac$029ab27a$2b01010a@partner.example.invalid>, proto=ESMTP, relay=mail.partner.example.invalid [192.0.2.25]
+May  4 14:02:55 mx1 sendmail[4614]: OBA04612: to=<t.oconnor@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:06:43 mx1 sendmail[4615]: OGA04615: from=<e.moreau@office.example.invalid>, size=3692, class=0, pri=93692, nrcpts=3, msgid=<01d92c01bf8784$692542d3$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-15.office.example.invalid [10.1.0.35]
+May  4 14:06:45 mx1 sendmail[4618]: OGA04615: to=<g.osei@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:06:45 mx1 sendmail[4618]: OGA04615: to=<c.dubois@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:06:45 mx1 sendmail[4618]: OGA04615: to=<info@printshop.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=mail.printshop.example.invalid. [192.0.2.140], stat=Sent (Ok)
+May  4 14:08:56 mx1 sendmail[4620]: ODA04620: from=<x.hughes@office.example.invalid>, size=2883, class=0, pri=32883, nrcpts=1, msgid=<9ab42a01bf7ce5$93aa9efb$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-34.office.example.invalid [10.1.0.54]
+May  4 14:08:58 mx1 sendmail[4623]: ODA04620: to=<orders@supplier.example.invalid>, delay=00:00:02, xdelay=00:00:01, mailer=esmtp, relay=smtp.supplier.example.invalid. [198.51.100.40], stat=Sent (Ok)
+May  4 14:12:18 mx1 sendmail[4626]: OGA04626: from=<d.chen@supplier.example.invalid>, size=1424, class=0, pri=31424, nrcpts=1, msgid=<6b26b401bf63c8$92154b39$2a01010a@supplier.example.invalid>, proto=ESMTP, relay=smtp.supplier.example.invalid [198.51.100.40]
+May  4 14:12:19 mx1 sendmail[4628]: OGA04626: to=<f.nakamura@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:13:41 mx1 sendmail[4632]: OHA04632: from=<t.reyes@client.example.invalid>, size=3900, class=0, pri=33900, nrcpts=1, msgid=<d2c64901bfba71$3fd57ca8$2601010a@client.example.invalid>, proto=ESMTP, relay=smtp.client.example.invalid [203.0.113.90]
+May  4 14:13:43 mx1 sendmail[4633]: OHA04632: to=<x.hughes@office.example.invalid>, delay=00:00:02, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:17:07 mx1 sendmail[4634]: OCA04634: from=<g.osei@office.example.invalid>, size=2862, class=0, pri=92862, nrcpts=3, msgid=<ec65e401bf6e1a$9d65db9c$2a01010a@office.example.invalid>, proto=SMTP, relay=pc-17.office.example.invalid [10.1.0.37]
+May  4 14:17:07 mx1 sendmail[4635]: OCA04634: to=<v.rossi@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:17:07 mx1 sendmail[4635]: OCA04634: to=<h.patel@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:17:07 mx1 sendmail[4635]: OCA04634: to=<u.yilmaz@office.example.invalid>, delay=00:00:00, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:20:01 mx1 sendmail[4637]: OFA04637: from=<b.costa@office.example.invalid>, size=2826, class=0, pri=92826, nrcpts=3, msgid=<92025601bf51b9$9e85eecc$2601010a@office.example.invalid>, proto=SMTP, relay=pc-12.office.example.invalid [10.1.0.32]
+May  4 14:20:02 mx1 sendmail[4638]: OFA04637: to=<r.santos@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:20:02 mx1 sendmail[4638]: OFA04637: to=<z.novak@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:20:02 mx1 sendmail[4638]: OFA04637: to=<n.ivanova@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
+May  4 14:24:01 mx1 sendmail[4641]: OAA04641: from=<w.berg@office.example.invalid>, size=1288, class=0, pri=31288, nrcpts=1, msgid=<eef3c001bfc88e$f6601ac8$2601010a@office.example.invalid>, proto=SMTP, relay=pc-33.office.example.invalid [10.1.0.53]
+May  4 14:24:02 mx1 sendmail[4643]: OAA04641: to=<billing@isp.example.invalid>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, relay=mail.isp.example.invalid. [192.0.2.80], stat=Sent (Ok)
+May  4 14:26:53 mx1 sendmail[4644]: OEA04644: from=<k.adeyemi@office.example.invalid>, size=2817, class=0, pri=32817, nrcpts=1, msgid=<bc4a3b01bf02c9$cb5e3ded$2b01010a@office.example.invalid>, proto=SMTP, relay=pc-21.office.example.invalid [10.1.0.41]
+May  4 14:26:54 mx1 sendmail[4647]: OEA04644: to=<n.ivanova@office.example.invalid>, delay=00:00:01, xdelay=00:00:00, mailer=local, stat=Sent
