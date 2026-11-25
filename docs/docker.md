@@ -95,6 +95,24 @@ That chain sees the port inside the container, which is always 8080, so keep `--
 
 Caddy passes the `Host` header through unchanged, which the app needs. The `X-Real-IP` line is what lets rate limits see the real visitor: the proxy container believes that header only from your proxy's address (the Docker gateway and loopback by default, `NECROPSY_EDGE_TRUSTED` in `deploy.env` to change it). Your proxy should always set it itself, as above, and never forward one from a visitor.
 
+## Several stacks on one host
+
+A host can run more than one stack, such as production and a dev site, as long as each has its own name. `install-system.sh --name necropsy-dev` installs a second one next to the first:
+
+```bash
+deploy/bluegreen/install-system.sh --name necropsy-dev --user deploy-dev --repo https://github.com/urashyl/necropsy --branch dev
+```
+
+Everything that could clash follows the name: the program (`necropsy-dev-deploy`), its settings (`/etc/necropsy-dev/`), state, sudo rule, containers (`necropsy-dev-blue`, `-green`, `-proxy`), the data volume, the image repository (`necropsy-dev:<commit>`), the lab images and the runtime directory (`/run/necropsy-dev`). The default name, `necropsy`, keeps every path as it was. Give each stack its own port and subnet in its `deploy.env`, and its own domain in its `necropsy.env`:
+
+```bash
+# /etc/necropsy-dev/deploy.env
+NECROPSY_PORT=8081
+NECROPSY_SUBNET=172.30.31.0/24
+```
+
+Use a different deploy user per stack, so write access to one branch cannot run the other's deploy ([ci-cd.md](ci-cd.md#one-vm-for-both-environments)). The firewall rule in the proxy section covers every stack, since the port it names is the container's own.
+
 ## Settings that differ in Docker
 
 These are fixed by the container and cannot be overridden in `necropsy.env`:

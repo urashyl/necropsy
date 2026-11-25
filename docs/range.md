@@ -30,25 +30,22 @@ On a dedicated VM (Debian or Ubuntu), as root, from a checkout of the repository
 sudo deploy/install-vm.sh \
   --domain necropsy.urashyl.dev \
   --proxy-ip 192.168.100.5 \
+  --dev-domain necropsy-dev.urashyl.dev \
   --turnstile-site-key 0x4AAAAAAA... --turnstile-secret-file /root/turnstile-secret \
   --smtp-host smtp.example.com --smtp-user mailer --smtp-from "necropsy <no-reply@example.com>"
 ```
 
-`--proxy-ip` is the address your reverse proxy connects from. Add `--dry-run` first to see everything it would do. Secrets are never options (they would land in `ps` and your shell history): the Turnstile secret goes in a file, and the SMTP password in `NECROPSY_SMTP_PASSWORD`. Run `deploy/install-vm.sh --help` for the rest.
+`--proxy-ip` is the address your reverse proxy connects from. `--dev-domain` is optional: it also installs a dev stack on the same VM, as a second, independent environment ([ci-cd.md](ci-cd.md#one-vm-for-both-environments)). Add `--dry-run` first to see everything it would do. Secrets are never options (they would land in `ps` and your shell history): the Turnstile secret goes in a file, and the SMTP password in `NECROPSY_SMTP_PASSWORD`. Run `deploy/install-vm.sh --help` for the rest.
 
 What it does, in order:
 
 1. Installs what is missing: Docker from Docker's own apt repository, plus git, curl, iptables and friends.
-2. Builds the spawner inside a throwaway Rust container, as a static binary, so the VM needs no Rust and the result does not depend on its libc.
-3. Installs `/etc/necropsy/images.toml` with `max_instances` sized to the VM's memory (and a lower cpu limit on 2 vCPU or fewer), and builds the lab images. A later run keeps the `max_instances` you have.
-4. Installs and starts the spawner under systemd.
-5. **Tests a real lab**: starts `webshell-lab` through the spawner, and checks that it answers on its socket, holds its flag, runs as an unprivileged user on a read-only root, and cannot reach the internet. If any of that is wrong it stops before touching the site.
-6. Creates an unprivileged `deploy` user and installs the blue-green deploy program ([docker.md](docker.md)), which CI deploys through.
-7. Writes the settings (`/etc/necropsy/necropsy.env`: base URL, live domain, spawner, captcha, email) and tells the site to publish its port to your proxy only.
-8. Adds a firewall rule (a small systemd unit, in Docker's `DOCKER-USER` chain, since Docker bypasses ufw) so only your proxy can reach the site's port.
-9. Deploys the newest commit of the branch, which must be pushed to the repository (`--branch`, `main` by default).
+2. Builds the spawner inside a throwaway Rust container, as a static binary, so the VM needs no Rust and the result does not depend on its libc. It is installed once, at `/usr/local/bin/necropsy-spawner`, and shared by the environments.
+3. For each environment: a spawner service (`necropsy-spawner`, and `necropsy-dev-spawner`), a starting lab allowlist sized to the VM's memory (a lower cpu limit on 2 vCPU or fewer; with both environments, two thirds of the labs go to production), an unprivileged deploy user, the blue-green deploy program ([docker.md](docker.md)), and the settings (`/etc/<name>/necropsy.env` and `deploy.env`: base URL, live domain, spawner, captcha, email, port, lab limit).
+4. Adds a firewall rule (a small systemd unit, in Docker's `DOCKER-USER` chain, since Docker bypasses ufw) so only your proxy can reach the sites' ports.
+5. Deploys the newest commit of each environment's branch, which must be pushed to the repository (`main` and `dev` by default). **A deploy tests the labs**: it builds the lab images, restarts the stack's spawner, and starts a real lab of every image, checking that it answers and that Docker has it with no network, a read-only root, no capabilities, no new privileges, an unprivileged user and hard limits. If anything is wrong it stops before moving traffic and puts the previous allowlist back.
 
-It ends by printing what is left on your side: DNS, the wildcard certificate, the reverse proxy block and the Turnstile hostname. It is safe to run again, and that is also how you update the spawner and lab images (the site itself updates through `necropsy-deploy`, or CI).
+It ends by printing what is left on your side: DNS, the wildcard certificates, the reverse proxy blocks, the Turnstile hostnames and the CI secrets. It is safe to run again, and that is how you update the shared spawner program and the firewall rule. The sites and their labs update through deploys, below.
 
 Check it:
 
@@ -58,9 +55,22 @@ curl --unix-socket /run/necropsy/spawner.sock http://x/v1/instances   # [] when 
 docker ps --filter label=necropsy.range=1                              # the running labs
 ```
 
-To do it by hand instead, the script's steps are plain commands: `cargo build --release -p necropsy-spawner` and install the binary to `/usr/local/bin`, install `range/images.toml` to `/etc/necropsy/images.toml`, run `range/build.sh`, install `deploy/range/necropsy-spawner.service`, set `NECROPSY_LIVE_DOMAIN`, `NECROPSY_SPAWNER_SOCKET=/run/necropsy/spawner.sock` and `NECROPSY_RANGE_DIR=/run/necropsy/range` in the site's environment file, and deploy. The blue-green compose file already mounts `/run/necropsy` into the site's container (override the host side with `NECROPSY_RANGE_HOST_DIR`). Without `NECROPSY_SPAWNER_SOCKET`, container puzzles are hidden everywhere, like live puzzles without a domain.
-
 The spawner finds running containers again after a restart and keeps their expiry, so restarting it does not drop anyone's lab. Anything past its time, and any socket directory nothing owns, is removed at start and every ten seconds.
+
+### How labs and the spawner ship
+
+After installing, CI does the rest ([ci-cd.md](ci-cd.md)). A push to `main` (or `dev`) runs `necropsy-deploy` (or `necropsy-dev-deploy`) on the VM, which for a stack set up by the installer:
+
+- builds that commit's lab images, tagged `necropsy-range/<stack>/<lab>:<commit>`, and writes the stack's allowlist (`/etc/<stack>/images.toml`) to point at them, with the stack's own `RANGE_MAX_INSTANCES`;
+- restarts the stack's spawner, since it reads its allowlist once at start (running labs are found again and keep their time);
+- tests every lab (`deploy/range/selftest.sh`), then moves traffic;
+- keeps the last two deploys' lab images, for labs still running and a rollback, and removes older ones.
+
+So adding a lab is a commit: `range/<name>/`, an entry in `range/images.toml`, and its pack. **The spawner program is different, because it runs as root:** only a *production* deploy rebuilds it (from `main`, reviewed through a pull request) and restarts the other stack's spawner too. A dev deploy never replaces it, so write access to the dev branch cannot become root on the VM. The settings that control this are in `deploy.env` (`RANGE_UNIT`, `RANGE_MAX_INSTANCES`, `RANGE_BUILD_SPAWNER`, `RANGE_CPUS_CAP`, `RANGE_SELFTEST`; see `deploy/bluegreen/deploy.env.example`).
+
+CI also tests the range against real Docker on every push (`deploy/range/ci-test.sh`): it builds the labs, runs the real spawner, runs the self-test on every image and each lab's own test (`range/<lab>/test.sh`), and checks that an expired lab is reaped and a full range refuses another.
+
+To do it by hand instead: `cargo build --release -p necropsy-spawner` and install the binary to `/usr/local/bin`; `sed 's/@NAME@/necropsy/g' deploy/range/necropsy-spawner.service.in > /etc/systemd/system/necropsy-spawner.service`; copy `range/images.toml` to `/etc/necropsy/images.toml` and run `range/build.sh`; set `NECROPSY_LIVE_DOMAIN`, `NECROPSY_SPAWNER_SOCKET=/run/necropsy/spawner.sock` and `NECROPSY_RANGE_DIR=/run/necropsy/range` in the site's environment file; and deploy. The blue-green compose file mounts `/run/<stack name>` from the host into the site's container at `/run/necropsy`. Without `NECROPSY_SPAWNER_SOCKET`, container puzzles are hidden everywhere, like live puzzles without a domain.
 
 ## Adding a lab
 
@@ -72,7 +82,8 @@ The spawner finds running containers again after a restart and keeps their expir
 
    Most servers listen on TCP. The `socat` line at the end of `range/webshell-lab/entrypoint.sh` bridges loopback TCP to the socket, which is all it takes.
 2. An entry in `range/images.toml` (this is the allowlist and where limits live), then `./range/build.sh`.
-3. A pack with `modes = ["web", "live"]` and a `live.toml` containing:
+3. Optionally, `range/<name>/test.sh <spawner socket> <range dir> <image>`: a test of the lab's own behaviour, run by CI against the real spawner (see `range/webshell-lab/test.sh`). The generic self-test already checks that it answers and is locked down.
+4. A pack with `modes = ["web", "live"]` and a `live.toml` containing:
 
    ```toml
    ttl_minutes = 45
@@ -103,7 +114,7 @@ For the bundled `webshell-lab` (limits `memory_mb = 128`, `cpus = 0.5`, `pids = 
 | 8 vCPU, 16 GB | 103 | 247 | **110** | about 220 |
 | 16 vCPU, 32 GB | 218 | 520 | **230** | about 460 |
 
-(RAM left after the reserve, divided by the per-lab figure.) "Safe" is the number that cannot run the machine out of memory whatever players do. "Typical" is what it holds when labs behave. The recommended value sits just above Safe: reaching it needs many players each deliberately filling their lab, which a captcha and a three-instance limit per account make hard, and if it happens the kernel kills the offending lab's processes, not the site. Put the number in `max_instances` (in `images.toml`, or `SPAWNER_MAX_INSTANCES`). Past it a new player sees "The range is full right now" and can try again.
+(RAM left after the reserve, divided by the per-lab figure.) "Safe" is the number that cannot run the machine out of memory whatever players do. "Typical" is what it holds when labs behave. The recommended value sits just above Safe: reaching it needs many players each deliberately filling their lab, which a captcha and a three-instance limit per account make hard, and if it happens the kernel kills the offending lab's processes, not the site. The installer sets it for you from the VM's memory (and splits it two thirds, one third when production and dev share the VM); to change it, set `RANGE_MAX_INSTANCES` in that stack's `/etc/<stack>/deploy.env` and deploy (a deploy rewrites the allowlist from it). Past it a new player sees "The range is full right now" and can try again.
 
 CPU only becomes the limit on the smaller machines if many players run heavy commands at once; on a 2 vCPU box lower `cpus` to `0.25` so a handful of busy labs cannot starve the site. A heavier lab (a database, a Java app) changes the figures completely: measure it, not the table.
 

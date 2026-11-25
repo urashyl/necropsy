@@ -1,9 +1,12 @@
-# Runs the spawner for container-backed live puzzles (docs/range.md).
-# Install as /etc/systemd/system/necropsy-spawner.service, with the binary at
-# /usr/local/bin/necropsy-spawner and the allowlist at /etc/necropsy/images.toml.
+# Runs the spawner for container-backed live puzzles (docs/range.md), for one
+# stack. @NAME@ is the stack's name: "necropsy" for production or the only
+# stack, "necropsy-dev" for a dev stack on the same host. Install with
+#   sed 's/@NAME@/necropsy/g' necropsy-spawner.service.in > /etc/systemd/system/necropsy-spawner.service
+# The program is shared, at /usr/local/bin/necropsy-spawner; each stack has its
+# own allowlist (/etc/@NAME@/images.toml), socket and lab directory.
 
 [Unit]
-Description=necropsy range spawner
+Description=necropsy range spawner (@NAME@)
 Documentation=https://github.com/urashyl/necropsy
 After=docker.service
 Requires=docker.service
@@ -11,16 +14,16 @@ Requires=docker.service
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/necropsy-spawner
-Environment=SPAWNER_IMAGES=/etc/necropsy/images.toml
-Environment=SPAWNER_SOCKET=/run/necropsy/spawner.sock
-Environment=SPAWNER_RANGE_DIR=/run/necropsy/range
+Environment=SPAWNER_IMAGES=/etc/@NAME@/images.toml
+Environment=SPAWNER_SOCKET=/run/@NAME@/spawner.sock
+Environment=SPAWNER_RANGE_DIR=/run/@NAME@/range
 # The group of the web server inside its container (the image's "nonroot").
 Environment=SPAWNER_SOCKET_GID=65532
-EnvironmentFile=-/etc/necropsy/spawner.env
+EnvironmentFile=-/etc/@NAME@/spawner.env
 
-# /run/necropsy is created here, and kept when the spawner restarts: the web
+# /run/@NAME@ is created here, and kept when the spawner restarts: the web
 # container has it mounted, and instances still running keep their sockets.
-RuntimeDirectory=necropsy
+RuntimeDirectory=@NAME@
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
 
@@ -33,7 +36,7 @@ KillSignal=SIGINT
 # to use Docker, and nothing else on the machine.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/run/necropsy
+ReadWritePaths=/run/@NAME@
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelTunables=yes
