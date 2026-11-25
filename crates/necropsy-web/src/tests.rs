@@ -2526,3 +2526,324 @@ async fn a_wrong_range_token_is_refused_by_the_range() {
     assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
     assert!(range.labs.lock().unwrap().is_empty());
 }
+
+// ------------------------------------------------------------- the live track
+
+/// A live-enabled site whose clock says it is long before any daily was released.
+async fn live_site_on(today: &str) -> Site {
+    build_full(
+        None,
+        None,
+        &[],
+        today,
+        Some(crate::live::LiveConfig {
+            domain: LIVE_DOMAIN.into(),
+            host_header: None,
+            range: None,
+        }),
+        crate::captcha::Captcha::Off,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn live_puzzles_are_always_available_and_not_part_of_the_dailies() {
+    // Before the first daily, and so before any date a live puzzle used to carry.
+    let s = live_site_on("2020-01-01").await;
+    assert_eq!(s.get("/p/c2-gate", None).await.status, StatusCode::OK);
+    assert_eq!(s.get("/p/kit-left-open", None).await.status, StatusCode::OK);
+    // Dailies are still hidden then.
+    assert_eq!(
+        s.get("/p/peanuts", None).await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    let page = s.get("/p/c2-gate", None).await.body;
+    assert!(page.contains("Live 1 of 2"), "{page}");
+    assert!(
+        page.contains("Kit left open"),
+        "the pager leads to the next live puzzle"
+    );
+    assert!(
+        !page.contains("Daily #") && !page.contains("Intro 1 of"),
+        "it is not a daily or an intro stage"
+    );
+
+    let list = s.get("/live", None).await;
+    assert_eq!(list.status, StatusCode::OK);
+    assert!(list.body.contains("Answer the door") && list.body.contains("Kit left open"));
+    assert!(list.body.contains("href=\"/login\""), "it says to log in");
+    assert!(
+        !list.body.contains("Back inside the shell"),
+        "a lab needs the range, so it is not loaded"
+    );
+    // They are not in the archive or the daily rotation, and the nav links to them.
+    assert!(!s
+        .get("/archive", None)
+        .await
+        .body
+        .contains("Answer the door"));
+    assert!(s.get("/learn", None).await.body.contains("href=\"/live\""));
+    // The progress API lists them as playable.
+    assert!(s
+        .get("/api/me/progress", None)
+        .await
+        .body
+        .contains("c2-gate"));
+}
+
+#[tokio::test]
+async fn without_live_puzzles_there_is_no_live_page_or_link() {
+    let s = site().await;
+    assert!(!s.get("/learn", None).await.body.contains("href=\"/live\""));
+    let list = s.get("/live", None).await;
+    assert!(!list.body.contains("Answer the door"));
+    assert_eq!(
+        s.get("/p/c2-gate", None).await.status,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn the_live_track_is_ordered_after_the_dailies() {
+    let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packs"
+    )))
+    .unwrap();
+    let tracks: Vec<_> = packs.iter().map(|p| p.meta.track).collect();
+    let last_daily = tracks
+        .iter()
+        .rposition(|t| *t == necropsy_pack::Track::Daily)
+        .unwrap();
+    let first_live = tracks
+        .iter()
+        .position(|t| *t == necropsy_pack::Track::Live)
+        .unwrap();
+    assert!(first_live > last_daily, "live puzzles come last");
+    assert!(packs
+        .iter()
+        .filter(|p| p.meta.track == necropsy_pack::Track::Live)
+        .all(|p| p.meta.date.is_none()));
+}
+
+// ------------------------------------------------------- admin: start any live puzzle
+
+fn admin_post(path: &str, cookie: Option<&str>) -> Request<Body> {
+    let mut b = Request::post(path).header(header::ORIGIN, ORIGIN);
+    if let Some(c) = cookie {
+        b = b.header(header::COOKIE, c);
+    }
+    b.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn only_the_admin_can_start_a_live_puzzle_from_the_admin_page() {
+    let s = live_site().await;
+    s.register_verified("not-admin", "na@example.org").await;
+    let user = s.login_cookie("not-admin").await;
+    let admin = s.admin_cookie().await;
+
+    assert_eq!(
+        s.send(admin_post("/admin/live/c2-gate/start", None))
+            .await
+            .status,
+        StatusCode::SEE_OTHER,
+        "to the login"
+    );
+    assert_eq!(
+        s.send(admin_post("/admin/live/c2-gate/start", Some(&user)))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        s.send(admin_post("/admin/live/c2-gate/stop", Some(&user)))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        s.get("/admin", Some(&user)).await.status,
+        StatusCode::NOT_FOUND
+    );
+    // Nothing was started by those.
+    assert!(!s
+        .get("/admin", Some(&admin))
+        .await
+        .body
+        .contains("min left"));
+    // A puzzle that is not live, or does not exist, cannot be started.
+    assert_eq!(
+        s.send(admin_post("/admin/live/intro-log/start", Some(&admin)))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        s.send(admin_post("/admin/live/nope/start", Some(&admin)))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn the_admin_starts_tries_and_stops_any_live_puzzle() {
+    // With a captcha set up, which the admin does not need.
+    let s = captcha_site().await;
+    let admin = s.admin_cookie().await;
+
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(page.contains("Live puzzles"), "{page}");
+    for title in ["Answer the door", "Kit left open"] {
+        assert!(page.contains(title), "{title} is listed");
+    }
+    assert!(page.contains("/admin/live/c2-gate/start"), "{page}");
+    assert!(!page.contains("min left"), "nothing is running yet");
+
+    let r = s
+        .send(admin_post("/admin/live/c2-gate/start", Some(&admin)))
+        .await;
+    assert_eq!(
+        r.status,
+        StatusCode::SEE_OTHER,
+        "no captcha was asked of the admin: {}",
+        r.body
+    );
+
+    // The page now shows the link and the flag.
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(page.contains("min left"), "{page}");
+    let url = page
+        .split("href=\"")
+        .skip(1)
+        .filter_map(|r| r.split('"').next())
+        .find(|h| h.ends_with(LIVE_DOMAIN))
+        .unwrap_or_else(|| panic!("the instance's link is shown: {page}"));
+    let label = url
+        .split("://")
+        .nth(1)
+        .unwrap()
+        .strip_suffix(&format!(".{LIVE_DOMAIN}"))
+        .unwrap()
+        .to_owned();
+    let shown_flag = page
+        .split("flag </span><code>")
+        .nth(1)
+        .and_then(|r| r.split("</code>").next())
+        .unwrap_or_else(|| panic!("the flag is shown: {page}"))
+        .to_owned();
+    assert!(shown_flag.starts_with("pebble{"), "{shown_flag}");
+
+    // The instance really serves, and the flag shown is the one it hands out.
+    assert_eq!(live_flag_of(&s, &label).await, shown_flag);
+
+    // Starting again changes nothing.
+    s.send(admin_post("/admin/live/c2-gate/start", Some(&admin)))
+        .await;
+    assert!(s.get("/admin", Some(&admin)).await.body.contains(&label));
+
+    // Another puzzle, at the same time, with no limit of three.
+    s.send(admin_post("/admin/live/kit-left-open/start", Some(&admin)))
+        .await;
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert_eq!(page.matches("min left").count(), 2, "{page}");
+
+    // Stopping ends it at once, and the page offers to start it again.
+    let r = s
+        .send(admin_post("/admin/live/c2-gate/stop", Some(&admin)))
+        .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        live_send(&s, &label, "GET", "/", &[], "").await.status,
+        StatusCode::GONE
+    );
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(
+        page.contains("/admin/live/c2-gate/start") && page.matches("min left").count() == 1,
+        "{page}"
+    );
+}
+
+/// What the Pebble implant is told is the key, on an instance, by checking in as it.
+async fn live_flag_of(s: &Site, label: &str) -> String {
+    pebble_flag(s, label).await
+}
+
+#[tokio::test]
+async fn the_admin_can_start_a_lab_and_it_reaches_the_range() {
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    let admin = s.admin_cookie().await;
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(
+        page.contains("a lab on the range") && page.contains("/admin/live/webshell-lab/start"),
+        "{page}"
+    );
+
+    let r = s
+        .send(admin_post("/admin/live/webshell-lab/start", Some(&admin)))
+        .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    let calls = range.calls.lock().unwrap().clone();
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.starts_with("POST /v1/instances ") && c.contains("webshell-lab")),
+        "{calls:?}"
+    );
+    let flag = created_flag(&range);
+    assert!(
+        s.get("/admin", Some(&admin)).await.body.contains(&flag),
+        "the flag is shown to the admin"
+    );
+
+    let r = s
+        .send(admin_post("/admin/live/webshell-lab/stop", Some(&admin)))
+        .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert!(range
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|c| c.starts_with("DELETE /v1/instances/")));
+    assert!(!s
+        .get("/admin", Some(&admin))
+        .await
+        .body
+        .contains("min left"));
+}
+
+#[tokio::test]
+async fn a_range_that_refuses_is_reported_to_the_admin_and_leaves_nothing_behind() {
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    let admin = s.admin_cookie().await;
+    *range.refuse.lock().unwrap() = Some(StatusCode::TOO_MANY_REQUESTS);
+    let r = s
+        .send(admin_post("/admin/live/webshell-lab/start", Some(&admin)))
+        .await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(r.body.contains("full"), "{}", r.body);
+    assert!(!s
+        .get("/admin", Some(&admin))
+        .await
+        .body
+        .contains("min left"));
+}
+
+#[tokio::test]
+async fn the_admin_page_says_when_live_puzzles_are_off() {
+    let s = site().await;
+    let admin = s.admin_cookie().await;
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(page.contains("Live puzzles are off"), "{page}");
+    assert_eq!(
+        s.send(admin_post("/admin/live/c2-gate/start", Some(&admin)))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+}

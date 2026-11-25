@@ -81,6 +81,10 @@ pub enum Mode {
 pub enum Track {
     Intro,
     Daily,
+    /// Live puzzles (a server of their own for each player). Always
+    /// available, in order, with no release date, and not part of the daily
+    /// rotation.
+    Live,
 }
 
 /// Contents of `pack.toml`.
@@ -309,6 +313,12 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
                 "intro packs must not have a date",
             ))
         }
+        (Track::Live, Some(_)) => {
+            return Err(invalid(
+                &dir.join("pack.toml"),
+                "live packs must not have a date",
+            ))
+        }
         (Track::Daily, None) => {
             return Err(invalid(
                 &dir.join("pack.toml"),
@@ -325,6 +335,12 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
     }
 
     let is_live = meta.modes.contains(&Mode::Live);
+    if meta.track == Track::Live && !is_live {
+        return Err(invalid(
+            &dir.join("pack.toml"),
+            "a pack on the live track needs the live mode",
+        ));
+    }
     let has_raw = |name: &str| raw.iter().any(|(p, _)| p == name);
     let live = if is_live {
         let has_file = |f: &str| raw.iter().any(|(p, _)| p.strip_prefix("live/") == Some(f));
@@ -412,10 +428,15 @@ pub fn load_all(root: &Path) -> Result<Vec<Pack>, PackError> {
         .iter()
         .map(|d| load_pack(d))
         .collect::<Result<Vec<_>, _>>()?;
-    // Intro stages first, in order, then dailies by release date.
+    // Intro stages first, in order, then dailies by release date, then live
+    // puzzles in order.
     packs.sort_by_key(|p| {
         (
-            p.meta.track == Track::Daily,
+            match p.meta.track {
+                Track::Intro => 0,
+                Track::Daily => 1,
+                Track::Live => 2,
+            },
             p.meta.release_day(),
             p.meta.number,
         )
@@ -667,6 +688,16 @@ mod tests {
         )
         .contains("must not have a date"));
         assert!(load_error("b", &[("x", "track = \"daily\"\nnumber = 1")]).contains("need a date"));
+        assert!(load_error(
+            "live-date",
+            &[("x", "track = \"live\"\nnumber = 1\ndate = \"2026-01-01\"")]
+        )
+        .contains("must not have a date"));
+        assert!(
+            load_error("live-mode", &[("x", "track = \"live\"\nnumber = 1")])
+                .contains("needs the live mode"),
+            "a pack on the live track must be a live pack"
+        );
         assert!(load_error(
             "c",
             &[("x", "track = \"daily\"\nnumber = 1\ndate = \"2026-02-30\"")]

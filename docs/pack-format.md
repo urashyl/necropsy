@@ -31,10 +31,12 @@ Unknown keys are rejected.
 
 ### Tracks
 
-There are two tracks of puzzles.
+There are three tracks of puzzles.
 
 - **`intro`** stages are always available, in order. They teach the techniques the dailies assume, and the last one leads on to today's puzzle.
 - **`daily`** puzzles have a release `date`. The latest one released is today's puzzle, earlier ones stay playable from the archive, and later ones are hidden everywhere: their page, files, answer check and explainer all answer "not found" until their day, so nothing can be read early. To add a daily, give it a date after the last one.
+
+- **`live`** puzzles are [live puzzles](live.md): a server of their own for each player. They are always available, in order, with no release `date` (a date is an error) and no place in the daily rotation: they are listed on the Live page, not in the archive, and never become today's puzzle. A pack on this track needs the `live` mode. Because they are always available, a new one can be played, and tried by the admin, the moment it is deployed.
 
 Streaks count only dailies solved on their own release day, so replaying old puzzles or the intro stages does not extend one.
 

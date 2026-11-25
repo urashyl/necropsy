@@ -1,7 +1,6 @@
 id = "webshell-lab"
-track = "daily"
-date = "2026-12-08"
-number = 15
+track = "live"
+number = 3
 title = "Back inside the shell"
 difficulty = 2
 modes = ["web", "live"]
