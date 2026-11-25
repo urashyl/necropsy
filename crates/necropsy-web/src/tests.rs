@@ -718,6 +718,27 @@ fn same_origin_checks_host_and_base() {
 // ---------------------------------------------------------------- progress
 
 #[tokio::test]
+async fn progress_lists_only_what_can_be_answered_today() {
+    // The client uploads local solves only for these, so a removed or not
+    // yet released puzzle is not posted on every page load.
+    let s = site_on("2026-11-25").await;
+    s.register_verified("alice", SECRET_EMAIL).await;
+    let cookie = s.login_cookie("alice").await;
+    for cookie in [Some(cookie.as_str()), None] {
+        let body = s.get("/api/me/progress", cookie).await.body;
+        let start = body.find("\"playable\":[").expect("playable list") + 12;
+        let list = &body[start..start + body[start..].find(']').unwrap()];
+        let ids: Vec<&str> = list.split(',').map(|x| x.trim_matches('"')).collect();
+        for id in ["intro-log", "iloveyou-dropped", "iloveyou-attachment"] {
+            assert!(ids.contains(&id), "{id} in {ids:?}");
+        }
+        for id in ["iloveyou-payload", "peanuts", "second-stage", "phone-home"] {
+            assert!(!ids.contains(&id), "{id} in {ids:?}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn solves_are_recorded_for_signed_in_users() {
     let s = site().await;
     s.register_verified("alice", SECRET_EMAIL).await;

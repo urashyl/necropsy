@@ -34,7 +34,7 @@
 
   // ---- server progress (signed-in users) -----------------------------------
 
-  const server = { user: null, solved: {} };
+  const server = { user: null, solved: {}, playable: null };
 
   async function loadProgress() {
     try {
@@ -43,6 +43,7 @@
       const p = await r.json();
       server.user = p.user;
       server.solved = Object.fromEntries(p.solves.map((s) => [s.id, s]));
+      if (Array.isArray(p.playable)) server.playable = new Set(p.playable);
     } catch {}
   }
 
@@ -56,15 +57,28 @@
     return res.json();
   }
 
+  /**
+   * A saved answer that no longer checks means the puzzle was changed after it
+   * was solved here. Forget that solve so the new version can be played.
+   */
+  function forgetSolve(id) {
+    delete state.solved[id];
+    save(state);
+  }
+
   /** On sign-in, upload solves that only exist in this browser. */
   async function importLocal() {
-    if (!server.user) return;
+    if (!server.user || !server.playable) return;
     for (const [id, s] of Object.entries(state.solved)) {
       if (server.solved[id] || typeof s.answer !== "string") continue;
+      // Removed puzzles and dailies not released yet would only 404.
+      if (!server.playable.has(id)) continue;
       try {
         const r = await postAnswer(id, s.answer, s.seconds || 0, s.hints || 0);
         if (r.correct) {
           server.solved[id] = { id, day: s.day ?? utcDay(), ontime: !!s.ontime, seconds: s.seconds || 0, hints: s.hints || 0 };
+        } else {
+          forgetSolve(id);
         }
       } catch {}
     }
@@ -219,7 +233,13 @@
   if (local && typeof local.answer === "string") {
     input.value = local.answer;
     postAnswer(id, local.answer, local.seconds || 0, local.hints || 0)
-      .then((r) => r.correct && showSolved(r.explainer_html))
+      .then((r) => {
+        if (r.correct) showSolved(r.explainer_html);
+        else {
+          forgetSolve(id);
+          input.value = "";
+        }
+      })
       .catch(() => {});
   }
   ready.then(async () => {
