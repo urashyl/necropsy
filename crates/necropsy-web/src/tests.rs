@@ -85,6 +85,28 @@ async fn build_full(
     live: Option<crate::live::LiveConfig>,
     captcha: crate::captcha::Captcha,
 ) -> Site {
+    build_logging(
+        mailer,
+        client_ip_header,
+        trusted,
+        today,
+        live,
+        captcha,
+        false,
+    )
+    .await
+}
+
+/// `build_full`, and whether the site logs each request.
+async fn build_logging(
+    mailer: Option<Mailer>,
+    client_ip_header: Option<&str>,
+    trusted: &[&str],
+    today: &str,
+    live: Option<crate::live::LiveConfig>,
+    captcha: crate::captcha::Captcha,
+    log_requests: bool,
+) -> Site {
     let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../packs"
@@ -100,6 +122,7 @@ async fn build_full(
             trusted_proxies: trusted.iter().map(|n| n.parse().unwrap()).collect(),
             live,
             captcha,
+            log_requests,
         },
         Db::open(":memory:").unwrap(),
         mailer,
@@ -2845,5 +2868,83 @@ async fn the_admin_page_says_when_live_puzzles_are_off() {
             .await
             .status,
         StatusCode::NOT_FOUND
+    );
+}
+
+// ---------------------------------------------------------------- request logging
+
+/// A tracing writer that keeps what is written to it.
+#[derive(Clone, Default)]
+struct LogSink(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for LogSink {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(b);
+        Ok(b.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogSink {
+    type Writer = LogSink;
+    fn make_writer(&'a self) -> LogSink {
+        self.clone()
+    }
+}
+
+#[test]
+fn requests_are_logged_only_when_asked_and_never_with_the_query_string() {
+    let sink = LogSink::default();
+    let sub = tracing_subscriber::fmt()
+        .with_writer(sink.clone())
+        .with_ansi(false)
+        .finish();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tracing::subscriber::with_default(sub, || {
+        rt.block_on(async {
+            // Off by default: a handful of requests leave no trace.
+            let quiet = site().await;
+            for path in [
+                "/",
+                "/learn",
+                "/p/intro-log",
+                "/nope",
+                "/healthz?token=secret-one",
+            ] {
+                quiet.get(path, None).await;
+            }
+            assert_eq!(
+                String::from_utf8_lossy(&sink.0.lock().unwrap()),
+                "",
+                "nothing is logged unless asked for"
+            );
+
+            // On: method, path and status, and never the query string.
+            let loud = build_logging(
+                None,
+                None,
+                &[],
+                ALL_RELEASED,
+                None,
+                crate::captcha::Captcha::Off,
+                true,
+            )
+            .await;
+            for uri in ["/learn", "/verify?token=secret-two"] {
+                loud.get(uri, None).await;
+            }
+        })
+    });
+    let log = String::from_utf8_lossy(&sink.0.lock().unwrap()).into_owned();
+    assert!(log.contains("GET /learn 200"), "{log}");
+    assert!(log.contains("GET /verify "), "{log}");
+    assert!(
+        !log.contains("secret"),
+        "the query string never reaches the log: {log}"
     );
 }

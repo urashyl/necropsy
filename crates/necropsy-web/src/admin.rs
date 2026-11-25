@@ -207,7 +207,7 @@ pub async fn live_start_post(
     }
     match live::create_instance(&state, admin.id, &rp.pack).await {
         Ok(_) => Redirect::to("/admin").into_response(),
-        Err(res) => res,
+        Err(refusal) => refusal.into_response(),
     }
 }
 

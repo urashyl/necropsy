@@ -614,15 +614,25 @@ async fn range_call(
     }
 }
 
+/// Why an instance could not be started: a status and what to tell the caller.
+/// Small on purpose, so it is cheap to return; it becomes a response at the edge.
+pub struct Refusal(StatusCode, &'static str);
+
+impl IntoResponse for Refusal {
+    fn into_response(self) -> Response {
+        (self.0, self.1).into_response()
+    }
+}
+
 /// Starts the container for a new instance.
 async fn start_container(
     state: &AppState,
     inst: &Instance,
     scenario: &Scenario,
     image: &str,
-) -> Result<(), Response> {
+) -> Result<(), Refusal> {
     let Some(range) = state.live.as_ref().and_then(|l| l.range.as_ref()) else {
-        return Err(StatusCode::NOT_FOUND.into_response());
+        return Err(Refusal(StatusCode::NOT_FOUND, ""));
     };
     let body = serde_json::json!({
         "id": inst.label,
@@ -649,7 +659,7 @@ async fn start_container(
             } else {
                 "Could not start the instance. Try again."
             };
-            Err((StatusCode::SERVICE_UNAVAILABLE, msg).into_response())
+            Err(Refusal(StatusCode::SERVICE_UNAVAILABLE, msg))
         }
     }
 }
@@ -889,7 +899,7 @@ pub async fn instance_post(
     }
     match create_instance(&state, uid, pack).await {
         Ok(inst) => Json(view(&state, Some(&inst))).into_response(),
-        Err(res) => res,
+        Err(refusal) => refusal.into_response(),
     }
 }
 
@@ -900,9 +910,9 @@ pub async fn create_instance(
     state: &AppState,
     user_id: i64,
     pack: &Pack,
-) -> Result<Instance, Response> {
+) -> Result<Instance, Refusal> {
     let Some(scenario) = &pack.live else {
-        return Err(StatusCode::NOT_FOUND.into_response());
+        return Err(Refusal(StatusCode::NOT_FOUND, ""));
     };
     let t = now();
     let inst = Instance {
@@ -916,7 +926,7 @@ pub async fn create_instance(
     };
     if let Err(e) = state.db.live_create(inst.clone()).await {
         tracing::error!("live instance failed: {e}");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+        return Err(Refusal(StatusCode::INTERNAL_SERVER_ERROR, ""));
     }
     if let Some(image) = pack.container() {
         if let Err(res) = start_container(state, &inst, scenario, image).await {

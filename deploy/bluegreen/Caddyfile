@@ -4,8 +4,8 @@
 #   upstream.caddy  the live color, as: to necropsy-blue:8080
 #
 # There is deliberately no access log here. Email links carry one-time tokens
-# in the query string, and the app already logs the method and path of each
-# request.
+# in the query string, and the app does not log requests unless asked to
+# (NECROPSY_LOG_REQUESTS=1).
 
 {
 	# A socket inside the container, so `caddy reload` can swap the config
