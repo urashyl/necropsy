@@ -2,14 +2,19 @@
 
 A live puzzle is a server. A signed-in player presses **Spin up instance** and gets a link like `https://k3x9q2mfa7.necropsy.urashyl.dev`. That link is a small simulated server, described by the pack, that lives for a while and answers whatever the player sends it. They attack it, emulate a client of it, or pick through what it exposes, and the flag is what it hands over.
 
-Nothing a scenario describes is executed. A response is a status, headers and a body taken from the pack. There is no shell behind a "webshell", no outbound request from a handler, and no access to the machine's files.
+There are two ways to back a live puzzle:
+
+- **Simulated** (this page): a `live.toml` of routes. A response is a status, headers and a body taken from the pack. Nothing is executed: there is no shell behind a "webshell", no outbound request from a handler, and no access to the machine's files. It is cheap and safe, good for protocol emulation and exposed-file puzzles.
+- **Real** ([range.md](range.md)): a sandboxed container per player running real software, such as a working webshell or a vulnerable app. A `live.toml` with `[container] image = "..."`. It needs the spawner and costs memory.
+
+Everything else here (instances, links, flags, the captcha, the proxy setup) applies to both.
 
 ## How it works
 
 - `*.<NECROPSY_LIVE_DOMAIN>` is pointed at the same process as the site. Requests whose `Host` falls under that domain are answered from the scenario; anything else is the normal site. The two never share pages, cookies or CSRF logic.
 - An instance has a random label (the subdomain), a time to live (`ttl_minutes`, at most 240), and a random seed kept in the database. The seed makes the flag, and every `{{d:name}}` value, different for every instance. Flags cannot be passed between players.
 - The player submits the flag on the puzzle page as usual. It is checked against the flags of that player's own instances of the pack, including recently expired ones, and the solve is recorded like any other.
-- Limits: one running instance per pack per player, three running in all, 100 requests per 10 seconds per instance, request bodies up to 64 KiB. The latest 100 requests are shown to the player on the puzzle page.
+- Limits: one running instance per pack per player, three running in all, 100 requests per 10 seconds per instance, request bodies up to 1 MiB. The latest 100 requests are shown to the player on the puzzle page.
 
 ## Setting it up
 
@@ -24,7 +29,7 @@ Your reverse proxy needs three things:
 @necropsy_live host *.necropsy.urashyl.dev
 handle @necropsy_live {
 	request_body {
-		max_size 64KB
+		max_size 1MB
 	}
 	reverse_proxy http://192.168.100.22:8080 {
 		header_up X-Real-IP {remote_host}
@@ -46,7 +51,7 @@ With the bundled blue-green Caddy, nothing changes: it answers on any host and p
 
 An instance is a subdomain of the site, and its pages may run scripts (a cookie logger sample, say). A page on a subdomain is allowed to set cookies for the parent domain, so it could plant its own `necropsy_session` and get a victim signed in to the attacker's account. Over https the session cookie is therefore named `__Host-necropsy_session`: browsers accept that name only when it is set by the exact host, with `Secure`, `Path=/` and no `Domain`. Signing in again after an upgrade is a one-off.
 
-Cross-site POSTs are rejected for the main site, and an instance's origin is not the site's origin, so a page on an instance cannot post to the site's API on a player's behalf.
+Starting an instance asks for a captcha (see [accounts.md](accounts.md#captcha)). Cross-site POSTs are rejected for the main site, and an instance's origin is not the site's origin, so a page on an instance cannot post to the site's API on a player's behalf.
 
 ## The scenario file
 

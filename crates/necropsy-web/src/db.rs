@@ -633,6 +633,25 @@ impl Db {
         .await
     }
 
+    pub async fn live_set_expiry(&self, label: String, expires_at: i64) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE live_instances SET expires_at = ?2 WHERE label = ?1",
+                params![label, expires_at],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    pub async fn live_delete(&self, label: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute("DELETE FROM live_instances WHERE label = ?1", [label])
+                .map(|_| ())
+        })
+        .await
+    }
+
     pub async fn live_set_flags(&self, label: String, flags: Vec<String>) -> rusqlite::Result<()> {
         self.run(move |c| {
             c.execute(

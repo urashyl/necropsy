@@ -220,6 +220,10 @@ fn register_form(
                 (field("Email", "email", "email", "email",
                     Some("Used to verify your account and reset your password. It is never shown to anyone.")))
                 (field("Password", "password", "password", "new-password", Some("At least 10 characters.")))
+                @if let Some(key) = state.captcha.site_key() {
+                    div.cf-turnstile data-sitekey=(key) {}
+                    script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer {}
+                }
                 button.button type="submit" { "Create account" }
             }
             p.auth-links { "Already registered? " a href="/login" { "Log in" } }
@@ -232,6 +236,9 @@ pub struct RegisterForm {
     username: String,
     email: String,
     password: String,
+    /// Filled in by the Turnstile widget.
+    #[serde(rename = "cf-turnstile-response", default)]
+    captcha: String,
 }
 
 pub async fn register_post(
@@ -249,6 +256,14 @@ pub async fn register_post(
         .allow(&format!("register:{ip}"), 5, AUTH_WINDOW)
     {
         return too_many(&state, v);
+    }
+    if !state.captcha.verify(&f.captcha, &ip).await {
+        return register_form(
+            &state,
+            v,
+            StatusCode::BAD_REQUEST,
+            Some("The captcha check failed. Try again."),
+        );
     }
     let username = f.username.trim().to_owned();
     if let Err(e) = validate_username(&username) {

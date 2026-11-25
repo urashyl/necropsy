@@ -1,0 +1,13 @@
+id = "webshell-lab"
+track = "daily"
+date = "2026-12-08"
+number = 15
+title = "Back inside the shell"
+difficulty = 2
+modes = ["web", "live"]
+tags = ["webshell", "php", "incident-response", "live"]
+hints = [
+  "The sample is lightly obfuscated, but it only does two things: check a header, and run a form field. Decode the base64 strings to see which header, what value, and which field.",
+  "Use curl: send the header with `-H`, and the command with `-d 'field=command'`. Aim it at the path the access log shows.",
+  "The attacker staged what they stole somewhere hidden. Start with `ls -la /tmp`, then look inside.",
+]

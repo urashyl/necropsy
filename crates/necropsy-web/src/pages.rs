@@ -235,10 +235,11 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 
 /// The controls of a live puzzle: spin up an instance, see its link, its
 /// time left and the requests it has had. Driven by app.js.
-fn live_panel(viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+    let captcha_key = state.captcha.site_key();
     let ttl = rp.pack.live.as_ref().map(|s| s.ttl_minutes).unwrap_or(60);
     html! {
-        section #live.live-panel {
+        section #live.live-panel data-sitekey=[captcha_key] {
             h2 { "Live instance" }
             p.muted {
                 "This puzzle is a real server, started just for you. It lives for "
@@ -249,6 +250,7 @@ fn live_panel(viewer: Option<&User>, rp: &RenderedPack) -> Markup {
             } @else {
                 div #live-idle {
                     button #live-start.button type="button" { "Spin up instance" }
+                    div #live-captcha.live-captcha {}
                 }
                 div #live-active.hidden {
                     p.live-url {
@@ -311,7 +313,7 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                     div.prose.brief { (PreEscaped(&rp.brief_html)) }
 
                     @if rp.pack.is_live() {
-                        (live_panel(viewer, rp))
+                        (live_panel(state, viewer, rp))
                     }
 
                     @for f in &rp.files {

@@ -20,6 +20,9 @@ Then open <http://127.0.0.1:8080>. On first run the server creates an admin acco
 | `docs/pack-format.md` | The pack format. |
 | `docs/web.md` | Running and operating the web front end. |
 | `docs/live.md` | Live puzzles: per-player servers on a wildcard domain. |
+| `docs/range.md` | Container-backed live puzzles: sandbox, setup, and how many players a VM holds. |
+| `crates/necropsy-spawner` | Starts and reaps the sandboxed containers. |
+| `range/` | Lab images and the image allowlist. |
 | `docs/deploy.md` | Installing as a systemd user service. |
 | `.env.example` | Every setting, documented. Copy to `.env` for local runs. |
 | `deploy/` | Service unit template and `install.sh`. |

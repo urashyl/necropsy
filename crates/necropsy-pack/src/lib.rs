@@ -190,6 +190,14 @@ impl Pack {
         self.live.is_some()
     }
 
+    /// The sandbox image of a container-backed live pack.
+    pub fn container(&self) -> Option<&str> {
+        self.live
+            .as_ref()
+            .and_then(|l| l.container.as_ref())
+            .map(|c| c.image.as_str())
+    }
+
     pub fn live_file(&self, path: &str) -> Option<&PackFile> {
         self.live_files.iter().find(|f| f.path == path)
     }

@@ -346,11 +346,56 @@
       leftEl.textContent = formatTime(Math.max(left, 0));
     }
 
+    // Starting an instance needs a Cloudflare Turnstile token when the site
+    // has a captcha. The widget is loaded the first time it is needed.
+    const siteKey = liveBox.dataset.sitekey || "";
+    const captchaBox = document.getElementById("live-captcha");
+    let widget = null;
+    let pendingToken = null;
+
+    function loadTurnstile() {
+      if (window.turnstile) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    async function startWithCaptcha() {
+      if (!siteKey) return call("POST");
+      liveStart.disabled = true;
+      liveMsg.textContent = "Checking you are not a robot...";
+      try {
+        await loadTurnstile();
+      } catch {
+        liveMsg.textContent = "Could not load the captcha.";
+        liveMsg.classList.add("err-text");
+        liveStart.disabled = false;
+        return;
+      }
+      const done = async (token) => {
+        pendingToken = token;
+        await call("POST");
+        pendingToken = null;
+        liveStart.disabled = false;
+        if (widget !== null) window.turnstile.reset(widget);
+      };
+      if (widget === null) {
+        widget = window.turnstile.render(captchaBox, { sitekey: siteKey, callback: done });
+      } else {
+        window.turnstile.reset(widget);
+      }
+    }
+
     async function call(method, path = "") {
       liveMsg.textContent = "";
       liveMsg.classList.remove("err-text");
       try {
-        const r = await fetch(api + path, { method, credentials: "same-origin" });
+        const headers = pendingToken ? { "X-Turnstile-Token": pendingToken } : {};
+        const r = await fetch(api + path, { method, headers, credentials: "same-origin" });
         if (!r.ok) throw new Error(await r.text());
         renderInstance(await r.json());
       } catch (e) {
@@ -359,7 +404,7 @@
       }
     }
 
-    liveStart.addEventListener("click", () => call("POST"));
+    liveStart.addEventListener("click", startWithCaptcha);
     document.getElementById("live-stop").addEventListener("click", () => call("POST", "/stop"));
     document.getElementById("live-copy").addEventListener("click", async () => {
       try {

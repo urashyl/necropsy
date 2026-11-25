@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Live scenarios: the declarative description of a server a player talks to.
 //!
+//! A scenario can instead say `[container] image = "name"` and run real
+//! software in a sandbox, see `docs/range.md`; it then has no routes.
+//!
 //! A live pack has a `live.toml` next to its `pack.toml`. The web front end
 //! spins up an instance of the scenario for a player at its own subdomain and
 //! answers requests from these routes. Nothing in a scenario is code: a
@@ -47,6 +50,9 @@ pub struct Scenario {
     pub ttl_minutes: u32,
     #[serde(default = "default_prefix")]
     pub flag_prefix: String,
+    /// Run a real, sandboxed container instead of simulated routes.
+    #[serde(default)]
+    pub container: Option<Container>,
     #[serde(default, rename = "route")]
     pub routes: Vec<Route>,
     /// Answers requests no route matched. Defaults to a plain 404.
@@ -60,6 +66,14 @@ fn default_ttl() -> u32 {
 
 fn default_prefix() -> String {
     "necropsy".into()
+}
+
+/// A real server for each instance, run by the spawner (`docs/range.md`).
+/// `image` names an entry of the spawner's allowlist, `range/images.toml`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Container {
+    pub image: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -136,6 +150,20 @@ impl Scenario {
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
         {
             return Err("flag_prefix must be 1 to 24 characters of a-z and 0-9".into());
+        }
+        if let Some(c) = &s.container {
+            if !s.routes.is_empty() || s.fallback.is_some() {
+                return Err("a container scenario has no routes or fallback".into());
+            }
+            let ok = !c.image.is_empty()
+                && c.image.len() <= 40
+                && c.image
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+            if !ok {
+                return Err(format!("bad container image name {:?}", c.image));
+            }
+            return Ok(s);
         }
         if s.routes.is_empty() || s.routes.len() > MAX_ROUTES {
             return Err(format!("a scenario needs 1 to {MAX_ROUTES} routes"));
@@ -259,9 +287,16 @@ mod tests {
                 route("", "headers = { content-length = \"1\" }"),
             ),
             ("unknown key", route("surprise = 1", "")),
+            (
+                "container with routes",
+                format!("[container]\nimage = \"lab\"\n{}", route("", "")),
+            ),
+            ("bad image name", "[container]\nimage = \"-x y\"".to_owned()),
         ] {
             assert!(parse(&text).is_err(), "{why} should be rejected");
         }
+        let c = parse("[container]\nimage = \"lab\"").unwrap();
+        assert_eq!(c.container.unwrap().image, "lab");
         // A pattern with a template is only compiled once it is filled in.
         assert!(parse(&route(
             "[route.when]\nheader = { a = \"re:^{{d:x}}(\" }",

@@ -64,7 +64,15 @@ async fn build_on(
     trusted: &[&str],
     today: &str,
 ) -> Site {
-    build_full(mailer, client_ip_header, trusted, today, None).await
+    build_full(
+        mailer,
+        client_ip_header,
+        trusted,
+        today,
+        None,
+        crate::captcha::Captcha::Off,
+    )
+    .await
 }
 
 const LIVE_DOMAIN: &str = "live.example.test";
@@ -75,6 +83,7 @@ async fn build_full(
     trusted: &[&str],
     today: &str,
     live: Option<crate::live::LiveConfig>,
+    captcha: crate::captcha::Captcha,
 ) -> Site {
     let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -90,6 +99,7 @@ async fn build_full(
             client_ip_header: client_ip_header.map(|h| h.parse().unwrap()),
             trusted_proxies: trusted.iter().map(|n| n.parse().unwrap()).collect(),
             live,
+            captcha,
         },
         Db::open(":memory:").unwrap(),
         mailer,
@@ -1584,7 +1594,9 @@ async fn live_site() -> Site {
         Some(crate::live::LiveConfig {
             domain: LIVE_DOMAIN.into(),
             host_header: None,
+            spawner: None,
         }),
+        crate::captcha::Captcha::Off,
     )
     .await
 }
@@ -1978,4 +1990,409 @@ async fn session_cookie_is_host_only_over_https() {
     let set = r.headers.get(header::SET_COOKIE).unwrap().to_str().unwrap();
     assert!(set.starts_with("__Host-necropsy_session="), "{set}");
     assert!(set.contains("Secure") && set.contains("Path=/") && !set.contains("Domain"));
+}
+
+// ---------------------------------------------------------------- captcha
+
+async fn captcha_site() -> Site {
+    build_full(
+        None,
+        None,
+        &[],
+        ALL_RELEASED,
+        Some(crate::live::LiveConfig {
+            domain: LIVE_DOMAIN.into(),
+            host_header: None,
+            spawner: None,
+        }),
+        crate::captcha::Captcha::Fake,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn registration_needs_the_captcha_when_one_is_set_up() {
+    let s = captcha_site().await;
+    let page = s.get("/register", None).await;
+    assert!(page.body.contains("cf-turnstile") && page.body.contains("test-site-key"));
+    let fields = |token: &'static str| {
+        vec![
+            ("username", "ivy"),
+            ("email", "ivy@example.org"),
+            ("password", PASSWORD),
+            ("cf-turnstile-response", token),
+        ]
+    };
+    let r = s.post("/register", &fields(""), None).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+    assert!(r.body.contains("captcha"));
+    let r = s.post("/register", &fields("wrong"), None).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert!(
+        s.mail.lock().unwrap().is_empty(),
+        "no email for a failed captcha"
+    );
+    let r = s.post("/register", &fields("pass"), None).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+}
+
+#[tokio::test]
+async fn no_captcha_widget_when_none_is_set_up() {
+    let s = site().await;
+    assert!(!s.get("/register", None).await.body.contains("cf-turnstile"));
+}
+
+#[tokio::test]
+async fn starting_an_instance_needs_the_captcha_but_looking_does_not() {
+    let s = captcha_site().await;
+    s.register_verified_with_captcha("jack").await;
+    let cookie = s.login_cookie("jack").await;
+    let start = |token: Option<&'static str>| {
+        let mut b = Request::post("/api/p/kit-left-open/instance")
+            .header(header::COOKIE, cookie.clone())
+            .header(header::ORIGIN, ORIGIN);
+        if let Some(t) = token {
+            b = b.header("x-turnstile-token", t);
+        }
+        b.body(Body::empty()).unwrap()
+    };
+    assert_eq!(s.send(start(None)).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        s.send(start(Some("wrong"))).await.status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(s.send(start(Some("pass"))).await.status, StatusCode::OK);
+    // The running one is returned without asking again.
+    assert_eq!(s.send(start(None)).await.status, StatusCode::OK);
+    let page = s.get("/p/kit-left-open", Some(&cookie)).await.body;
+    assert!(page.contains(r#"data-sitekey="test-site-key""#), "{page}");
+}
+
+impl Site {
+    async fn register_verified_with_captcha(&self, username: &str) {
+        let r = self
+            .post(
+                "/register",
+                &[
+                    ("username", username),
+                    ("email", &format!("{username}@example.org")),
+                    ("password", PASSWORD),
+                    ("cf-turnstile-response", "pass"),
+                ],
+                None,
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let link = self.last_link("/verify?token=");
+        assert_eq!(self.get(&link, None).await.status, StatusCode::OK);
+    }
+}
+
+// ------------------------------------------------------- container puzzles
+
+use std::path::PathBuf;
+use tokio::net::UnixListener;
+
+/// What the stub spawner was asked, in order: "POST /v1/instances {...}", ...
+type Calls = Arc<Mutex<Vec<String>>>;
+
+struct Range {
+    dir: PathBuf,
+    calls: Calls,
+    /// Make the stub refuse to start instances, with this status.
+    refuse: Arc<Mutex<Option<StatusCode>>>,
+}
+
+/// A stand-in for the spawner and for the containers it would start: the
+/// spawner stub listens on a unix socket, and for each instance it creates it
+/// opens `<range>/<id>/app.sock`, where a tiny web server answers like a
+/// container would.
+async fn stub_range() -> Range {
+    use axum::extract::{Path as AxPath, State};
+    use axum::routing::{any, delete, post};
+
+    let dir = std::env::temp_dir().join(format!(
+        "necropsy-range-test-{}-{}",
+        std::process::id(),
+        rand_suffix()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("range")).unwrap();
+    let calls: Calls = Arc::default();
+    let refuse: Arc<Mutex<Option<StatusCode>>> = Arc::default();
+
+    #[derive(Clone)]
+    struct St {
+        range: PathBuf,
+        calls: Calls,
+        refuse: Arc<Mutex<Option<StatusCode>>>,
+    }
+    let st = St {
+        range: dir.join("range"),
+        calls: calls.clone(),
+        refuse: refuse.clone(),
+    };
+
+    async fn create(State(st): State<St>, body: String) -> (StatusCode, &'static str) {
+        st.calls
+            .lock()
+            .unwrap()
+            .push(format!("POST /v1/instances {body}"));
+        if let Some(code) = *st.refuse.lock().unwrap() {
+            return (code, "no");
+        }
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let id = v["id"].as_str().unwrap().to_owned();
+        let flag = v["env"]["NECROPSY_FLAG"].as_str().unwrap().to_owned();
+        std::fs::create_dir_all(st.range.join(&id)).unwrap();
+        let listener = UnixListener::bind(st.range.join(&id).join("app.sock")).unwrap();
+        // The "container": echoes the method, the path, the body and one
+        // header, says who it is, and sets a header of its own.
+        let app = Router::new().fallback(any(move |req: axum::extract::Request| {
+            let flag = flag.clone();
+            async move {
+                let (parts, body) = req.into_parts();
+                let body = axum::body::to_bytes(body, 1 << 20).await.unwrap();
+                (
+                    [("x-from-container", "yes"), ("content-type", "text/plain")],
+                    format!(
+                        "{} {} body={} auth={} flag-is-in-here={}",
+                        parts.method,
+                        parts.uri,
+                        String::from_utf8_lossy(&body),
+                        parts
+                            .headers
+                            .get("x-auth")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("-"),
+                        flag.len() > 5
+                    ),
+                )
+            }
+        }));
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        (StatusCode::CREATED, "created")
+    }
+    async fn stop(State(st): State<St>, AxPath(id): AxPath<String>) -> &'static str {
+        st.calls.lock().unwrap().push(format!("DELETE {id}"));
+        let _ = std::fs::remove_dir_all(st.range.join(&id));
+        "stopped"
+    }
+    async fn touch(State(st): State<St>, AxPath(id): AxPath<String>, body: String) -> &'static str {
+        st.calls.lock().unwrap().push(format!("TOUCH {id} {body}"));
+        "ok"
+    }
+    let app = Router::new()
+        .route("/v1/instances", post(create))
+        .route("/v1/instances/{id}", delete(stop))
+        .route("/v1/instances/{id}/touch", post(touch))
+        .with_state(st);
+    let listener = UnixListener::bind(dir.join("spawner.sock")).unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    Range { dir, calls, refuse }
+}
+
+fn rand_suffix() -> String {
+    static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        .to_string()
+}
+
+async fn container_site(range: &Range) -> Site {
+    build_full(
+        None,
+        None,
+        &[],
+        ALL_RELEASED,
+        Some(crate::live::LiveConfig {
+            domain: LIVE_DOMAIN.into(),
+            host_header: None,
+            spawner: Some(crate::live::Spawner {
+                socket: range.dir.join("spawner.sock"),
+                range_dir: range.dir.join("range"),
+            }),
+        }),
+        crate::captcha::Captcha::Off,
+    )
+    .await
+}
+
+fn created_flag(range: &Range) -> String {
+    let calls = range.calls.lock().unwrap();
+    let create = calls
+        .iter()
+        .find(|c| c.starts_with("POST /v1/instances"))
+        .unwrap();
+    let json = create.trim_start_matches("POST /v1/instances ");
+    let v: serde_json::Value = serde_json::from_str(json).unwrap();
+    v["env"]["NECROPSY_FLAG"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn container_puzzles_are_hidden_without_a_spawner() {
+    // Live is on, but no spawner is configured.
+    let s = live_site().await;
+    assert_eq!(
+        s.get("/p/webshell-lab", None).await.status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(s.get("/p/c2-gate", None).await.status, StatusCode::OK);
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    assert_eq!(s.get("/p/webshell-lab", None).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_container_instance_is_started_proxied_and_stopped() {
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    let (cookie, l) = spin_up(&s, "kim", "webshell-lab").await;
+
+    // The spawner was asked for the right image, label, time and flag.
+    {
+        let calls = range.calls.lock().unwrap();
+        let c = &calls[0];
+        assert!(c.contains(r#""image":"webshell-lab""#), "{c}");
+        assert!(c.contains(&format!(r#""id":"{l}""#)), "{c}");
+        assert!(c.contains(r#""ttl_secs":2700"#), "{c}");
+    }
+    let flag = created_flag(&range);
+    assert!(flag.starts_with("shell{") && flag.ends_with('}'), "{flag}");
+
+    // Requests reach the container, with their method, path, headers and body,
+    // and its answer comes back, with our safety headers added.
+    let r = live_send(&s, &l, "GET", "/a/b?x=1", &[("x-auth", "k")], "").await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(
+        r.body.starts_with("GET /a/b?x=1 body= auth=k"),
+        "{}",
+        r.body
+    );
+    assert_eq!(r.headers["x-from-container"], "yes");
+    assert_eq!(r.headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    let r = live_send(&s, &l, "POST", "/p", &[], "q=id").await;
+    assert!(r.body.starts_with("POST /p body=q=id"), "{}", r.body);
+
+    // The player sees these in their log.
+    let st = s
+        .get("/api/p/webshell-lab/instance", Some(&cookie))
+        .await
+        .body;
+    assert!(
+        st.contains("/a/b?x=1") && st.contains(r#""method":"POST""#),
+        "{st}"
+    );
+
+    // The flag is accepted, once, from the right player.
+    assert!(submit(&s, &cookie, "webshell-lab", &flag).await);
+
+    // Stopping tells the spawner, and the instance is gone.
+    let stop = s
+        .send(
+            Request::post("/api/p/webshell-lab/instance/stop")
+                .header(header::COOKIE, &cookie)
+                .header(header::ORIGIN, ORIGIN)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(stop.status, StatusCode::OK);
+    assert!(range.calls.lock().unwrap().contains(&format!("DELETE {l}")));
+    assert_eq!(
+        live_send(&s, &l, "GET", "/", &[], "").await.status,
+        StatusCode::GONE
+    );
+}
+
+#[tokio::test]
+async fn a_full_or_broken_range_fails_cleanly() {
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    s.register_verified("lou", "lou@example.org").await;
+    let cookie = s.login_cookie("lou").await;
+    let start = || {
+        Request::post("/api/p/webshell-lab/instance")
+            .header(header::COOKIE, cookie.clone())
+            .header(header::ORIGIN, ORIGIN)
+            .body(Body::empty())
+            .unwrap()
+    };
+
+    *range.refuse.lock().unwrap() = Some(StatusCode::TOO_MANY_REQUESTS);
+    let r = s.send(start()).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(r.body.contains("full"), "{}", r.body);
+    *range.refuse.lock().unwrap() = Some(StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        s.send(start()).await.status,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+
+    // Neither left an instance behind, so there is nothing to count against the cap.
+    let st = s.get("/api/p/webshell-lab/instance", Some(&cookie)).await;
+    assert!(st.body.contains(r#""active":false"#), "{}", st.body);
+
+    // And once the range recovers, starting works.
+    *range.refuse.lock().unwrap() = None;
+    assert_eq!(s.send(start()).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_dead_container_gives_a_bad_gateway_and_use_extends_the_instance() {
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    let (_, l) = spin_up(&s, "max", "webshell-lab").await;
+
+    // Close to its end: a request gives it a fresh term, here and at the spawner.
+    let l2 = l.clone();
+    let soon = crate::db::now() + 60;
+    s.state
+        .db
+        .run(move |c| {
+            c.execute(
+                "UPDATE live_instances SET expires_at = ?2 WHERE label = ?1",
+                rusqlite::params![l2, soon],
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        live_send(&s, &l, "GET", "/", &[], "").await.status,
+        StatusCode::OK
+    );
+    for _ in 0..50 {
+        if range
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.starts_with("TOUCH"))
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let touched = range
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|c| c.starts_with(&format!("TOUCH {l}")));
+    assert!(touched, "{:?}", range.calls.lock().unwrap());
+    let inst = s.state.db.live_by_label(l.clone()).await.unwrap().unwrap();
+    assert!(
+        inst.expires_at > crate::db::now() + 2000,
+        "extended to a fresh term"
+    );
+
+    // A container that has gone away is a 502, not a hang or a 500.
+    std::fs::remove_file(range.dir.join("range").join(&l).join("app.sock")).unwrap();
+    assert_eq!(
+        live_send(&s, &l, "GET", "/", &[], "").await.status,
+        StatusCode::BAD_GATEWAY
+    );
 }

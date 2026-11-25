@@ -40,10 +40,25 @@ pub struct LiveConfig {
     /// Optional header carrying the original host, for a proxy that rewrites
     /// `Host`. Believed only from `NECROPSY_TRUSTED_PROXIES` (any peer if none).
     pub host_header: Option<HeaderName>,
+    /// The spawner, for container-backed puzzles. Without it those puzzles
+    /// are hidden.
+    pub spawner: Option<Spawner>,
 }
 
+/// Where the spawner listens, and where it puts each instance's socket.
+pub struct Spawner {
+    pub socket: std::path::PathBuf,
+    pub range_dir: std::path::PathBuf,
+}
+
+/// An instance of a container puzzle is kept alive while it is used, but never
+/// longer than this from when it started.
+const MAX_LIFETIME_SECS: i64 = 8 * 3600;
+/// Most the container's own answer to a request may be.
+const MAX_PROXY_RESPONSE: usize = 8 * 1024 * 1024;
+
 /// Largest request body an instance reads.
-const MAX_BODY: usize = 64 * 1024;
+const MAX_BODY: usize = 1024 * 1024;
 /// Requests an instance answers per rate window.
 const RATE_MAX: u32 = 100;
 const RATE_WINDOW: Duration = Duration::from_secs(10);
@@ -397,10 +412,6 @@ pub async fn handle(state: Arc<AppState>, label: String, req: Request) -> Respon
         .unwrap_or("")
         .to_ascii_lowercase();
     let (parts, body) = req.into_parts();
-    let bytes = match axum::body::to_bytes(body, MAX_BODY).await {
-        Ok(b) => b,
-        Err(_) => return plain(StatusCode::PAYLOAD_TOO_LARGE, "Request body too large.\n"),
-    };
 
     let inst = match state.db.live_by_label(label.clone()).await {
         Ok(Some(i)) => i,
@@ -421,6 +432,17 @@ pub async fn handle(state: Arc<AppState>, label: String, req: Request) -> Respon
     };
     if !state.hub.allow(&label) {
         return plain(StatusCode::TOO_MANY_REQUESTS, "Slow down.\n");
+    }
+    let bytes = match axum::body::to_bytes(body, MAX_BODY).await {
+        Ok(b) => b,
+        Err(_) => return plain(StatusCode::PAYLOAD_TOO_LARGE, "Request body too large.\n"),
+    };
+
+    let info = req_info(&parts);
+    if scenario.container.is_some() {
+        let res = proxy(&state, &inst, scenario, &parts, bytes).await;
+        log_request(&state, &label, &info, res.status());
+        return res;
     }
 
     let body_text = String::from_utf8_lossy(&bytes).into_owned();
@@ -473,26 +495,238 @@ pub async fn handle(state: Arc<AppState>, label: String, req: Request) -> Respon
         },
     };
 
+    log_request(&state, &label, &info, res.status());
+    res
+}
+
+struct ReqInfo {
+    method: String,
+    target: String,
+    ua: String,
+}
+
+fn req_info(parts: &axum::http::request::Parts) -> ReqInfo {
+    ReqInfo {
+        method: parts.method.to_string(),
+        target: parts
+            .uri
+            .path_and_query()
+            .map(|p| p.as_str().chars().take(200).collect())
+            .unwrap_or_default(),
+        ua: parts
+            .headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .chars()
+            .take(120)
+            .collect(),
+    }
+}
+
+fn log_request(state: &AppState, label: &str, info: &ReqInfo, status: StatusCode) {
     state.hub.push(
-        &label,
+        label,
         LogEntry {
             t: now(),
-            method: incoming.method.to_string(),
-            path: parts
-                .uri
-                .path_and_query()
-                .map(|p| p.as_str().chars().take(200).collect())
-                .unwrap_or_default(),
-            status: res.status().as_u16(),
-            ua: incoming
-                .header("user-agent")
-                .unwrap_or("")
-                .chars()
-                .take(120)
-                .collect(),
+            method: info.method.clone(),
+            path: info.target.clone(),
+            status: status.as_u16(),
+            ua: info.ua.clone(),
         },
     );
-    res
+}
+
+// ------------------------------------------------------------------ containers
+
+/// Headers that belong to one connection and are never passed along.
+fn hop_by_hop(name: &str) -> bool {
+    matches!(
+        name,
+        "connection"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+            | "content-length"
+    )
+}
+
+fn spawner_req(
+    method: &str,
+    uri: &str,
+    json: Option<String>,
+) -> hyper::Request<http_body_util::Full<axum::body::Bytes>> {
+    hyper::Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, "spawner")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CONNECTION, "close")
+        .body(http_body_util::Full::new(axum::body::Bytes::from(
+            json.unwrap_or_default(),
+        )))
+        .expect("a fixed request is valid")
+}
+
+/// Calls the spawner. `Ok` only for a 2xx answer.
+async fn spawner_call(
+    sp: &Spawner,
+    method: &str,
+    uri: &str,
+    json: Option<String>,
+) -> Result<(), (StatusCode, String)> {
+    let res = crate::unixhttp::send(&sp.socket, spawner_req(method, uri, json), 4096)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        let text = String::from_utf8_lossy(res.body()).into_owned();
+        Err((res.status(), text))
+    }
+}
+
+/// Starts the container for a new instance.
+async fn start_container(
+    state: &AppState,
+    inst: &Instance,
+    scenario: &Scenario,
+    image: &str,
+) -> Result<(), Response> {
+    let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) else {
+        return Err(StatusCode::NOT_FOUND.into_response());
+    };
+    let body = serde_json::json!({
+        "id": inst.label,
+        "image": image,
+        "ttl_secs": inst.expires_at - inst.created_at,
+        "env": {
+            "NECROPSY_FLAG": flag_of(scenario, &inst.pack_id, &inst.seed),
+            "NECROPSY_INSTANCE": inst.label,
+        },
+    });
+    match spawner_call(sp, "POST", "/v1/instances", Some(body.to_string())).await {
+        Ok(()) => Ok(()),
+        Err((status, why)) => {
+            tracing::error!("spawner refused {}: {status} {why}", inst.label);
+            let msg = if status == StatusCode::TOO_MANY_REQUESTS {
+                "The range is full right now. Try again in a few minutes."
+            } else {
+                "Could not start the instance. Try again."
+            };
+            Err((StatusCode::SERVICE_UNAVAILABLE, msg).into_response())
+        }
+    }
+}
+
+/// Stops a container and forgets it. Best effort: the spawner reaps by time
+/// anyway.
+async fn stop_container(state: &AppState, label: &str) {
+    if let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) {
+        if let Err((status, why)) =
+            spawner_call(sp, "DELETE", &format!("/v1/instances/{label}"), None).await
+        {
+            tracing::warn!("stopping {label}: {status} {why}");
+        }
+    }
+}
+
+/// Keeps a container that is being used alive: when less than half of its
+/// time is left, give it a full term again, up to a cap from when it started.
+fn keep_alive(state: &Arc<AppState>, inst: &Instance, ttl: i64) {
+    let t = now();
+    if inst.expires_at - t > ttl / 2 {
+        return;
+    }
+    let new_expiry = (t + ttl).min(inst.created_at + MAX_LIFETIME_SECS);
+    if new_expiry <= inst.expires_at + 30 {
+        return;
+    }
+    let (state, label) = (state.clone(), inst.label.clone());
+    tokio::spawn(async move {
+        if let Err(e) = state.db.live_set_expiry(label.clone(), new_expiry).await {
+            tracing::error!("extending {label} failed: {e}");
+            return;
+        }
+        if let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) {
+            let body = format!(r#"{{"ttl_secs":{}}}"#, new_expiry - now());
+            let _ = spawner_call(
+                sp,
+                "POST",
+                &format!("/v1/instances/{label}/touch"),
+                Some(body),
+            )
+            .await;
+        }
+    });
+}
+
+/// Passes a request to the instance's container, over its unix socket, and
+/// returns what it answers.
+async fn proxy(
+    state: &Arc<AppState>,
+    inst: &Instance,
+    scenario: &Scenario,
+    parts: &axum::http::request::Parts,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) else {
+        return plain(StatusCode::NOT_FOUND, "No such instance.\n");
+    };
+    keep_alive(state, inst, i64::from(scenario.ttl_minutes) * 60);
+
+    let mut b = hyper::Request::builder().method(parts.method.clone()).uri(
+        parts
+            .uri
+            .path_and_query()
+            .map(|p| p.as_str())
+            .unwrap_or("/"),
+    );
+    for (k, v) in &parts.headers {
+        if !hop_by_hop(k.as_str()) {
+            b = b.header(k, v);
+        }
+    }
+    let req = match b
+        .header(header::CONNECTION, "close")
+        .header(header::CONTENT_LENGTH, body.len())
+        .body(http_body_util::Full::new(body))
+    {
+        Ok(r) => r,
+        Err(_) => return plain(StatusCode::BAD_REQUEST, "Bad request.\n"),
+    };
+    let socket = sp.range_dir.join(&inst.label).join("app.sock");
+    let res = match crate::unixhttp::send(&socket, req, MAX_PROXY_RESPONSE).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("instance {} did not answer: {e}", inst.label);
+            return plain(StatusCode::BAD_GATEWAY, "The instance is not answering.\n");
+        }
+    };
+    let (rp, rbody) = res.into_parts();
+    let mut out = Response::builder().status(rp.status);
+    for (k, v) in &rp.headers {
+        if !hop_by_hop(k.as_str()) {
+            out = out.header(k, v);
+        }
+    }
+    // Defaults the container's own headers can override.
+    for (k, v) in [
+        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        (header::REFERRER_POLICY, "no-referrer"),
+        (header::X_FRAME_OPTIONS, "DENY"),
+        (header::CACHE_CONTROL, "no-store"),
+    ] {
+        if !rp.headers.contains_key(&k) {
+            out = out.header(k, v);
+        }
+    }
+    out.body(Body::from(rbody))
+        .unwrap_or_else(|_| plain(StatusCode::BAD_GATEWAY, "Bad answer from the instance.\n"))
 }
 
 // ------------------------------------------------------------------ main-site API
@@ -567,6 +801,8 @@ pub async fn instance_get(
 pub async fn instance_post(
     State(state): State<Arc<AppState>>,
     MaybeUser(viewer): MaybeUser,
+    crate::auth::ClientIp(ip): crate::auth::ClientIp,
+    headers: axum::http::HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
     let (pack, uid) = match live_pack(&state, &viewer, &id) {
@@ -584,6 +820,18 @@ pub async fn instance_post(
         Ok(Some(inst)) => return Json(view(&state, Some(&inst))).into_response(),
         Ok(None) => {}
         Err(e) => return server_error(e),
+    }
+    // Only a new instance costs anything, so only that needs the captcha.
+    let token = headers
+        .get("x-turnstile-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !state.captcha.verify(token, &ip).await {
+        return (
+            StatusCode::FORBIDDEN,
+            "The captcha check failed. Try again.",
+        )
+            .into_response();
     }
     match state.db.live_active_count(uid).await {
         Ok(n) if n >= MAX_ACTIVE_PER_USER => {
@@ -609,6 +857,12 @@ pub async fn instance_post(
     if let Err(e) = state.db.live_create(inst.clone()).await {
         return server_error(e);
     }
+    if let Some(image) = pack.container() {
+        if let Err(res) = start_container(&state, &inst, scenario, image).await {
+            let _ = state.db.live_delete(inst.label.clone()).await;
+            return res;
+        }
+    }
     Json(view(&state, Some(&inst))).into_response()
 }
 
@@ -617,10 +871,15 @@ pub async fn instance_stop(
     MaybeUser(viewer): MaybeUser,
     Path(id): Path<String>,
 ) -> Response {
-    let (_, uid) = match live_pack(&state, &viewer, &id) {
+    let (pack, uid) = match live_pack(&state, &viewer, &id) {
         Ok(v) => v,
         Err(r) => return r.into_response(),
     };
+    if pack.container().is_some() {
+        if let Ok(Some(inst)) = state.db.live_active(uid, id.clone()).await {
+            stop_container(&state, &inst.label).await;
+        }
+    }
     match state.db.live_stop(uid, id).await {
         Ok(()) => Json(view(&state, None)).into_response(),
         Err(e) => {

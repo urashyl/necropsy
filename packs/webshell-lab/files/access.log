@@ -1,0 +1,8 @@
+203.0.113.7 - - [02/Dec/2026:03:41:08 +0000] "GET / HTTP/1.1" 200 612 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0"
+203.0.113.7 - - [02/Dec/2026:03:41:09 +0000] "GET /wp-content/uploads/cache/th-0001.jpg HTTP/1.1" 200 21 "http://garden.example/" "Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0"
+198.51.100.44 - - [02/Dec/2026:03:52:17 +0000] "GET /wp-content/uploads/cache/.thumbs.php HTTP/1.1" 404 9 "-" "python-requests/2.31.0"
+198.51.100.44 - - [02/Dec/2026:03:52:41 +0000] "POST /wp-content/uploads/cache/.thumbs.php HTTP/1.1" 200 38 "-" "python-requests/2.31.0"
+198.51.100.44 - - [02/Dec/2026:03:52:58 +0000] "POST /wp-content/uploads/cache/.thumbs.php HTTP/1.1" 200 1204 "-" "python-requests/2.31.0"
+198.51.100.44 - - [02/Dec/2026:03:53:30 +0000] "POST /wp-content/uploads/cache/.thumbs.php HTTP/1.1" 200 412 "-" "python-requests/2.31.0"
+198.51.100.44 - - [02/Dec/2026:03:55:02 +0000] "POST /wp-content/uploads/cache/.thumbs.php HTTP/1.1" 200 9022 "-" "python-requests/2.31.0"
+203.0.113.7 - - [02/Dec/2026:04:12:45 +0000] "GET / HTTP/1.1" 200 612 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"

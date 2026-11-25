@@ -1,0 +1,47 @@
+# Runs the spawner for container-backed live puzzles (docs/range.md).
+# Install as /etc/systemd/system/necropsy-spawner.service, with the binary at
+# /usr/local/bin/necropsy-spawner and the allowlist at /etc/necropsy/images.toml.
+
+[Unit]
+Description=necropsy range spawner
+Documentation=https://github.com/urashyl/necropsy
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/necropsy-spawner
+Environment=SPAWNER_IMAGES=/etc/necropsy/images.toml
+Environment=SPAWNER_SOCKET=/run/necropsy/spawner.sock
+Environment=SPAWNER_RANGE_DIR=/run/necropsy/range
+# The group of the web server inside its container (the image's "nonroot").
+Environment=SPAWNER_SOCKET_GID=65532
+EnvironmentFile=-/etc/necropsy/spawner.env
+
+# /run/necropsy is created here, and kept when the spawner restarts: the web
+# container has it mounted, and instances still running keep their sockets.
+RuntimeDirectory=necropsy
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+# Containers outlive the spawner on purpose; it finds them again on start.
+
+# It needs root to hand each instance's directory to the instance's user and
+# to use Docker, and nothing else on the machine.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/necropsy
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE
+LockPersonality=yes
+RestrictRealtime=yes
+
+[Install]
+WantedBy=multi-user.target

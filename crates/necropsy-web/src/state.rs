@@ -43,6 +43,7 @@ pub struct Config {
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
     /// Live puzzles are offered only when this is set.
     pub live: Option<crate::live::LiveConfig>,
+    pub captcha: crate::captcha::Captcha,
 }
 
 impl RenderedPack {
@@ -76,6 +77,7 @@ pub struct AppState {
     pub client_ip_header: Option<axum::http::HeaderName>,
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
     pub live: Option<crate::live::LiveConfig>,
+    pub captcha: crate::captcha::Captcha,
     pub hub: crate::live::LiveHub,
     pub db: Db,
     pub mailer: Mailer,
@@ -94,9 +96,11 @@ impl AppState {
         let hl = Highlighter::new();
         // Live puzzles need the live domain; without it they stay hidden.
         let live_on = config.live.is_some();
+        let spawner_on = config.live.as_ref().is_some_and(|l| l.spawner.is_some());
         let packs: Vec<RenderedPack> = packs
             .into_iter()
             .filter(|p| live_on || !p.is_live())
+            .filter(|p| spawner_on || p.container().is_none())
             .map(|pack| {
                 let files = pack
                     .files
@@ -132,6 +136,7 @@ impl AppState {
             client_ip_header: config.client_ip_header,
             trusted_proxies: config.trusted_proxies,
             live: config.live,
+            captcha: config.captcha,
             hub: crate::live::LiveHub::default(),
             db,
             mailer,

@@ -8,7 +8,7 @@ phone-home/
   brief.md        the question
   files/          the excerpt, or a file tree
   answer          sha256 of the normalized answer
-  live.toml       live puzzles only, see live.md
+  live.toml       live puzzles only, see live.md and range.md
   live/           live puzzles only, files a scenario can send
   explainer.md    the real finding, shown after solving
 ```

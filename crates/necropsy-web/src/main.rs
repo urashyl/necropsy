@@ -11,6 +11,7 @@
 mod accounts;
 mod admin;
 mod auth;
+mod captcha;
 mod db;
 mod ipnet;
 mod live;
@@ -18,6 +19,7 @@ mod mail;
 mod markdown;
 mod pages;
 mod state;
+mod unixhttp;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -66,7 +68,14 @@ async fn main() {
         client_ip_header: client_ip_header_from_env().unwrap_or_else(|e| fail(&e)),
         trusted_proxies: trusted_proxies_from_env().unwrap_or_else(|e| fail(&e)),
         live: live_from_env().unwrap_or_else(|e| fail(&e)),
+        captcha: captcha_from_env().unwrap_or_else(|e| fail(&e)),
     };
+    if config.captcha.site_key().is_none() {
+        tracing::warn!(
+            "no captcha: set NECROPSY_TURNSTILE_SITE_KEY and NECROPSY_TURNSTILE_SECRET so scripts \
+             cannot mass-register accounts or start live instances"
+        );
+    }
 
     let packs = match necropsy_pack::load_all(&packs_dir) {
         Ok(p) => p,
@@ -124,6 +133,24 @@ async fn main() {
     .expect("server error");
 }
 
+/// Both Turnstile keys, or neither.
+fn captcha_from_env() -> Result<captcha::Captcha, String> {
+    let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    match (
+        get("NECROPSY_TURNSTILE_SITE_KEY"),
+        get("NECROPSY_TURNSTILE_SECRET"),
+    ) {
+        (Some(site), Some(secret)) => Ok(captcha::Captcha::turnstile(
+            site.trim().to_owned(),
+            secret.trim().to_owned(),
+        )),
+        (None, None) => Ok(captcha::Captcha::Off),
+        _ => Err(
+            "set both NECROPSY_TURNSTILE_SITE_KEY and NECROPSY_TURNSTILE_SECRET, or neither".into(),
+        ),
+    }
+}
+
 /// `NECROPSY_LIVE_DOMAIN` turns live puzzles on; `NECROPSY_LIVE_HOST_HEADER`
 /// optionally names a header that carries the original host.
 fn live_from_env() -> Result<Option<live::LiveConfig>, String> {
@@ -148,9 +175,18 @@ fn live_from_env() -> Result<Option<live::LiveConfig>, String> {
         ),
         _ => None,
     };
+    // Container-backed puzzles need the spawner (see docs/range.md).
+    let spawner = std::env::var("NECROPSY_SPAWNER_SOCKET")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(|socket| live::Spawner {
+            socket: socket.trim().into(),
+            range_dir: env_or("NECROPSY_RANGE_DIR", "/run/necropsy/range").into(),
+        });
     Ok(Some(live::LiveConfig {
         domain,
         host_header,
+        spawner,
     }))
 }
 
@@ -311,9 +347,9 @@ async fn security_headers(req: Request, next: Next) -> Response {
     h.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
-             font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; \
-             base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; \
+             font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; \
+             frame-src https://challenges.cloudflare.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         ),
     );
     h.insert(
