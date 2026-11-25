@@ -1342,7 +1342,7 @@ async fn unreleased_dailies_are_hidden_everywhere() {
         StatusCode::NOT_FOUND
     );
     assert_eq!(
-        s.get(&format!("/p/{hidden}/files/analysis-notes.txt"), None)
+        s.get(&format!("/p/{hidden}/files/run-keys.reg"), None)
             .await
             .status,
         StatusCode::NOT_FOUND,
@@ -1351,7 +1351,7 @@ async fn unreleased_dailies_are_hidden_everywhere() {
     let r = s
         .post_json(
             &format!("/api/p/{hidden}/answer"),
-            r#"{"answer":"winfat32.exe"}"#,
+            r#"{"answer":"C:\\WINDOWS\\SYSTEM\\WINFAT32.EXE"}"#,
             None,
         )
         .await;

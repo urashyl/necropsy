@@ -1,3 +1,3 @@
-The script was only the delivery. It sent the machine to download a second program, a password stealer, and that program set itself up to survive a reboot.
+This is M. Lindqvist's PC, where yesterday's outbreak started. The helpdesk cleaned it by the book that afternoon. It still sends one small email after every boot, and its user's passwords keep turning up in use somewhere else.
 
-These are analyst notes on it, reconstructed from how it was described. **What file name does it give the copy of itself that starts at boot?**
+You have the ticket, an export of the startup registry keys, and listings of the folders they point at. Which file is still doing it? Answer with its full path.

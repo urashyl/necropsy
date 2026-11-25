@@ -7,6 +7,6 @@ difficulty = 2
 modes = ["web"]
 tags = ["worm", "vbscript", "2000"]
 hints = [
-  "Read `main()`. It copies itself three times. Two go to one folder, one goes to another.",
-  "The folder each copy lands in is a `GetSpecialFolder(...)` call. `0` is the Windows folder, `1` is the System folder inside it, `2` is Temp.",
+  "`regruns()` writes the registry values. Each one points at a path built from a folder variable.",
+  "Find where that variable is set in `main()`, and which copy was written there.",
 ]

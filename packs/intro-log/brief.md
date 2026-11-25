@@ -1,5 +1,3 @@
-This is part of the SSH log from a small web server. Someone guessed their way in during the night.
+Three nights of SSH logs from a small web server. Most of it is the usual noise from bots guessing passwords. One login in here wasn't one of ours.
 
-**Which IP address guessed a password and got in?**
-
-Answer with the address only.
+Which IP address did it come from?

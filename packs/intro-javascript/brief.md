@@ -1,3 +1,3 @@
-A shop's JavaScript file adds a script to every page, but the address is not written anywhere you can read it.
+Customers of an online shop keep reporting card fraud after buying there. This is the shop's main script, loaded on every page. Somewhere in it, the shop loads code from a host it doesn't own.
 
-**What is the full URL of the script it loads?**
+What's the full URL of that script?

@@ -1,3 +1,3 @@
-You have a cookie row dumped from the profile of a Chromium install on a minimal Linux box. There was no keyring service running, and the `notes.txt` file has what was recorded about the machine.
+You have the cookie table from a kiosk running Chromium on a minimal Debian box, and the notes from whoever pulled it. Nobody has a password for anything on it.
 
-**What is the plaintext value of the `session_token` cookie?**
+What's the plaintext value of the shop's `session_token` cookie?

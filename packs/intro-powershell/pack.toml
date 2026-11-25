@@ -2,10 +2,10 @@ id = "intro-powershell"
 track = "intro"
 number = 2
 title = "Encoded command"
-difficulty = 1
+difficulty = 2
 modes = ["web"]
 tags = ["windows", "powershell", "base64"]
 hints = [
-  "Find the process that should not have started another one. A document has no business launching PowerShell.",
-  "The long string after `-EncodedCommand` is base64. If the result looks like letters with gaps between them, it is UTF-16.",
+  "There are three PowerShell processes. Two belong to the device management agent. Follow the parent of the third back to where it started.",
+  "`-enc` takes base64 of UTF-16LE text. What comes out is another layer: base64 again, then gzip.",
 ]
