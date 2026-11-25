@@ -194,6 +194,15 @@ impl AppState {
         p.pack.meta.track == Track::Daily && p.pack.meta.release_day() == Some(self.today_days())
     }
 
+    /// Ids of every pack that can be played right now.
+    pub fn visible_ids(&self) -> Vec<String> {
+        self.all
+            .iter()
+            .filter(|p| self.is_visible(p))
+            .map(|p| p.pack.meta.id.clone())
+            .collect()
+    }
+
     pub fn visible_count(&self) -> usize {
         self.all.iter().filter(|p| self.is_visible(p)).count()
     }

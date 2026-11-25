@@ -444,6 +444,10 @@ struct Progress {
     /// `null` when nobody is signed in.
     user: Option<String>,
     solves: Vec<SolveOut>,
+    /// Puzzles that can be answered today. The client uploads locally saved
+    /// solves only for these, so a removed or not yet released puzzle is not
+    /// retried on every page load.
+    playable: Vec<String>,
 }
 
 /// The signed-in user's own solves. Contains no email address.
@@ -452,6 +456,7 @@ async fn progress(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUs
         return Json(Progress {
             user: None,
             solves: Vec::new(),
+            playable: state.visible_ids(),
         })
         .into_response();
     };
@@ -474,6 +479,7 @@ async fn progress(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUs
                     }
                 })
                 .collect(),
+            playable: state.visible_ids(),
         })
         .into_response(),
         Err(e) => {
