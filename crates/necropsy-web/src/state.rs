@@ -53,6 +53,7 @@ impl RenderedPack {
         match m.track {
             Track::Intro => format!("Intro #{}", m.number),
             Track::Daily => format!("Daily #{}", m.number),
+            Track::Live => format!("Live #{}", m.number),
         }
     }
 }
@@ -165,7 +166,7 @@ impl AppState {
     /// be read by its page, its files, its answer check or its explainer.
     fn is_visible(&self, p: &RenderedPack) -> bool {
         match p.pack.meta.track {
-            Track::Intro => true,
+            Track::Intro | Track::Live => true,
             Track::Daily => p
                 .pack
                 .meta
@@ -180,6 +181,25 @@ impl AppState {
             .get(id)
             .map(|&i| &self.all[i])
             .filter(|p| self.is_visible(p))
+    }
+
+    /// Any loaded pack by id, released or not. For the admin, who may start any
+    /// live puzzle. Never use it for a player.
+    pub fn get_any(&self, id: &str) -> Option<&RenderedPack> {
+        self.index.get(id).map(|&i| &self.all[i])
+    }
+
+    /// Every loaded live-mode pack, released or not, for the admin.
+    pub fn all_live(&self) -> Vec<&RenderedPack> {
+        self.all.iter().filter(|p| p.pack.is_live()).collect()
+    }
+
+    /// The live track, in order. Always available.
+    pub fn lives(&self) -> Vec<&RenderedPack> {
+        self.all
+            .iter()
+            .filter(|p| p.pack.meta.track == Track::Live)
+            .collect()
     }
 
     /// Intro stages, in order.
@@ -231,6 +251,7 @@ impl AppState {
         let list = match p.pack.meta.track {
             Track::Intro => self.intros(),
             Track::Daily => self.released_dailies(),
+            Track::Live => self.lives(),
         };
         let Some(pos) = list.iter().position(|q| q.pack.meta.id == p.pack.meta.id) else {
             return (None, None);

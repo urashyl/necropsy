@@ -24,6 +24,10 @@ The admin starts with no email address. At `/account` the admin can:
 
 The admin account cannot be disabled, deleted, or self-deleted from the UI.
 
+## Trying live puzzles
+
+The admin page lists every live puzzle that is loaded, whether or not it is released, with a button to **start an instance** of it for the admin. It has no captcha and no limit of three, runs the same as a player's, and the page shows its link, the time it has left and **its flag**, so a puzzle can be tried end to end (and its flag checked) without playing it first. Stop ends it at once. A puzzle that needs the range is loaded only when `NECROPSY_RANGE_URL` is set, and the page says when live puzzles are off.
+
 ## Email
 
 SMTP is configured only through environment variables:

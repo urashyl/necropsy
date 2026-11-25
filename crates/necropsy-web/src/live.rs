@@ -453,7 +453,10 @@ pub async fn handle(state: Arc<AppState>, label: String, req: Request) -> Respon
     if now() >= inst.expires_at {
         return plain(StatusCode::GONE, "This instance has expired.\n");
     }
-    let Some(pack) = state.get(&inst.pack_id).map(|p| &p.pack) else {
+    // An instance only exists because it was started for a pack its owner could
+    // play (or by the admin, who may start any), so serve it whatever the pack's
+    // release state is now.
+    let Some(pack) = state.get_any(&inst.pack_id).map(|p| &p.pack) else {
         return plain(StatusCode::NOT_FOUND, "No such instance.\n");
     };
     let Some(scenario) = &pack.live else {
@@ -789,15 +792,12 @@ struct InstanceView {
 
 fn view(state: &AppState, inst: Option<&Instance>) -> InstanceView {
     match (inst, &state.live) {
-        (Some(i), Some(cfg)) => {
-            let scheme = state.base_url.split("://").next().unwrap_or("https");
-            InstanceView {
-                active: true,
-                url: Some(format!("{scheme}://{}.{}", i.label, cfg.domain)),
-                seconds_left: Some((i.expires_at - now()).max(0)),
-                log: state.hub.recent(&i.label),
-            }
-        }
+        (Some(i), Some(_)) => InstanceView {
+            active: true,
+            url: instance_url(state, &i.label),
+            seconds_left: Some((i.expires_at - now()).max(0)),
+            log: state.hub.recent(&i.label),
+        },
         _ => InstanceView {
             active: false,
             url: None,
@@ -855,9 +855,6 @@ pub async fn instance_post(
         Ok(v) => v,
         Err(r) => return r.into_response(),
     };
-    let Some(scenario) = &pack.live else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
     let server_error = |e: rusqlite::Error| {
         tracing::error!("live instance failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -890,26 +887,63 @@ pub async fn instance_post(
         Ok(_) => {}
         Err(e) => return server_error(e),
     }
+    match create_instance(&state, uid, pack).await {
+        Ok(inst) => Json(view(&state, Some(&inst))).into_response(),
+        Err(res) => res,
+    }
+}
+
+/// Starts an instance of a live pack for a user: a row, and for a container pack
+/// the container. The caller has already decided the user may have one (the
+/// player's captcha and cap, or the admin, who has neither).
+pub async fn create_instance(
+    state: &AppState,
+    user_id: i64,
+    pack: &Pack,
+) -> Result<Instance, Response> {
+    let Some(scenario) = &pack.live else {
+        return Err(StatusCode::NOT_FOUND.into_response());
+    };
     let t = now();
     let inst = Instance {
         label: random_string(b"abcdefghjkmnpqrstuvwxyz23456789", 10),
-        user_id: uid,
-        pack_id: id,
+        user_id,
+        pack_id: pack.meta.id.clone(),
         seed: new_token(),
         created_at: t,
         expires_at: t + i64::from(scenario.ttl_minutes) * 60,
         flags: Vec::new(),
     };
     if let Err(e) = state.db.live_create(inst.clone()).await {
-        return server_error(e);
+        tracing::error!("live instance failed: {e}");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
     if let Some(image) = pack.container() {
-        if let Err(res) = start_container(&state, &inst, scenario, image).await {
+        if let Err(res) = start_container(state, &inst, scenario, image).await {
             let _ = state.db.live_delete(inst.label.clone()).await;
-            return res;
+            return Err(res);
         }
     }
-    Json(view(&state, Some(&inst))).into_response()
+    Ok(inst)
+}
+
+/// Stops the user's running instances of a pack, container and all.
+pub async fn stop_instances(state: &AppState, user_id: i64, pack: &Pack) {
+    if pack.container().is_some() {
+        if let Ok(Some(inst)) = state.db.live_active(user_id, pack.meta.id.clone()).await {
+            stop_container(state, &inst.label).await;
+        }
+    }
+    if let Err(e) = state.db.live_stop(user_id, pack.meta.id.clone()).await {
+        tracing::error!("live stop failed: {e}");
+    }
+}
+
+/// An instance's public address.
+pub fn instance_url(state: &AppState, label: &str) -> Option<String> {
+    let cfg = state.live.as_ref()?;
+    let scheme = state.base_url.split("://").next().unwrap_or("https");
+    Some(format!("{scheme}://{label}.{}", cfg.domain))
 }
 
 pub async fn instance_stop(
@@ -921,18 +955,8 @@ pub async fn instance_stop(
         Ok(v) => v,
         Err(r) => return r.into_response(),
     };
-    if pack.container().is_some() {
-        if let Ok(Some(inst)) = state.db.live_active(uid, id.clone()).await {
-            stop_container(&state, &inst.label).await;
-        }
-    }
-    match state.db.live_stop(uid, id).await {
-        Ok(()) => Json(view(&state, None)).into_response(),
-        Err(e) => {
-            tracing::error!("live stop failed: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
+    stop_instances(&state, uid, pack).await;
+    Json(view(&state, None)).into_response()
 }
 
 /// Whether `guess` is the flag of any instance the user has had of this pack.

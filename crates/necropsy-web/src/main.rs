@@ -277,6 +277,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/p/{id}", get(pages::puzzle))
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
         .route("/learn", get(pages::learn))
+        .route("/live", get(pages::live_list))
         .route("/archive", get(pages::archive))
         .route("/format", get(pages::format))
         // accounts
@@ -300,6 +301,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(admin::delete_confirm_get).post(admin::delete_post),
         )
         .route("/admin/users/{id}/{action}", post(admin::user_action_post))
+        .route("/admin/live/{id}/start", post(admin::live_start_post))
+        .route("/admin/live/{id}/stop", post(admin::live_stop_post))
         // json api used by app.js
         .route(
             "/api/p/{id}/answer",

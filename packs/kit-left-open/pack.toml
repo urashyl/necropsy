@@ -1,7 +1,6 @@
 id = "kit-left-open"
-track = "daily"
-date = "2026-12-07"
-number = 14
+track = "live"
+number = 2
 title = "Kit left open"
 difficulty = 2
 modes = ["web", "live"]

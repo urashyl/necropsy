@@ -15,7 +15,8 @@ use serde::Deserialize;
 
 use crate::accounts::format_date;
 use crate::auth::{normalize_email, AdminUser};
-use crate::db::AdminRow;
+use crate::db::{AdminRow, Instance};
+use crate::live;
 use crate::mail::Mail;
 use crate::pages::{layout, Nav};
 use crate::state::AppState;
@@ -34,6 +35,17 @@ async fn admin_page(
         }
     };
     let total = state.visible_count();
+    // Every loaded live puzzle, with the admin's running instance of it, if any.
+    let mut live_rows = Vec::new();
+    for p in state.all_live() {
+        let inst = state
+            .db
+            .live_active(admin.id, p.pack.meta.id.clone())
+            .await
+            .ok()
+            .flatten();
+        live_rows.push((p, inst));
+    }
     let body: Markup = html! {
         section.wrap.page-head { h1 { "Admin" } }
         section.wrap.section-tight {
@@ -51,6 +63,25 @@ async fn admin_page(
                     div.answer-row {
                         input #to name="to" type="email" required autocomplete="off" maxlength="254";
                         button.button.button-quiet type="submit" { "Send test" }
+                    }
+                }
+            }
+
+            h2.admin-h { "Live puzzles" }
+            @if state.live.is_none() {
+                p.muted { "Live puzzles are off. Set NECROPSY_LIVE_DOMAIN to turn them on." }
+            } @else if live_rows.is_empty() {
+                p.muted { "No live puzzles are loaded." }
+            } @else {
+                p.muted {
+                    "Start one to try it, whatever its state. It is yours alone, with no captcha and no "
+                    "limit, and its flag is shown here. Puzzles that need the range are loaded only "
+                    "when NECROPSY_RANGE_URL is set."
+                }
+                div.table-wrap {
+                    table.table {
+                        thead { tr { th { "Puzzle" } th { "Kind" } th { "Your instance" } } }
+                        tbody { @for (p, inst) in &live_rows { (live_row(state, p, inst.as_ref())) } }
                     }
                 }
             }
@@ -116,6 +147,81 @@ pub async fn admin_get(
     AdminUser(admin): AdminUser,
 ) -> Response {
     admin_page(&state, &admin, None, StatusCode::OK).await
+}
+
+fn live_row(state: &AppState, p: &crate::state::RenderedPack, inst: Option<&Instance>) -> Markup {
+    let m = &p.pack.meta;
+    let kind = if p.pack.container().is_some() {
+        "a lab on the range"
+    } else {
+        "simulated"
+    };
+    html! {
+        tr {
+            td {
+                a href={"/p/" (m.id)} { (m.title) }
+                " " span.muted { (p.label()) " · " (m.id) }
+            }
+            td { (kind) }
+            td {
+                @if let Some(i) = inst {
+                    @let url = live::instance_url(state, &i.label).unwrap_or_default();
+                    @let flag = p.pack.live.as_ref().map(|s| live::flag_of(s, &m.id, &i.seed)).unwrap_or_default();
+                    a href=(url) target="_blank" rel="noopener noreferrer" { (url) }
+                    br;
+                    span.muted { ((i.expires_at - crate::db::now()).max(0) / 60) " min left · flag " }
+                    code { (flag) }
+                    form.inline-form method="post" action={"/admin/live/" (m.id) "/stop"} {
+                        button.button.button-quiet type="submit" { "Stop" }
+                    }
+                } @else {
+                    form.inline-form method="post" action={"/admin/live/" (m.id) "/start"} {
+                        button.button type="submit" { "Start an instance" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Starts the admin's own instance of a live puzzle, whether or not it is
+/// released: no captcha, no limit, and the flag is shown on the admin page.
+pub async fn live_start_post(
+    State(state): State<Arc<AppState>>,
+    AdminUser(admin): AdminUser,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(rp) = state.get_any(&id).filter(|p| p.pack.is_live()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if state.live.is_none() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match state.db.live_active(admin.id, id.clone()).await {
+        Ok(Some(_)) => return Redirect::to("/admin").into_response(),
+        Ok(None) => {}
+        Err(e) => {
+            tracing::error!("admin live lookup failed: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    }
+    match live::create_instance(&state, admin.id, &rp.pack).await {
+        Ok(_) => Redirect::to("/admin").into_response(),
+        Err(res) => res,
+    }
+}
+
+/// Stops the admin's instance of a live puzzle.
+pub async fn live_stop_post(
+    State(state): State<Arc<AppState>>,
+    AdminUser(admin): AdminUser,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(rp) = state.get_any(&id).filter(|p| p.pack.is_live()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    live::stop_instances(&state, admin.id, &rp.pack).await;
+    Redirect::to("/admin").into_response()
 }
 
 /// `enable` or `disable`. Admin accounts are never touched.
