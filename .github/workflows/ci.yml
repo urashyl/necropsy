@@ -209,6 +209,18 @@ jobs:
           code=$(login 198.51.100.7 32)
           [ "$code" = 401 ] || { echo "another address got $code, not 401"; exit 1; }
 
+      # NECROPSY_BIND, for a reverse proxy on another host: the next deploy
+      # recreates the proxy container on the new address.
+      - name: Bind address change
+        run: |
+          echo NECROPSY_BIND=0.0.0.0 | sudo tee -a /etc/necropsy/deploy.env >/dev/null
+          sudo "$DEPLOY" deploy "$(git rev-parse HEAD)"
+          docker port necropsy-proxy 8080
+          docker port necropsy-proxy 8080 | grep -qx "0.0.0.0:$PORT"
+          host=$(hostname -I | awk '{print $1}')
+          curl -fsS "http://$host:$PORT/healthz"
+          curl -fsS "http://127.0.0.1:$PORT/healthz"
+
       - name: State on failure
         if: failure()
         run: |

@@ -61,6 +61,8 @@ case "$cmd" in
           *) image=proxy ;;
         esac
         echo "$image" > "$(cdir "$name")/image"
+        # What compose would publish the proxy on, from the variables it gets.
+        [ "$svc" != proxy ] || echo "${NECROPSY_BIND:-127.0.0.1} ${NECROPSY_PORT:-8080}" > "$(cdir "$name")/published"
         echo true > "$(cdir "$name")/running"
         color="${svc#necropsy-}"
         if [ "${FAKE_UNHEALTHY:-}" = "$color" ]; then echo unhealthy; else echo healthy; fi > "$(cdir "$name")/health"
@@ -91,6 +93,7 @@ case "$cmd" in
     case "$fmt" in
       *"if .State.Running"*) [ "$running" = true ] && echo "$health" || echo stopped ;;
       "{{.State.Running}}") echo "$running" ;;
+      *PortBindings*) cat "$c/published" 2>/dev/null || true ;;
       *) [ "$running" = true ] && echo "running ($health)" || echo "exited ()" ;;
     esac
     ;;

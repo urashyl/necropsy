@@ -48,8 +48,12 @@ services:
     image: caddy:2-alpine
     container_name: necropsy-proxy
     restart: unless-stopped
+    # Loopback only unless deploy.env sets NECROPSY_BIND. The long form takes
+    # an IPv6 address without brackets.
     ports:
-      - "127.0.0.1:${NECROPSY_PORT:-8080}:8080"
+      - target: 8080
+        published: "${NECROPSY_PORT:-8080}"
+        host_ip: "${NECROPSY_BIND:-127.0.0.1}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # A directory, not single files: deploy.sh swaps files in it atomically,
