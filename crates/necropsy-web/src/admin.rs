@@ -46,6 +46,11 @@ async fn admin_page(
             .flatten();
         live_rows.push((p, inst));
     }
+    // Whether the range can be reached, from here, with the token.
+    let range_status = match state.live.as_ref().and_then(|l| l.range.as_ref()) {
+        Some(r) => Some((r.url.clone(), r.check().await)),
+        None => None,
+    };
     let body: Markup = html! {
         section.wrap.page-head { h1 { "Admin" } }
         section.wrap.section-tight {
@@ -73,6 +78,17 @@ async fn admin_page(
             } @else if live_rows.is_empty() {
                 p.muted { "No live puzzles are loaded." }
             } @else {
+                @match &range_status {
+                    Some((url, Ok(()))) => {
+                        p.form-ok { "Range " (url) ": reachable, and it accepts this site's token." }
+                    }
+                    Some((_, Err(why))) => {
+                        p.form-error { "Range: " (why) }
+                    }
+                    None => {
+                        p.muted { "No range is set (NECROPSY_RANGE_URL), so puzzles that need one are not loaded." }
+                    }
+                }
                 p.muted {
                     "Start one to try it, whatever its state. It is yours alone, with no captcha and no "
                     "limit, and its flag is shown here. Puzzles that need the range are loaded only "
