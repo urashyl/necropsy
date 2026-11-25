@@ -32,8 +32,6 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tower_http::compression::CompressionLayer;
-use tower_http::trace::{DefaultOnResponse, TraceLayer};
-use tracing::Level;
 
 use crate::auth::{ClientIp, MaybeUser, AUTH_WINDOW};
 use crate::db::Db;
@@ -53,7 +51,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "necropsy_web=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "necropsy_web=info".into()),
         )
         .init();
 
@@ -68,6 +66,7 @@ async fn main() {
         trusted_proxies: trusted_proxies_from_env().unwrap_or_else(|e| fail(&e)),
         live: live_from_env().unwrap_or_else(|e| fail(&e)),
         captcha: captcha_from_env().unwrap_or_else(|e| fail(&e)),
+        log_requests: std::env::var("NECROPSY_LOG_REQUESTS").is_ok_and(|v| v == "1"),
     };
     if config.captcha.site_key().is_none() {
         tracing::warn!(
@@ -281,12 +280,24 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/archive", get(pages::archive))
         .route("/format", get(pages::format))
         // accounts
-        .route("/register", get(accounts::register_get).post(accounts::register_post))
+        .route(
+            "/register",
+            get(accounts::register_get).post(accounts::register_post),
+        )
         .route("/verify", get(accounts::verify_get))
-        .route("/login", get(accounts::login_get).post(accounts::login_post))
+        .route(
+            "/login",
+            get(accounts::login_get).post(accounts::login_post),
+        )
         .route("/logout", post(accounts::logout_post))
-        .route("/forgot", get(accounts::forgot_get).post(accounts::forgot_post))
-        .route("/reset", get(accounts::reset_get).post(accounts::reset_post))
+        .route(
+            "/forgot",
+            get(accounts::forgot_get).post(accounts::forgot_post),
+        )
+        .route(
+            "/reset",
+            get(accounts::reset_get).post(accounts::reset_post),
+        )
         .route("/account", get(accounts::account_get))
         .route("/account/password", post(accounts::account_password_post))
         .route("/account/username", post(accounts::account_username_post))
@@ -323,23 +334,33 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/favicon.svg", get(pages::favicon))
         .fallback(pages::not_found)
         .layer(middleware::from_fn_with_state(state.clone(), origin_check))
-        .layer(middleware::from_fn_with_state(state.clone(), client_ip_layer))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            client_ip_layer,
+        ))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
-        .layer(
-            // Log the method and path only. Query strings carry one-time
-            // tokens (email links) and must not reach the log.
-            TraceLayer::new_for_http()
-                .make_span_with(|req: &Request| {
-                    tracing::info_span!("http", method = %req.method(), path = %req.uri().path())
-                })
-                .on_response(DefaultOnResponse::new().level(Level::INFO)),
-        )
+        .layer(middleware::from_fn_with_state(state.clone(), request_log))
         .with_state(state.clone())
         // Outermost, so requests for a live instance are answered from its
         // scenario and skip everything above: the main site's CSP, cookies and
         // CSRF logic have no business on those hosts.
         .layer(middleware::from_fn_with_state(state, live_dispatch))
+}
+
+/// Logs each request's method, path and status, but only when
+/// `NECROPSY_LOG_REQUESTS=1`. Off by default: a site that has visitors does not
+/// need a line per request, and the server logs what goes wrong without it. When
+/// it is on, only the method and path are logged, never the query string, since
+/// email links carry one-time tokens there.
+async fn request_log(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
+    if !state.log_requests {
+        return next.run(req).await;
+    }
+    let (method, path) = (req.method().clone(), req.uri().path().to_owned());
+    let res = next.run(req).await;
+    tracing::info!("{method} {path} {}", res.status().as_u16());
+    res
 }
 
 /// Sends requests whose host is under the live domain to the live handler.

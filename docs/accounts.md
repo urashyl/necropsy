@@ -95,7 +95,7 @@ Every state-changing request must come from the site's own origin. `main.rs` rej
 
 SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves`. The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly.
 
-Server logs record the method and path of each request, never the query string, because email links carry one-time tokens there.
+Requests are not logged by default. With `NECROPSY_LOG_REQUESTS=1` the log records the method, path and status of each request, never the query string, because email links carry one-time tokens there.
 
 
 ## Captcha

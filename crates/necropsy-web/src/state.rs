@@ -44,6 +44,8 @@ pub struct Config {
     /// Live puzzles are offered only when this is set.
     pub live: Option<crate::live::LiveConfig>,
     pub captcha: crate::captcha::Captcha,
+    /// Log each request's method, path and status. Off unless asked for.
+    pub log_requests: bool,
 }
 
 impl RenderedPack {
@@ -79,6 +81,7 @@ pub struct AppState {
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
     pub live: Option<crate::live::LiveConfig>,
     pub captcha: crate::captcha::Captcha,
+    pub log_requests: bool,
     pub hub: crate::live::LiveHub,
     pub db: Db,
     pub mailer: Mailer,
@@ -138,6 +141,7 @@ impl AppState {
             trusted_proxies: config.trusted_proxies,
             live: config.live,
             captcha: config.captcha,
+            log_requests: config.log_requests,
             hub: crate::live::LiveHub::default(),
             db,
             mailer,
