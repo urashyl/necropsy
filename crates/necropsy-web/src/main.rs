@@ -114,6 +114,23 @@ async fn main() {
 
     let state = Arc::new(AppState::new(packs, config, db, mailer));
     spawn_housekeeping(state.clone());
+    // Say at startup whether the range can be reached from here, which is where a
+    // misconfigured network or firewall shows up first.
+    if state.live.as_ref().is_some_and(|l| l.range.is_some()) {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let Some(range) = state.live.as_ref().and_then(|l| l.range.as_ref()) else {
+                return;
+            };
+            match range.check().await {
+                Ok(()) => tracing::info!(
+                    "the range at {} answers and accepts this site's token",
+                    range.url
+                ),
+                Err(e) => tracing::warn!("the range is not usable: {e}"),
+            }
+        });
+    }
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind(addr)

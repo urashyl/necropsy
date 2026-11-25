@@ -2158,6 +2158,9 @@ async fn stub_range() -> Range {
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_owned)
         };
+        if parts.uri.path() == "/healthz" {
+            return "ok".into_response();
+        }
         // Every call carries this site's token; nothing is served without it.
         if header("x-necropsy-token").as_deref() != Some(RANGE_TOKEN) {
             return (StatusCode::UNAUTHORIZED, "no").into_response();
@@ -2873,13 +2876,24 @@ async fn the_admin_page_says_when_live_puzzles_are_off() {
 
 // ---------------------------------------------------------------- request logging
 
-/// A tracing writer that keeps what is written to it.
-#[derive(Clone, Default)]
-struct LogSink(Arc<Mutex<Vec<u8>>>);
+thread_local! {
+    static CAPTURE: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
 
-impl std::io::Write for LogSink {
+/// A writer for the one global test subscriber: it keeps what is logged on the
+/// current thread while a test is capturing, and drops the rest. A global
+/// subscriber, not one per test, because `tracing` remembers whether each log
+/// site is enabled, and a site first hit with no subscriber would stay silent.
+#[derive(Clone, Copy)]
+struct Routed;
+
+impl std::io::Write for Routed {
     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(b);
+        CAPTURE.with(|c| {
+            if let Some(v) = c.borrow_mut().as_mut() {
+                v.extend_from_slice(b);
+            }
+        });
         Ok(b.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -2887,27 +2901,39 @@ impl std::io::Write for LogSink {
     }
 }
 
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogSink {
-    type Writer = LogSink;
-    fn make_writer(&'a self) -> LogSink {
-        self.clone()
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Routed {
+    type Writer = Routed;
+    fn make_writer(&'a self) -> Routed {
+        Routed
     }
+}
+
+/// Runs `f` and returns what it logged on this thread.
+fn capture_logs(f: impl FnOnce()) -> String {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let _ = tracing::subscriber::set_global_default(
+            tracing_subscriber::fmt()
+                .with_writer(Routed)
+                .with_ansi(false)
+                .finish(),
+        );
+    });
+    CAPTURE.with(|c| *c.borrow_mut() = Some(Vec::new()));
+    f();
+    let out = CAPTURE.with(|c| c.borrow_mut().take().unwrap_or_default());
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[test]
 fn requests_are_logged_only_when_asked_and_never_with_the_query_string() {
-    let sink = LogSink::default();
-    let sub = tracing_subscriber::fmt()
-        .with_writer(sink.clone())
-        .with_ansi(false)
-        .finish();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
-    tracing::subscriber::with_default(sub, || {
+    // Off by default: a handful of requests leave no trace.
+    let quiet_log = capture_logs(|| {
         rt.block_on(async {
-            // Off by default: a handful of requests leave no trace.
             let quiet = site().await;
             for path in [
                 "/",
@@ -2918,13 +2944,16 @@ fn requests_are_logged_only_when_asked_and_never_with_the_query_string() {
             ] {
                 quiet.get(path, None).await;
             }
-            assert_eq!(
-                String::from_utf8_lossy(&sink.0.lock().unwrap()),
-                "",
-                "nothing is logged unless asked for"
-            );
+        })
+    });
+    assert!(
+        !quiet_log.contains("GET "),
+        "nothing is logged unless asked for: {quiet_log}"
+    );
 
-            // On: method, path and status, and never the query string.
+    // On: method, path and status, and never the query string.
+    let log = capture_logs(|| {
+        rt.block_on(async {
             let loud = build_logging(
                 None,
                 None,
@@ -2940,11 +2969,130 @@ fn requests_are_logged_only_when_asked_and_never_with_the_query_string() {
             }
         })
     });
-    let log = String::from_utf8_lossy(&sink.0.lock().unwrap()).into_owned();
     assert!(log.contains("GET /learn 200"), "{log}");
     assert!(log.contains("GET /verify "), "{log}");
     assert!(
         !log.contains("secret"),
         "the query string never reaches the log: {log}"
+    );
+}
+
+// ------------------------------------------------------------ reaching the range
+
+#[tokio::test]
+async fn the_range_check_says_what_is_wrong() {
+    let range = stub_range().await;
+    let ok = crate::live::Range::new(&range.url, RANGE_TOKEN);
+    assert_eq!(ok.check().await, Ok(()));
+
+    let wrong = crate::live::Range::new(&range.url, "wrong-token-0123456789abcdef");
+    let why = wrong.check().await.unwrap_err();
+    assert!(why.contains("rejects this site's token"), "{why}");
+
+    // Nothing listening: the real cause, not just "error sending request".
+    let dead = {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        format!("http://{}", l.local_addr().unwrap())
+    };
+    let why = crate::live::Range::new(&dead, RANGE_TOKEN)
+        .check()
+        .await
+        .unwrap_err();
+    assert!(why.contains(&format!("cannot reach {dead}")), "{why}");
+    assert!(
+        why.to_lowercase().contains("refused"),
+        "the cause is named: {why}"
+    );
+}
+
+#[tokio::test]
+async fn the_admin_page_shows_whether_the_range_is_usable() {
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    let admin = s.admin_cookie().await;
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(
+        page.contains("reachable, and it accepts this site"),
+        "{page}"
+    );
+
+    let s = build_full(
+        None,
+        None,
+        &[],
+        ALL_RELEASED,
+        Some(crate::live::LiveConfig {
+            domain: LIVE_DOMAIN.into(),
+            host_header: None,
+            range: Some(crate::live::Range::new(
+                &range.url,
+                "wrong-token-0123456789abcdef",
+            )),
+        }),
+        crate::captcha::Captcha::Off,
+    )
+    .await;
+    let admin = s.admin_cookie().await;
+    assert!(s
+        .get("/admin", Some(&admin))
+        .await
+        .body
+        .contains("rejects this site"));
+
+    // A site with live puzzles and no range says so.
+    let s = live_site().await;
+    let admin = s.admin_cookie().await;
+    assert!(s
+        .get("/admin", Some(&admin))
+        .await
+        .body
+        .contains("No range is set"));
+}
+
+#[test]
+fn a_failed_start_logs_why_the_range_could_not_be_reached() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let log = capture_logs(|| {
+        rt.block_on(async {
+            let dead = {
+                let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                format!("http://{}", l.local_addr().unwrap())
+            };
+            let s = build_full(
+                None,
+                None,
+                &[],
+                ALL_RELEASED,
+                Some(crate::live::LiveConfig {
+                    domain: LIVE_DOMAIN.into(),
+                    host_header: None,
+                    range: Some(crate::live::Range::new(&dead, RANGE_TOKEN)),
+                }),
+                crate::captcha::Captcha::Off,
+            )
+            .await;
+            s.register_verified("log-user", "log@example.org").await;
+            let cookie = s.login_cookie("log-user").await;
+            s.send(
+                Request::post("/api/p/webshell-lab/instance")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        })
+    });
+    assert!(log.contains("the range refused"), "{log}");
+    assert!(
+        log.to_lowercase().contains("refused"),
+        "the cause is in the log: {log}"
+    );
+    assert!(
+        log.contains("Connection") || log.contains("connect"),
+        "{log}"
     );
 }

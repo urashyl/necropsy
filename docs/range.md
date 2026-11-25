@@ -98,6 +98,19 @@ docker ps --filter label=necropsy.range=1                    # the running labs,
 
 The spawner finds running labs again after a restart and keeps their expiry and their memory counted, so restarting it does not drop anyone's lab. Anything past its time, and any socket directory nothing owns, is removed at start and every ten seconds.
 
+### When a site cannot reach the range
+
+A start fails with "Could not start the instance", and the site's log says `the range refused <id>: 502 ... <cause>`. The cause is the end of that line (`Connection refused`, `timed out`, `rejects this site's token`). The same check runs when the site starts (look for `the range at ... answers` or `the range is not usable` in `docker logs necropsy-blue`), and the **Admin page shows it live** under Live puzzles: it is made from inside the container, which is where it matters, since a host that can reach the range is no proof that its container can.
+
+| It says | It means |
+| --- | --- |
+| `Connection refused` | Nothing is listening on that address and port. On the range VM: `systemctl status necropsy-spawner`, and `ss -ltn \| grep 9400`. Did `install-range.sh` run, and is `--listen` this VM's address? |
+| `timed out` | Something drops the traffic. On the range VM: `iptables -S NECROPSY-RANGE` must list this site VM's address (it is `--tenant NAME:ADDRESS`); and nothing in between may block the port. |
+| `rejects this site's token` | The range is reached, but the token is not the one made for this tenant. Compare `/etc/necropsy/range.token` here with `/etc/necropsy-range/tokens/<tenant>` there. |
+| works from the VM, not from the container | Docker's own networking. Try it the way the container does: `docker run --rm --network necropsy_internal curlimages/curl -sS -m 5 http://<range>:9400/healthz`. If that fails and `curl` on the VM works, check `sysctl net.ipv4.ip_forward` (must be 1), that the firewall's forward policy is not DROP (a ufw default of `DROP` for forwarding breaks Docker), and that a masquerade rule for the container network exists (`iptables -t nat -S POSTROUTING`). |
+
+A different port that answers (a quick `python -m http.server`, say) shows the network between the VMs works, not that the spawner is up on 9400.
+
 ### The control API
 
 For reference (the web server and the deploy program are its only clients). Every request carries `X-Necropsy-Token`; the token says which tenant it is.

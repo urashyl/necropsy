@@ -73,6 +73,33 @@ impl Range {
         }
     }
 
+    /// Whether the range answers and accepts this site's token. For the log at
+    /// startup and for the admin page, so a site that cannot reach its range
+    /// says why: from inside the container, which is where it matters.
+    pub async fn check(&self) -> Result<(), String> {
+        let wait = std::time::Duration::from_secs(4);
+        self.client
+            .get(format!("{}/healthz", self.url))
+            .timeout(wait)
+            .send()
+            .await
+            .map_err(|e| format!("cannot reach {}: {}", self.url, error_chain(&e)))?;
+        let res = self
+            .request(reqwest::Method::GET, "/v1/instances")
+            .timeout(wait)
+            .send()
+            .await
+            .map_err(|e| format!("cannot reach {}: {}", self.url, error_chain(&e)))?;
+        match res.status() {
+            s if s.is_success() => Ok(()),
+            StatusCode::UNAUTHORIZED => Err(format!(
+                "{} answers but rejects this site's token (is it the one made for this site's tenant?)",
+                self.url
+            )),
+            s => Err(format!("{} answered {s} to a request for this site's labs", self.url)),
+        }
+    }
+
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         self.client
             .request(method, format!("{}{}", self.url, path))
@@ -571,6 +598,20 @@ fn log_request(state: &AppState, label: &str, info: &ReqInfo, status: StatusCode
 
 // ------------------------------------------------------------------ containers
 
+/// An error and everything under it, such as "error sending request: client
+/// error (Connect): tcp connect error: Connection refused (os error 111)", which
+/// says what actually went wrong where the top line alone does not.
+pub fn error_chain(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut text = e.to_string();
+    let mut source = e.source();
+    while let Some(inner) = source {
+        text.push_str(": ");
+        text.push_str(&inner.to_string());
+        source = inner.source();
+    }
+    text
+}
+
 /// Headers that belong to one connection and are never passed along. The
 /// `x-necropsy-*` ones are between this site and the range: a player's request
 /// never carries them on, and cannot choose which lab or whose token.
@@ -604,7 +645,7 @@ async fn range_call(
     let res = req
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+        .map_err(|e| (StatusCode::BAD_GATEWAY, error_chain(&e)))?;
     let status = res.status();
     if status.is_success() {
         Ok(())
@@ -742,7 +783,11 @@ async fn proxy(
     let mut res = match req.send().await {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!("instance {} did not answer: {e}", inst.label);
+            tracing::warn!(
+                "instance {} did not answer: {}",
+                inst.label,
+                error_chain(&e)
+            );
             return plain(StatusCode::BAD_GATEWAY, "The instance is not answering.\n");
         }
     };
