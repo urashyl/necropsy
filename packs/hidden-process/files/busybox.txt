@@ -1,0 +1,40 @@
+root@web2:~# ./busybox ps -o pid,user,comm | tail -n 13
+  611 root     cron
+  614 messageb dbus-daemon
+  640 root     sshd
+  702 root     nginx
+  703 www-data nginx
+  704 www-data nginx
+  758 postgres postgres
+  812 root     php-fpm8.2
+  813 www-data php-fpm8.2
+  966 www-data kworker/1:2
+ 1204 root     sshd
+ 1231 root     bash
+ 1301 root     ps
+
+root@web2:~# ./busybox netstat -tnp | grep ESTAB
+tcp        0      0 10.30.1.12:22         10.30.0.5:51722       ESTABLISHED 1204/sshd
+tcp        0      0 10.30.1.12:443        198.51.100.31:61002   ESTABLISHED 703/nginx
+tcp        0      0 10.30.1.12:40418      203.0.113.200:443     ESTABLISHED 966/kworker/1:2
+
+root@web2:~# ./busybox ls -l /proc/966/exe
+lrwxrwxrwx    1 www-data www-data         0 Nov 27 11:31 /proc/966/exe -> /var/lib/php/sessions/sess_8c1f0e2a (deleted)
+
+root@web2:~# ./busybox cat /etc/ld.so.preload
+/usr/lib/x86_64-linux-gnu/libc.so.7
+
+root@web2:~# ./busybox ls -l /usr/lib/x86_64-linux-gnu/libc.so.*
+-rwxr-xr-x    1 root     root       1922136 Oct  2 06:14 /usr/lib/x86_64-linux-gnu/libc.so.6
+-rw-r--r--    1 root     root         17936 Nov 19 03:12 /usr/lib/x86_64-linux-gnu/libc.so.7
+
+root@web2:~# ./busybox grep -c . /proc/966/maps; ./busybox grep '\.so' /proc/966/maps | ./busybox awk '{print $6}' | ./busybox sort -u
+37
+/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+/usr/lib/x86_64-linux-gnu/libc.so.6
+/usr/lib/x86_64-linux-gnu/libc.so.7
+
+root@web2:~# dpkg -S /usr/lib/x86_64-linux-gnu/libc.so.7
+dpkg-query: no path found matching pattern /usr/lib/x86_64-linux-gnu/libc.so.7
+root@web2:~# dpkg -S /usr/lib/x86_64-linux-gnu/libc.so.6
+libc6:amd64: /usr/lib/x86_64-linux-gnu/libc.so.6

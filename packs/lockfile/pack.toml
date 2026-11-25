@@ -1,0 +1,12 @@
+id = "lockfile"
+track = "daily"
+date = "2026-12-02"
+number = 9
+title = "Routine bump"
+difficulty = 2
+modes = ["web"]
+tags = ["npm", "supply chain", "code review"]
+hints = [
+  "Compare every name in `package.json` before and after, character by character.",
+  "A new package that runs an install script and depends on the package it replaced is doing someone a favour.",
+]

@@ -1,0 +1,12 @@
+id = "kerberoast"
+track = "daily"
+date = "2026-12-03"
+number = 10
+title = "Roasting"
+difficulty = 3
+modes = ["web"]
+tags = ["windows", "active directory", "kerberos"]
+hints = [
+  "`TicketEncryptionType` 0x12 is AES. 0x17 is RC4, which is much faster to crack. Most of this domain uses AES.",
+  "One burst of requests is a scheduled scan, and one RC4 account is an old app that's always been like that. Look for a user asking for many service tickets at once, in RC4, from a machine that isn't theirs.",
+]

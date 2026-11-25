@@ -1,0 +1,12 @@
+id = "dns-exfil"
+track = "daily"
+date = "2026-12-01"
+number = 8
+title = "Small packets"
+difficulty = 3
+modes = ["web"]
+tags = ["dns", "exfiltration", "encoding"]
+hints = [
+  "Two sets of queries have long random-looking names. One of them decodes to something readable. Try base32.",
+  "The first label is a sequence number in hex. Some chunks arrive more than once, and not in order.",
+]
