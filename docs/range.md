@@ -24,27 +24,31 @@ An instance lives for the puzzle's `ttl_minutes`, and is **extended while it is 
 
 ## Setting it up
 
-On the host that runs the site (any Linux with Docker):
+On a dedicated VM (Debian or Ubuntu), as root, from a checkout of the repository, one script does all of it, the site as well as the range:
 
 ```bash
-cargo build --release -p necropsy-spawner
-sudo install -m 0755 target/release/necropsy-spawner /usr/local/bin/
-sudo install -d /etc/necropsy
-sudo install -m 0644 range/images.toml /etc/necropsy/images.toml
-sudo ./range/build.sh
-sudo install -m 0644 deploy/range/necropsy-spawner.service /etc/systemd/system/
-sudo systemctl enable --now necropsy-spawner
+sudo deploy/install-vm.sh \
+  --domain necropsy.urashyl.dev \
+  --proxy-ip 192.168.100.5 \
+  --turnstile-site-key 0x4AAAAAAA... --turnstile-secret-file /root/turnstile-secret \
+  --smtp-host smtp.example.com --smtp-user mailer --smtp-from "necropsy <no-reply@example.com>"
 ```
 
-Then in the site's environment file:
+`--proxy-ip` is the address your reverse proxy connects from. Add `--dry-run` first to see everything it would do. Secrets are never options (they would land in `ps` and your shell history): the Turnstile secret goes in a file, and the SMTP password in `NECROPSY_SMTP_PASSWORD`. Run `deploy/install-vm.sh --help` for the rest.
 
-```bash
-NECROPSY_LIVE_DOMAIN=necropsy.urashyl.dev
-NECROPSY_SPAWNER_SOCKET=/run/necropsy/spawner.sock
-NECROPSY_RANGE_DIR=/run/necropsy/range
-```
+What it does, in order:
 
-The blue-green compose file already mounts `/run/necropsy` into the site's container (override the host side with `NECROPSY_RANGE_HOST_DIR`). Deploy as usual. Without `NECROPSY_SPAWNER_SOCKET`, container puzzles are hidden everywhere, like live puzzles without a domain.
+1. Installs what is missing: Docker from Docker's own apt repository, plus git, curl, iptables and friends.
+2. Builds the spawner inside a throwaway Rust container, as a static binary, so the VM needs no Rust and the result does not depend on its libc.
+3. Installs `/etc/necropsy/images.toml` with `max_instances` sized to the VM's memory (and a lower cpu limit on 2 vCPU or fewer), and builds the lab images. A later run keeps the `max_instances` you have.
+4. Installs and starts the spawner under systemd.
+5. **Tests a real lab**: starts `webshell-lab` through the spawner, and checks that it answers on its socket, holds its flag, runs as an unprivileged user on a read-only root, and cannot reach the internet. If any of that is wrong it stops before touching the site.
+6. Creates an unprivileged `deploy` user and installs the blue-green deploy program ([docker.md](docker.md)), which CI deploys through.
+7. Writes the settings (`/etc/necropsy/necropsy.env`: base URL, live domain, spawner, captcha, email) and tells the site to publish its port to your proxy only.
+8. Adds a firewall rule (a small systemd unit, in Docker's `DOCKER-USER` chain, since Docker bypasses ufw) so only your proxy can reach the site's port.
+9. Deploys the newest commit of the branch, which must be pushed to the repository (`--branch`, `main` by default).
+
+It ends by printing what is left on your side: DNS, the wildcard certificate, the reverse proxy block and the Turnstile hostname. It is safe to run again, and that is also how you update the spawner and lab images (the site itself updates through `necropsy-deploy`, or CI).
 
 Check it:
 
@@ -53,6 +57,8 @@ systemctl status necropsy-spawner
 curl --unix-socket /run/necropsy/spawner.sock http://x/v1/instances   # [] when idle
 docker ps --filter label=necropsy.range=1                              # the running labs
 ```
+
+To do it by hand instead, the script's steps are plain commands: `cargo build --release -p necropsy-spawner` and install the binary to `/usr/local/bin`, install `range/images.toml` to `/etc/necropsy/images.toml`, run `range/build.sh`, install `deploy/range/necropsy-spawner.service`, set `NECROPSY_LIVE_DOMAIN`, `NECROPSY_SPAWNER_SOCKET=/run/necropsy/spawner.sock` and `NECROPSY_RANGE_DIR=/run/necropsy/range` in the site's environment file, and deploy. The blue-green compose file already mounts `/run/necropsy` into the site's container (override the host side with `NECROPSY_RANGE_HOST_DIR`). Without `NECROPSY_SPAWNER_SOCKET`, container puzzles are hidden everywhere, like live puzzles without a domain.
 
 The spawner finds running containers again after a restart and keeps their expiry, so restarting it does not drop anyone's lab. Anything past its time, and any socket directory nothing owns, is removed at start and every ten seconds.
 

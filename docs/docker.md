@@ -46,6 +46,8 @@ Changing the program, compose file or settings means running the installer again
 
 ## Server setup, once
 
+On a dedicated Debian or Ubuntu VM, [`deploy/install-vm.sh`](range.md#setting-it-up) does all of this and the live-puzzle range too. The steps below are what it automates for the site.
+
 You need Docker with the compose plugin, `git`, `curl` and `flock` (util-linux), and a user for deployments that is not root and not in the `docker` group. As root, from a checkout of the repository:
 
 ```bash

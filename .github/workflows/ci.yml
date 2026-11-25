@@ -43,9 +43,12 @@ jobs:
 
       - name: Script syntax
         run: |
-          for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh; do
+          for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh deploy/install-vm.sh deploy/test/install-vm.sh; do
             bash -n "$f"
           done
+
+      - name: VM installer
+        run: deploy/test/install-vm.sh
 
       # As root, so the tests of the real install (clean environment, no
       # `switch`, https only, root-owned settings) run too. They use a fake
