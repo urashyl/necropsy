@@ -218,8 +218,12 @@ check "--status names the live color" bash -c "'$bin' status | grep -q '^live:  
 
 echo "# settings file"
 printf 'NECROPSY_PORT=9191\nFOO=$(touch %s/pwned)\nNECROPSY_EDGE_TRUSTED=10.9.9.9\n' "$work" >> "$conf/deploy.env"
+proxy_ups() { grep -c '^up necropsy-proxy$' "$FAKE_DIR/calls"; }
+ups="$(proxy_ups)"
 release necropsy:t4
 check "settings are read" bash -c "'$bin' status | grep -q 'port:    127.0.0.1:9191'"
+check "a changed port recreates the proxy" equals "$(proxy_ups)" "$((ups + 1))"
+check "the proxy is published on the new port" equals "$(cat "$FAKE_DIR/c/necropsy-proxy/published")" "127.0.0.1 9191"
 check "a trusted-proxy setting reaches the proxy config" grep -qx 'trusted_proxies static 10.9.9.9' "$state/proxy/edge.caddy"
 check "settings are never executed" test ! -e "$work/pwned"
 printf 'NECROPSY_PORT=80a\n' >> "$conf/deploy.env"
@@ -228,6 +232,39 @@ sed -i '/^NECROPSY_PORT=80a$/d;/^NECROPSY_PORT=9191$/d;/^FOO=/d;/^NECROPSY_EDGE_
 printf "NECROPSY_EDGE_TRUSTED=1.2.3.4;rm\n" >> "$conf/deploy.env"
 run status;                      check "an address list that is not addresses is refused" test $? -ne 0
 sed -i '/^NECROPSY_EDGE_TRUSTED=/d' "$conf/deploy.env"
+
+echo "# bind address"
+release necropsy:t5
+check "the proxy is published on loopback by default" equals "$(cat "$FAKE_DIR/c/necropsy-proxy/published")" "127.0.0.1 8080"
+ups="$(proxy_ups)"
+release necropsy:t6
+check "an unchanged address reloads the proxy instead of recreating it" equals "$(proxy_ups)" "$ups"
+echo "NECROPSY_BIND=0.0.0.0" >> "$conf/deploy.env"
+release necropsy:t7
+check "a deploy with a new bind address succeeds" test $? -eq 0
+check "a new bind address recreates the proxy" equals "$(proxy_ups)" "$((ups + 1))"
+check "the proxy is published on that address" equals "$(cat "$FAKE_DIR/c/necropsy-proxy/published")" "0.0.0.0 8080"
+check "status shows the address" bash -c "'$bin' status | grep -q 'port:    0.0.0.0:8080'"
+release necropsy:t8
+check "and it is not recreated again" equals "$(proxy_ups)" "$((ups + 1))"
+sed -i '/^NECROPSY_BIND=/d' "$conf/deploy.env"
+for good in 10.0.0.2 :: ::1 fd00::1; do
+  printf 'NECROPSY_BIND=%s\n' "$good" >> "$conf/deploy.env"
+  run status; check "bind address $good is accepted" test $? -eq 0
+  sed -i '/^NECROPSY_BIND=/d' "$conf/deploy.env"
+done
+for bad in localhost 0.0.0.0:80 1.2.3.256 1.2.3 '[::]' '::1%eth0' '1.2.3.4;rm' '1.2.3.4 5.6.7.8' ''; do
+  printf 'NECROPSY_BIND=%s\n' "$bad" >> "$conf/deploy.env"
+  run status; check "bind address '$bad' is refused" test $? -ne 0
+  sed -i '/^NECROPSY_BIND=/d' "$conf/deploy.env"
+done
+for bad in 0 65536; do
+  printf 'NECROPSY_PORT=%s\n' "$bad" >> "$conf/deploy.env"
+  run status; check "port $bad is refused" test $? -ne 0
+  sed -i '/^NECROPSY_PORT=/d' "$conf/deploy.env"
+done
+release necropsy:t9
+check "back on loopback once the setting is removed" equals "$(cat "$FAKE_DIR/c/necropsy-proxy/published")" "127.0.0.1 8080"
 
 echo "# a dev server (installed for another branch)"
 rm -rf "$FAKE_DIR/c" "$FAKE_DIR/builds"

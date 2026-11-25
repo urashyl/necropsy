@@ -22,7 +22,9 @@
 # file that is parsed, never executed:
 #   NECROPSY_REPO          https URL of the repository (required)
 #   NECROPSY_BRANCH        the only branch whose commits are built  (main)
-#   NECROPSY_PORT          loopback port of the proxy container      (8080)
+#   NECROPSY_BIND          host address the proxy container is published on
+#                          (127.0.0.1; 0.0.0.0 for a reverse proxy on another host)
+#   NECROPSY_PORT          host port the proxy container is published on (8080)
 #   NECROPSY_SUBNET        private subnet of the containers          (172.30.30.0/24)
 #   NECROPSY_EDGE_TRUSTED  your reverse proxy's address as the proxy container
 #                          sees it, comma-separated     (subnet gateway,127.0.0.1)
@@ -87,7 +89,7 @@ proxy_dir="$bg_state/proxy"
 
 # ---- configuration (parsed, never sourced) -----------------------------------
 
-NECROPSY_REPO="" NECROPSY_BRANCH=main NECROPSY_PORT=8080 NECROPSY_SUBNET=172.30.30.0/24
+NECROPSY_REPO="" NECROPSY_BRANCH=main NECROPSY_BIND=127.0.0.1 NECROPSY_PORT=8080 NECROPSY_SUBNET=172.30.30.0/24
 NECROPSY_EDGE_TRUSTED="" DRAIN_SECONDS=15 HEALTH_TIMEOUT=90
 
 # A file that someone other than root can write is a way to change what runs as
@@ -106,7 +108,7 @@ if [ -f "$deploy_conf" ]; then
     case "$key" in ''|'#'*) continue ;; esac
     value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
     case "$key" in
-      NECROPSY_REPO|NECROPSY_BRANCH|NECROPSY_PORT|NECROPSY_SUBNET|NECROPSY_EDGE_TRUSTED|DRAIN_SECONDS|HEALTH_TIMEOUT)
+      NECROPSY_REPO|NECROPSY_BRANCH|NECROPSY_BIND|NECROPSY_PORT|NECROPSY_SUBNET|NECROPSY_EDGE_TRUSTED|DRAIN_SECONDS|HEALTH_TIMEOUT)
         printf -v "$key" '%s' "$value" ;;
     esac
   done < "$deploy_conf"
@@ -114,7 +116,7 @@ fi
 
 export NECROPSY_ENV_FILE="$config_dir/necropsy.env"
 export NECROPSY_PROXY_DIR="$proxy_dir"
-export NECROPSY_PORT NECROPSY_SUBNET
+export NECROPSY_BIND NECROPSY_PORT NECROPSY_SUBNET
 
 # The first usable address of the subnet is the Docker bridge gateway, which is
 # who the proxy container sees when your own proxy connects to the published port.
@@ -126,7 +128,24 @@ dc() { docker compose -f "$compose_file" --env-file "$images_env" "$@"; }
 
 # ---- checks -----------------------------------------------------------------
 
-[[ "$NECROPSY_PORT" =~ ^[0-9]+$ ]] || die "NECROPSY_PORT must be a number"
+[[ "$NECROPSY_PORT" =~ ^[0-9]+$ ]] && [ "$NECROPSY_PORT" -ge 1 ] && [ "$NECROPSY_PORT" -le 65535 ] \
+  || die "NECROPSY_PORT must be a number from 1 to 65535"
+# A plain IPv4 or IPv6 address, no brackets, zone or port: it goes to compose.
+octet='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
+if [[ "$NECROPSY_BIND" =~ ^$octet\.$octet\.$octet\.$octet$ ]]; then
+  :
+elif [[ "$NECROPSY_BIND" == *:* && "$NECROPSY_BIND" =~ ^[0-9a-fA-F:]{2,39}$ ]]; then
+  :
+else
+  die "NECROPSY_BIND must be an IPv4 or IPv6 address, like 127.0.0.1 or 0.0.0.0"
+fi
+# Where the deploy itself reaches the proxy: a wildcard is reachable on loopback.
+case "$NECROPSY_BIND" in
+  0.0.0.0) check_host=127.0.0.1 ;;
+  ::|0:0:0:0:0:0:0:0) check_host='[::1]' ;;
+  *:*) check_host="[$NECROPSY_BIND]" ;;
+  *) check_host="$NECROPSY_BIND" ;;
+esac
 [[ "$NECROPSY_SUBNET" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] \
   || die "NECROPSY_SUBNET must look like 172.30.30.0/24"
 [[ "$DRAIN_SECONDS" =~ ^[0-9]+$ && "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] \
@@ -173,6 +192,13 @@ write_proxy_conf() { # color
 }
 
 proxy_running() { [ "$(docker inspect -f '{{.State.Running}}' necropsy-proxy 2>/dev/null || true)" = true ]; }
+# The address and port the running proxy is published on, as Docker has it.
+proxy_published() {
+  docker inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}} {{.HostPort}}{{end}}{{end}}' \
+    necropsy-proxy 2>/dev/null || true
+}
+# A changed NECROPSY_BIND or NECROPSY_PORT only takes effect on a new container.
+proxy_current() { [ "$(proxy_published)" = "$NECROPSY_BIND $NECROPSY_PORT" ]; }
 
 wait_healthy() { # container
   local c="$1" waited=0 status
@@ -193,7 +219,7 @@ live_check() {
   command -v curl >/dev/null || { echo "note: curl not found, skipping the request through the proxy" >&2; return 0; }
   local i
   for i in 1 2 3 4 5 6 7 8 9 10; do
-    if curl -fsS --max-time 5 "http://127.0.0.1:$NECROPSY_PORT/healthz" >/dev/null 2>&1; then return 0; fi
+    if curl -fsS --max-time 5 "http://$check_host:$NECROPSY_PORT/healthz" >/dev/null 2>&1; then return 0; fi
     sleep 1
   done
   return 1
@@ -219,7 +245,7 @@ restore_proxy() { # old
 # and stops $old after a drain. On any failure before traffic moves, the live
 # color is left exactly as it was.
 switch_traffic() { # target old image-or-empty
-  local target="$1" old="$2" image="${3:-}" prev_images
+  local target="$1" old="$2" image="${3:-}" prev_images recreated=0
   prev_images="$(cat "$images_env")"
 
   if [ -n "$image" ]; then set_image "$target" "$image"; fi
@@ -235,7 +261,13 @@ switch_traffic() { # target old image-or-empty
 
   log "$target is healthy, switching traffic"
   write_proxy_conf "$target"
-  if proxy_running; then
+  if proxy_running && ! proxy_current; then
+    # Traffic pauses for the moment the proxy restarts. Only when the setting changed.
+    log "the proxy's address changed to $NECROPSY_BIND:$NECROPSY_PORT, recreating it"
+    recreated=1
+    dc up -d --no-deps --force-recreate proxy >/dev/null \
+      || die "the proxy could not start on $NECROPSY_BIND:$NECROPSY_PORT (is that address on this host, and the port free?). Fix NECROPSY_BIND or NECROPSY_PORT in $deploy_conf and deploy again."
+  elif proxy_running; then
     if ! proxy_validate || ! proxy_reload; then
       restore_proxy "$old"
       dc stop -t 5 "necropsy-$target" >/dev/null 2>&1 || true
@@ -247,6 +279,9 @@ switch_traffic() { # target old image-or-empty
   fi
 
   if ! live_check; then
+    if [ "$recreated" = 1 ]; then
+      die "the proxy was recreated on $NECROPSY_BIND:$NECROPSY_PORT but the site does not answer there. The old proxy is gone; fix NECROPSY_BIND or NECROPSY_PORT in $deploy_conf and deploy again."
+    fi
     restore_proxy "$old"
     dc stop -t 5 "necropsy-$target" >/dev/null 2>&1 || true
     printf '%s\n' "$prev_images" > "$images_env"
@@ -335,7 +370,7 @@ status() {
   echo "live:    $(active_color || true)"
   echo "blue:    $(image_of blue)"
   echo "green:   $(image_of green)"
-  echo "port:    127.0.0.1:$NECROPSY_PORT"
+  echo "port:    $NECROPSY_BIND:$NECROPSY_PORT"
   local c
   for c in necropsy-blue necropsy-green necropsy-proxy; do
     printf '%-16s %s\n' "$c" "$(docker inspect -f '{{.State.Status}} {{if .State.Health}}({{.State.Health.Status}}){{end}}' "$c" 2>/dev/null || echo absent)"

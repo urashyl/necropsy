@@ -70,6 +70,27 @@ necropsy.urashyl.dev {
 }
 ```
 
+### A reverse proxy on another host
+
+If your reverse proxy is not on this host (it is managed outside the VM, say), publish the proxy container on all addresses and trust that proxy, in `/etc/necropsy/deploy.env`:
+
+```bash
+NECROPSY_BIND=0.0.0.0          # or this host's own address
+NECROPSY_EDGE_TRUSTED=10.0.0.5 # your reverse proxy's address
+```
+
+The next deploy recreates the proxy container on the new address. Traffic pauses for the second that takes, which happens only when the address or port changes. Then point your reverse proxy at `http://<this host>:8080`.
+
+Port 8080 is now reachable by anything that can reach the host, over plain HTTP and around your proxy, so allow only your proxy to reach it. Docker writes its own iptables rules for published ports and they skip ufw and firewalld, so a ufw rule does not block it. Use a firewall outside the VM, or Docker's `DOCKER-USER` chain (replace `eth0` with the host's external interface):
+
+```bash
+iptables -I DOCKER-USER -i eth0 -p tcp --dport 8080 ! -s 10.0.0.5 -j DROP
+```
+
+That chain sees the port inside the container, which is always 8080, so keep `--dport 8080` even if you change `NECROPSY_PORT`. Make the rule persist across reboots the way your distribution does (`iptables-persistent`, `netfilter-persistent save`, or similar).
+
+### Headers
+
 Caddy passes the `Host` header through unchanged, which the app needs. The `X-Real-IP` line is what lets rate limits see the real visitor: the proxy container believes that header only from your proxy's address (the Docker gateway and loopback by default, `NECROPSY_EDGE_TRUSTED` in `deploy.env` to change it). Your proxy should always set it itself, as above, and never forward one from a visitor.
 
 ## Settings that differ in Docker
@@ -83,7 +104,7 @@ These are fixed by the container and cannot be overridden in `necropsy.env`:
 | `NECROPSY_TRUSTED_PROXIES` | the containers' private subnet, so only the proxy container can set it |
 | `NECROPSY_PACKS`, `NECROPSY_DB` | the packs baked into the image, and `/data/necropsy.db` |
 
-Deploy options (port, subnet, drain time, repository, branch) go in `/etc/necropsy/deploy.env`, see `deploy/bluegreen/deploy.env.example`. Quote a value in `necropsy.env` that contains `$` with single quotes, since Compose expands `$` in environment files.
+Deploy options (bind address, port, subnet, drain time, repository, branch) go in `/etc/necropsy/deploy.env`, see `deploy/bluegreen/deploy.env.example`. Quote a value in `necropsy.env` that contains `$` with single quotes, since Compose expands `$` in environment files.
 
 ## Deploying
 
