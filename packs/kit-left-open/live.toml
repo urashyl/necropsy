@@ -1,0 +1,124 @@
+ttl_minutes = 60
+flag_prefix = "kit"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Northbeck Credit Union - Verify your account</title>
+<style>body{font-family:sans-serif;background:#eef;margin:0}main{max-width:22rem;margin:4rem auto;background:#fff;padding:2rem;border-radius:6px}input{display:block;width:100%;margin:.5rem 0 1rem;padding:.5rem;box-sizing:border-box}button{padding:.6rem 1.2rem}</style>
+</head><body><main>
+<h2>Northbeck Credit Union</h2>
+<p>We noticed unusual activity. Please confirm your details to keep your account open.</p>
+<form method="post" action="/login.php">
+<label>Member number<input name="user" autocomplete="off"></label>
+<label>Password<input name="pass" type="password"></label>
+<button>Confirm</button>
+</form>
+</main><script src="/assets/t.js"></script></body></html>
+'''
+
+[[route]]
+method = "GET"
+path = "/assets/t.js"
+[route.respond]
+content_type = "application/javascript"
+file = "t.js"
+
+[[route]]
+path = "/collect"
+[route.respond]
+status = 204
+
+[[route]]
+method = "POST"
+path = "/login.php"
+[route.respond]
+status = 302
+headers = { "location" = "/thanks.html" }
+
+[[route]]
+method = "GET"
+path = "/thanks.html"
+[route.respond]
+content_type = "text/html; charset=utf-8"
+body = "<!doctype html><title>Thank you</title><p>Thank you. Your account has been verified.</p>\n"
+
+[[route]]
+method = "GET"
+path = "/robots.txt"
+[route.respond]
+body = "User-agent: *\nDisallow: /panel/\nDisallow: /backup/\n"
+
+[[route]]
+method = "GET"
+path = "/backup/"
+[route.respond]
+content_type = "text/html; charset=utf-8"
+body = '''<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html><head><title>Index of /backup</title></head><body>
+<h1>Index of /backup</h1>
+<pre>      <a href="?C=N;O=D">Name</a>                  <a href="?C=M;O=A">Last modified</a>      <a href="?C=S;O=A">Size</a>
+<hr><a href="/">Parent Directory</a>
+<a href="config.php.bak">config.php.bak</a>         2026-11-30 03:12  412
+<a href="harvest.php.bak">harvest.php.bak</a>        2026-11-30 03:12  1.1K
+<hr></pre>
+<address>Apache/2.4.58 (Ubuntu) Server at {{host}} Port 443</address>
+</body></html>
+'''
+
+[[route]]
+method = "GET"
+path = "/backup/config.php.bak"
+[route.respond]
+body = '''<?php
+// kit config - do not leave this on the server
+$panel_user = 'admin';
+$panel_pass = '{{d:panelpw}}';
+$bot_token  = '5551234567:AAH-not-a-real-token-0000000000000';
+$bot_chat   = '-1001234567890';
+$licence    = 'see panel';
+?>
+'''
+
+[[route]]
+method = "GET"
+path = "/backup/harvest.php.bak"
+[route.respond]
+file = "harvest.php.bak"
+
+# The panel, once the right credentials are presented.
+[[route]]
+method = "GET"
+path = "/panel/"
+[route.when]
+basic_auth = "admin:{{d:panelpw}}"
+[route.respond]
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><title>Control panel</title>
+<h1>Control panel</h1>
+<p>Captured today: 3</p>
+<table border="1" cellpadding="4">
+<tr><th>time</th><th>member</th><th>ip</th></tr>
+<tr><td>09:14</td><td>40291</td><td>198.51.100.23</td></tr>
+<tr><td>09:52</td><td>40377</td><td>203.0.113.77</td></tr>
+<tr><td>11:03</td><td>40412</td><td>192.0.2.151</td></tr>
+</table>
+<p>Kit version 3.2 &middot; licence key: <code>{{flag}}</code></p>
+'''
+
+[[route]]
+method = "GET"
+path = "/panel/"
+[route.respond]
+status = 401
+headers = { "www-authenticate" = 'Basic realm="Panel"' }
+body = "Authorization required.\n"
+
+[fallback]
+status = 404
+content_type = "text/html"
+headers = { "server" = "Apache/2.4.58 (Ubuntu)" }
+body = "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n<html><head><title>404 Not Found</title></head><body><h1>Not Found</h1><p>The requested URL was not found on this server.</p></body></html>\n"

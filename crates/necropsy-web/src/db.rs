@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA: &str = "
 CREATE TABLE users (
@@ -51,6 +51,26 @@ CREATE TABLE solves (
 );
 ";
 
+/// Added in schema version 2: live instances, the per-player servers of live
+/// puzzles. `label` is the instance's subdomain; `seed` makes its flag and
+/// derived values unique to it.
+const LIVE_SCHEMA: &str = "
+CREATE TABLE live_instances (
+    label      TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_id    TEXT NOT NULL,
+    seed       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    flags      TEXT NOT NULL DEFAULT ''   -- comma-separated scenario state flags
+);
+CREATE INDEX live_instances_user ON live_instances(user_id, pack_id);
+";
+
+/// Expired instances are kept this long, so a flag found just as an instance
+/// ended can still be submitted.
+pub const LIVE_KEEP_SECS: i64 = 7 * 86_400;
+
 /// Unverified accounts are deleted after this long, freeing the username.
 pub const UNVERIFIED_TTL_SECS: i64 = 48 * 3600;
 
@@ -62,6 +82,36 @@ pub struct User {
     pub verified: bool,
     pub disabled: bool,
     pub created_at: i64,
+}
+
+#[derive(Clone, Debug)]
+pub struct Instance {
+    pub label: String,
+    pub user_id: i64,
+    pub pack_id: String,
+    pub seed: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub flags: Vec<String>,
+}
+
+const INSTANCE_COLS: &str = "label, user_id, pack_id, seed, created_at, expires_at, flags";
+
+fn row_instance(r: &rusqlite::Row<'_>) -> rusqlite::Result<Instance> {
+    let flags: String = r.get(6)?;
+    Ok(Instance {
+        label: r.get(0)?,
+        user_id: r.get(1)?,
+        pack_id: r.get(2)?,
+        seed: r.get(3)?,
+        created_at: r.get(4)?,
+        expires_at: r.get(5)?,
+        flags: flags
+            .split(',')
+            .filter(|f| !f.is_empty())
+            .map(str::to_owned)
+            .collect(),
+    })
 }
 
 #[derive(Debug)]
@@ -118,6 +168,10 @@ impl Db {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version == 0 {
             conn.execute_batch(SCHEMA)?;
+            conn.execute_batch(LIVE_SCHEMA)?;
+            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        } else if version == 1 {
+            conn.execute_batch(LIVE_SCHEMA)?;
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         } else if version != SCHEMA_VERSION {
             return Err(rusqlite::Error::InvalidParameterName(format!(
@@ -488,6 +542,121 @@ impl Db {
         .await
     }
 
+    // ---- live instances ----------------------------------------------------
+
+    pub async fn live_create(&self, i: Instance) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "INSERT INTO live_instances (label, user_id, pack_id, seed, created_at, expires_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    i.label,
+                    i.user_id,
+                    i.pack_id,
+                    i.seed,
+                    i.created_at,
+                    i.expires_at
+                ],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    /// The instance behind a subdomain, live or expired.
+    pub async fn live_by_label(&self, label: String) -> rusqlite::Result<Option<Instance>> {
+        self.run(move |c| {
+            c.query_row(
+                &format!("SELECT {INSTANCE_COLS} FROM live_instances WHERE label = ?1"),
+                [label],
+                row_instance,
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// The user's unexpired instance of a pack, if any.
+    pub async fn live_active(
+        &self,
+        user_id: i64,
+        pack_id: String,
+    ) -> rusqlite::Result<Option<Instance>> {
+        self.run(move |c| {
+            c.query_row(
+                &format!(
+                    "SELECT {INSTANCE_COLS} FROM live_instances
+                     WHERE user_id = ?1 AND pack_id = ?2 AND expires_at > ?3
+                     ORDER BY created_at DESC LIMIT 1"
+                ),
+                params![user_id, pack_id, now()],
+                row_instance,
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// How many unexpired instances the user has, across all packs.
+    pub async fn live_active_count(&self, user_id: i64) -> rusqlite::Result<i64> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM live_instances WHERE user_id = ?1 AND expires_at > ?2",
+                params![user_id, now()],
+                |r| r.get(0),
+            )
+        })
+        .await
+    }
+
+    /// Every instance the user has had of a pack, newest first, expired ones
+    /// included while they are kept. A submitted flag is checked against these.
+    pub async fn live_of(&self, user_id: i64, pack_id: String) -> rusqlite::Result<Vec<Instance>> {
+        self.run(move |c| {
+            let mut st = c.prepare(&format!(
+                "SELECT {INSTANCE_COLS} FROM live_instances
+                 WHERE user_id = ?1 AND pack_id = ?2 ORDER BY created_at DESC LIMIT 20"
+            ))?;
+            let rows = st.query_map(params![user_id, pack_id], row_instance)?;
+            rows.collect()
+        })
+        .await
+    }
+
+    /// Labels of every unexpired instance.
+    pub async fn live_active_labels(&self) -> rusqlite::Result<std::collections::HashSet<String>> {
+        self.run(|c| {
+            let mut st = c.prepare("SELECT label FROM live_instances WHERE expires_at > ?1")?;
+            let rows = st.query_map([now()], |r| r.get::<_, String>(0))?;
+            rows.collect()
+        })
+        .await
+    }
+
+    pub async fn live_set_flags(&self, label: String, flags: Vec<String>) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE live_instances SET flags = ?2 WHERE label = ?1",
+                params![label, flags.join(",")],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    /// Ends the user's running instances of a pack now.
+    pub async fn live_stop(&self, user_id: i64, pack_id: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE live_instances SET expires_at = ?3
+                 WHERE user_id = ?1 AND pack_id = ?2 AND expires_at > ?3",
+                params![user_id, pack_id, now()],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
     // ---- housekeeping ------------------------------------------------------
 
     /// Drops expired sessions and tokens, and accounts that never verified.
@@ -496,6 +665,10 @@ impl Db {
             let t = now();
             c.execute("DELETE FROM sessions WHERE expires_at <= ?1", [t])?;
             c.execute("DELETE FROM email_tokens WHERE expires_at <= ?1", [t])?;
+            c.execute(
+                "DELETE FROM live_instances WHERE expires_at <= ?1",
+                [t - LIVE_KEEP_SECS],
+            )?;
             c.execute(
                 "DELETE FROM users WHERE verified = 0 AND is_admin = 0 AND created_at <= ?1",
                 [t - UNVERIFIED_TTL_SECS],

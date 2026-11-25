@@ -41,6 +41,8 @@ pub struct Config {
     /// Peers allowed to supply `client_ip_header`. When empty, any peer is
     /// believed; otherwise the header from every other peer is ignored.
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
+    /// Live puzzles are offered only when this is set.
+    pub live: Option<crate::live::LiveConfig>,
 }
 
 impl RenderedPack {
@@ -73,6 +75,8 @@ pub struct AppState {
     pub secure_cookies: bool,
     pub client_ip_header: Option<axum::http::HeaderName>,
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
+    pub live: Option<crate::live::LiveConfig>,
+    pub hub: crate::live::LiveHub,
     pub db: Db,
     pub mailer: Mailer,
     pub limiter: RateLimiter,
@@ -88,8 +92,11 @@ pub struct AppState {
 impl AppState {
     pub fn new(packs: Vec<Pack>, config: Config, db: Db, mailer: Mailer) -> Self {
         let hl = Highlighter::new();
+        // Live puzzles need the live domain; without it they stay hidden.
+        let live_on = config.live.is_some();
         let packs: Vec<RenderedPack> = packs
             .into_iter()
+            .filter(|p| live_on || !p.is_live())
             .map(|pack| {
                 let files = pack
                     .files
@@ -124,6 +131,8 @@ impl AppState {
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             client_ip_header: config.client_ip_header,
             trusted_proxies: config.trusted_proxies,
+            live: config.live,
+            hub: crate::live::LiveHub::default(),
             db,
             mailer,
             limiter: RateLimiter::default(),

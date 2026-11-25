@@ -19,7 +19,17 @@ use sha2::{Digest, Sha256};
 use crate::db::{Db, User};
 use crate::state::AppState;
 
-pub const COOKIE_NAME: &str = "necropsy_session";
+/// The session cookie's name. Over https it carries the `__Host-` prefix, so a
+/// browser accepts it only when set by this exact host with `Secure`, `Path=/`
+/// and no `Domain`. That stops a page on a live-instance subdomain from
+/// planting its own session cookie on the whole site ("cookie tossing").
+pub fn cookie_name(secure: bool) -> &'static str {
+    if secure {
+        "__Host-necropsy_session"
+    } else {
+        "necropsy_session"
+    }
+}
 pub const SESSION_TTL_SECS: i64 = 30 * 24 * 3600;
 pub const VERIFY_TTL_SECS: i64 = 48 * 3600;
 pub const RESET_TTL_SECS: i64 = 3600;
@@ -58,7 +68,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// `len` random characters from `alphabet`, without modulo bias.
-fn random_string(alphabet: &[u8], len: usize) -> String {
+pub fn random_string(alphabet: &[u8], len: usize) -> String {
     let limit = 256 - (256 % alphabet.len());
     let mut out = String::with_capacity(len);
     while out.len() < len {
@@ -200,14 +210,16 @@ pub const AUTH_WINDOW: Duration = Duration::from_secs(15 * 60);
 
 pub fn session_cookie(token: &str, secure: bool) -> String {
     format!(
-        "{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECS}{}",
+        "{}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECS}{}",
+        cookie_name(secure),
         if secure { "; Secure" } else { "" }
     )
 }
 
 pub fn clear_cookie(secure: bool) -> String {
     format!(
-        "{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}",
+        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}",
+        cookie_name(secure),
         if secure { "; Secure" } else { "" }
     )
 }
@@ -236,7 +248,7 @@ impl FromRequestParts<Arc<AppState>> for MaybeUser {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let Some(token) = cookie_value(&parts.headers, COOKIE_NAME) else {
+        let Some(token) = cookie_value(&parts.headers, cookie_name(state.secure_cookies)) else {
             return Ok(MaybeUser(None));
         };
         if token.len() != 64 {
@@ -391,7 +403,7 @@ mod tests {
             header::COOKIE,
             "a=1; necropsy_session=abc; b=2".parse().unwrap(),
         );
-        assert_eq!(cookie_value(&h, COOKIE_NAME).as_deref(), Some("abc"));
+        assert_eq!(cookie_value(&h, cookie_name(false)).as_deref(), Some("abc"));
         assert_eq!(cookie_value(&h, "missing"), None);
     }
 }

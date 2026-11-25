@@ -7,9 +7,11 @@
 //! <pack>/
 //!   pack.toml     metadata: id, number, title, difficulty, modes, tags, hints
 //!   brief.md      the question
-//!   files/        the excerpt (web) or file tree (CLI); text or data only
+//!   files/        the excerpt (web) or file tree (CLI)
 //!   answer        `sha256:<hex>` of the normalized answer
 //!   explainer.md  the real finding, shown after solving
+//!   live.toml     live packs only: the scenario served to each player (see `scenario`)
+//!   live/         live packs only: files the scenario can send
 //! ```
 //!
 //! This crate only reads packs. It never executes anything from them, and the
@@ -19,6 +21,8 @@
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+
+pub mod scenario;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -65,6 +69,8 @@ fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> PackError + '_ {
 pub enum Mode {
     Web,
     Cli,
+    /// A server the player talks to, described by `live.toml`.
+    Live,
 }
 
 /// Where a pack appears. Intro stages are always available, in order. Daily
@@ -165,6 +171,10 @@ pub struct Pack {
     /// `sha256:<hex>`, as stored in the `answer` file.
     pub answer_hash: String,
     pub files: Vec<PackFile>,
+    /// The scenario of a live pack, from `live.toml`.
+    pub live: Option<scenario::Scenario>,
+    /// Files under `live/`, which scenario responses may send.
+    pub live_files: Vec<PackFile>,
     /// SHA-256 over every file in the pack, see [`hash_files`].
     pub pack_hash: String,
 }
@@ -172,7 +182,16 @@ pub struct Pack {
 impl Pack {
     /// Whether `guess` is the answer. The guess is normalized first.
     pub fn check(&self, guess: &str) -> bool {
-        hash_answer(&self.meta.id, guess) == self.answer_hash
+        // A live pack has no fixed answer: its flag differs per instance.
+        !self.answer_hash.is_empty() && hash_answer(&self.meta.id, guess) == self.answer_hash
+    }
+
+    pub fn is_live(&self) -> bool {
+        self.live.is_some()
+    }
+
+    pub fn live_file(&self, path: &str) -> Option<&PackFile> {
+        self.live_files.iter().find(|f| f.path == path)
     }
 
     pub fn file(&self, path: &str) -> Option<&PackFile> {
@@ -297,31 +316,64 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
         _ => {}
     }
 
-    let answer_hash = text("answer")?.trim().to_owned();
-    let hex_part = answer_hash.strip_prefix("sha256:").unwrap_or("");
-    if hex_part.len() != 64
-        || !hex_part
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        return Err(invalid(
-            &dir.join("answer"),
-            "expected `sha256:` followed by 64 lowercase hex digits",
-        ));
-    }
+    let is_live = meta.modes.contains(&Mode::Live);
+    let has_raw = |name: &str| raw.iter().any(|(p, _)| p == name);
+    let live = if is_live {
+        let has_file = |f: &str| raw.iter().any(|(p, _)| p.strip_prefix("live/") == Some(f));
+        Some(
+            scenario::Scenario::parse(&text("live.toml")?, has_file)
+                .map_err(|e| invalid(&dir.join("live.toml"), e))?,
+        )
+    } else {
+        if has_raw("live.toml") {
+            return Err(invalid(
+                &dir.join("live.toml"),
+                "only packs with the live mode may have a live.toml",
+            ));
+        }
+        None
+    };
 
-    let files: Vec<PackFile> = raw
-        .iter()
-        .filter_map(|(p, d)| {
-            p.strip_prefix("files/").map(|rel| PackFile {
-                path: rel.to_owned(),
-                data: d.clone(),
+    // A live pack's flag is made per instance, so it has no answer file.
+    let answer_hash = if is_live {
+        if has_raw("answer") {
+            return Err(invalid(
+                &dir.join("answer"),
+                "live packs have no answer file: their flag is generated per instance",
+            ));
+        }
+        String::new()
+    } else {
+        let answer_hash = text("answer")?.trim().to_owned();
+        let hex_part = answer_hash.strip_prefix("sha256:").unwrap_or("");
+        if hex_part.len() != 64
+            || !hex_part
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(invalid(
+                &dir.join("answer"),
+                "expected `sha256:` followed by 64 lowercase hex digits",
+            ));
+        }
+        answer_hash
+    };
+
+    let files_under = |prefix: &str| -> Vec<PackFile> {
+        raw.iter()
+            .filter_map(|(p, d)| {
+                p.strip_prefix(prefix).map(|rel| PackFile {
+                    path: rel.to_owned(),
+                    data: d.clone(),
+                })
             })
-        })
-        .collect();
-    if files.is_empty() {
+            .collect()
+    };
+    let files = files_under("files/");
+    if files.is_empty() && !is_live {
         return Err(invalid(&dir.join("files"), "needs at least one file"));
     }
+    let live_files = files_under("live/");
 
     Ok(Pack {
         brief_md: text("brief.md")?,
@@ -330,6 +382,8 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
         meta,
         answer_hash,
         files,
+        live,
+        live_files,
     })
 }
 

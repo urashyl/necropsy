@@ -312,6 +312,73 @@
   document.addEventListener("visibilitychange", () => document.hidden && persistTime());
   addEventListener("pagehide", persistTime);
 
+  // ---- live instance -------------------------------------------------------
+
+  const liveBox = document.getElementById("live");
+  const liveStart = document.getElementById("live-start");
+  if (liveBox && liveStart) {
+    const idle = document.getElementById("live-idle");
+    const active = document.getElementById("live-active");
+    const urlEl = document.getElementById("live-url");
+    const leftEl = document.getElementById("live-left");
+    const logEl = document.getElementById("live-log");
+    const liveMsg = document.getElementById("live-msg");
+    const api = `/api/p/${encodeURIComponent(id)}/instance`;
+    let left = 0;
+
+    // Everything below is written with textContent: log lines are made of
+    // whatever the player sent.
+    function renderInstance(v) {
+      const on = !!v.active;
+      idle.classList.toggle("hidden", on);
+      active.classList.toggle("hidden", !on);
+      if (!on) return;
+      urlEl.textContent = v.url;
+      urlEl.href = v.url;
+      left = v.seconds_left;
+      renderLeft();
+      logEl.textContent = v.log
+        .map((e) => `${new Date(e.t * 1000).toLocaleTimeString()}  ${e.status}  ${e.method} ${e.path}`)
+        .join("\n") || "Nothing yet.";
+    }
+
+    function renderLeft() {
+      leftEl.textContent = formatTime(Math.max(left, 0));
+    }
+
+    async function call(method, path = "") {
+      liveMsg.textContent = "";
+      liveMsg.classList.remove("err-text");
+      try {
+        const r = await fetch(api + path, { method, credentials: "same-origin" });
+        if (!r.ok) throw new Error(await r.text());
+        renderInstance(await r.json());
+      } catch (e) {
+        liveMsg.textContent = e.message || "Something went wrong.";
+        liveMsg.classList.add("err-text");
+      }
+    }
+
+    liveStart.addEventListener("click", () => call("POST"));
+    document.getElementById("live-stop").addEventListener("click", () => call("POST", "/stop"));
+    document.getElementById("live-copy").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(urlEl.textContent);
+        liveMsg.textContent = "Copied.";
+      } catch {
+        liveMsg.textContent = "Could not copy.";
+      }
+    });
+
+    call("GET");
+    setInterval(() => {
+      if (document.hidden || active.classList.contains("hidden")) return;
+      left -= 1;
+      renderLeft();
+      if (left % 3 === 0) call("GET");
+    }, 1000);
+  }
+
   // ---- share ---------------------------------------------------------------
 
   if (solved) share.classList.remove("hidden");

@@ -491,7 +491,7 @@ pub async fn logout_post(
     State(state): State<Arc<AppState>>,
     req_headers: axum::http::HeaderMap,
 ) -> Response {
-    if let Some(token) = cookie_value(&req_headers, COOKIE_NAME) {
+    if let Some(token) = cookie_value(&req_headers, cookie_name(state.secure_cookies)) {
         let _ = state.db.delete_session(token_hash(&token)).await;
     }
     (
