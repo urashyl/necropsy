@@ -35,27 +35,13 @@ case "$cmd" in
     done
     [ -z "${FAKE_BUILD_FAIL:-}" ] || { echo "fake build failed" >&2; exit 1; }
     mkdir -p "$d/builds"
-    { echo "arg=$garg"; (cd "$ctx" && find . -type f | sort); } > "$d/builds/${tag//\//_}"
-    : > "$d/images/${tag//\//_}"
+    # The record has the files and what is in them, so the same content builds to
+    # the same image id, as it would with docker's cache.
+    { echo "arg=$garg"; (cd "$ctx" && find . -type f | sort | while read -r f; do echo "$(md5sum < "$f" | cut -c1-32)  $f"; done); } > "$d/builds/${tag//\//_}"
+    echo "$tag" > "$d/images/${tag//\//_}"
     ;;
 
   builder) ;;
-
-  run)
-    # The spawner build: -v <src>:/src:ro ... -v <out>:/out. The "binary" is a
-    # copy of the commit's marker file, so a changed commit is a changed binary.
-    src="" out=""
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        -v) case "$2" in *:/src:ro) src="${2%:/src:ro}" ;; *:/out) out="${2%:/out}" ;; esac; shift 2 ;;
-        *) shift ;;
-      esac
-    done
-    echo "run spawner build" >> "$d/calls"
-    [ -z "${FAKE_SPAWNER_BUILD_FAIL:-}" ] || { echo "fake spawner build failed" >&2; exit 1; }
-    [ -n "$out" ] || { echo "fake docker: unsupported run" >&2; exit 2; }
-    { echo "spawner"; cat "$src/spawner-marker.txt" 2>/dev/null; } > "$out/necropsy-spawner"
-    ;;
 
   compose)
     if [ "${1:-}" = version ]; then echo "Docker Compose version fake"; exit 0; fi
@@ -120,7 +106,15 @@ case "$cmd" in
   image)
     sub="$1"; shift
     case "$sub" in
-      inspect) [ -e "$d/images/${1//\//_}" ] ;;
+      inspect)
+        if [ "${1:-}" = -f ]; then
+          [ -e "$d/images/${3//\//_}" ] || exit 1
+          # An id from what was built, so a lab that did not change keeps its id.
+          echo "sha256:$(grep -v '^arg=' "$d/builds/${3//\//_}" | md5sum | cut -c1-32)$(grep -v '^arg=' "$d/builds/${3//\//_}" | md5sum | cut -c1-32)"
+        else
+          [ -e "$d/images/${1//\//_}" ]
+        fi
+        ;;
       ls)
         repo="" glob=""
         while [ $# -gt 0 ]; do
@@ -134,9 +128,12 @@ case "$cmd" in
           [ -e "$f" ] || continue
           ref="$(basename "$f")"
           if [ -n "$glob" ]; then
-            # Images are stored with / as _, so match the glob the same way.
+            # Images are stored with / as _, so match the glob the same way, and
+            # print the real name the file holds.
             # shellcheck disable=SC2053
-            [[ "$ref" == ${glob//\//_} ]] && echo "$ref"
+            if [[ "$ref" == ${glob//\//_} ]]; then
+              real="$(cat "$f")"; echo "${real:-$ref}"
+            fi
           else
             [[ "$ref" == "$repo":* ]] && echo "$ref"
           fi
@@ -146,6 +143,14 @@ case "$cmd" in
     esac
     ;;
 
+  tag)
+    [ -e "$d/images/${1//\//_}" ] || exit 1
+    echo "$2" > "$d/images/${2//\//_}"; cp "$d/builds/${1//\//_}" "$d/builds/${2//\//_}" ;;
+  save)
+    # docker save -o FILE REF: the "archive" is just the name of what is in it.
+    [ "$1" = -o ] || { echo "fake docker: unsupported save" >&2; exit 2; }
+    [ -e "$d/images/${3//\//_}" ] || { echo "no such image" >&2; exit 1; }
+    echo "ARCHIVE:$3" > "$2" ;;
   rmi) rm -f "$d/images/${1//\//_}"; echo "rmi $1" >> "$d/calls" ;;
   logs) echo "fake log line" ;;
   *) echo "fake docker: unsupported $cmd" >&2; exit 2 ;;

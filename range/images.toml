@@ -1,9 +1,11 @@
-# The images the spawner may run: the allowlist. A live pack's
-# `[container] image = "name"` must be a key under [images]. Install as
-# /etc/necropsy/images.toml (see docs/range.md for how to size these).
-
-# The most instances running at once, all puzzles together.
-max_instances = 20
+# The labs a live pack may name: `[container] image = "name"` must be a key under
+# [images], and a directory range/<name>/ must have its Dockerfile.
+#
+# This file is a template. On each deploy the site builds every lab, pushes the
+# images to the range VM, and sends it this file with each image rewritten to the
+# one it built (necropsy-range/<tenant>/<lab>:<commit>). The limits here are the
+# most each lab may use; how many labs a site may run at once, and their combined
+# memory, are the tenant's caps in the range VM's tenants.toml. See docs/range.md.
 
 [images.webshell-lab]
 image = "necropsy-range/webshell-lab:1"

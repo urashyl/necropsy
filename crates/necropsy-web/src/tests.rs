@@ -1594,7 +1594,7 @@ async fn live_site() -> Site {
         Some(crate::live::LiveConfig {
             domain: LIVE_DOMAIN.into(),
             host_header: None,
-            spawner: None,
+            range: None,
         }),
         crate::captcha::Captcha::Off,
     )
@@ -2003,7 +2003,7 @@ async fn captcha_site() -> Site {
         Some(crate::live::LiveConfig {
             domain: LIVE_DOMAIN.into(),
             host_header: None,
-            spawner: None,
+            range: None,
         }),
         crate::captcha::Captcha::Fake,
     )
@@ -2090,116 +2090,120 @@ impl Site {
 
 // ------------------------------------------------------- container puzzles
 
-use std::path::PathBuf;
-use tokio::net::UnixListener;
-
-/// What the stub spawner was asked, in order: "POST /v1/instances {...}", ...
+/// What the stub range VM was asked, in order: "POST /v1/instances {...}", ...
 type Calls = Arc<Mutex<Vec<String>>>;
 
+const RANGE_TOKEN: &str = "range-token-0123456789abcdef";
+
 struct Range {
-    dir: PathBuf,
+    url: String,
     calls: Calls,
     /// Make the stub refuse to start instances, with this status.
     refuse: Arc<Mutex<Option<StatusCode>>>,
+    /// Labs the stub "has", by id. Lab traffic to any other id is a 502.
+    labs: Arc<Mutex<Vec<String>>>,
 }
 
-/// A stand-in for the spawner and for the containers it would start: the
-/// spawner stub listens on a unix socket, and for each instance it creates it
-/// opens `<range>/<id>/app.sock`, where a tiny web server answers like a
-/// container would.
+/// A stand-in for the range VM, on a local port. It answers the control API
+/// (recording each call) and, for a request carrying `X-Necropsy-Instance`, plays
+/// the lab: it echoes the method, path, body and a few headers.
 async fn stub_range() -> Range {
-    use axum::extract::{Path as AxPath, State};
-    use axum::routing::{any, delete, post};
-
-    let dir = std::env::temp_dir().join(format!(
-        "necropsy-range-test-{}-{}",
-        std::process::id(),
-        rand_suffix()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("range")).unwrap();
-    let calls: Calls = Arc::default();
-    let refuse: Arc<Mutex<Option<StatusCode>>> = Arc::default();
+    use axum::extract::{Request as AxRequest, State};
 
     #[derive(Clone)]
     struct St {
-        range: PathBuf,
         calls: Calls,
         refuse: Arc<Mutex<Option<StatusCode>>>,
+        labs: Arc<Mutex<Vec<String>>>,
     }
     let st = St {
-        range: dir.join("range"),
-        calls: calls.clone(),
-        refuse: refuse.clone(),
+        calls: Arc::default(),
+        refuse: Arc::default(),
+        labs: Arc::default(),
     };
+    let (calls, refuse, labs) = (st.calls.clone(), st.refuse.clone(), st.labs.clone());
 
-    async fn create(State(st): State<St>, body: String) -> (StatusCode, &'static str) {
+    async fn handler(State(st): State<St>, req: AxRequest) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        let (parts, body) = req.into_parts();
+        let body = String::from_utf8_lossy(&axum::body::to_bytes(body, 1 << 20).await.unwrap())
+            .into_owned();
+        let header = |n: &str| {
+            parts
+                .headers
+                .get(n)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned)
+        };
+        // Every call carries this site's token; nothing is served without it.
+        if header("x-necropsy-token").as_deref() != Some(RANGE_TOKEN) {
+            return (StatusCode::UNAUTHORIZED, "no").into_response();
+        }
+        // Lab traffic.
+        if let Some(id) = header("x-necropsy-instance") {
+            st.calls
+                .lock()
+                .unwrap()
+                .push(format!("LAB {id} {} {}", parts.method, parts.uri));
+            if !st.labs.lock().unwrap().contains(&id) {
+                return (StatusCode::NOT_FOUND, "no such instance").into_response();
+            }
+            let mut names: Vec<&str> = parts
+                .headers
+                .keys()
+                .map(|k| k.as_str())
+                .filter(|k| k.starts_with("x-"))
+                .collect();
+            names.sort();
+            return (
+                [("x-from-lab", "yes"), ("content-type", "text/plain")],
+                format!(
+                    "{} {} body={} auth={} headers={}",
+                    parts.method,
+                    parts.uri,
+                    body,
+                    header("authorization").unwrap_or_else(|| "-".into()),
+                    names.join(",")
+                ),
+            )
+                .into_response();
+        }
+        // Control API.
+        let path = parts.uri.path().to_owned();
         st.calls
             .lock()
             .unwrap()
-            .push(format!("POST /v1/instances {body}"));
-        if let Some(code) = *st.refuse.lock().unwrap() {
-            return (code, "no");
-        }
-        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let id = v["id"].as_str().unwrap().to_owned();
-        let flag = v["env"]["NECROPSY_FLAG"].as_str().unwrap().to_owned();
-        std::fs::create_dir_all(st.range.join(&id)).unwrap();
-        let listener = UnixListener::bind(st.range.join(&id).join("app.sock")).unwrap();
-        // The "container": echoes the method, the path, the body and one
-        // header, says who it is, and sets a header of its own.
-        let app = Router::new().fallback(any(move |req: axum::extract::Request| {
-            let flag = flag.clone();
-            async move {
-                let (parts, body) = req.into_parts();
-                let body = axum::body::to_bytes(body, 1 << 20).await.unwrap();
-                (
-                    [("x-from-container", "yes"), ("content-type", "text/plain")],
-                    format!(
-                        "{} {} body={} auth={} flag-is-in-here={}",
-                        parts.method,
-                        parts.uri,
-                        String::from_utf8_lossy(&body),
-                        parts
-                            .headers
-                            .get("x-auth")
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or("-"),
-                        flag.len() > 5
-                    ),
-                )
+            .push(format!("{} {path} {body}", parts.method));
+        if parts.method == axum::http::Method::POST && path == "/v1/instances" {
+            if let Some(code) = *st.refuse.lock().unwrap() {
+                return (code, "no").into_response();
             }
-        }));
-        tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-        (StatusCode::CREATED, "created")
+            let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+            st.labs
+                .lock()
+                .unwrap()
+                .push(v["id"].as_str().unwrap().to_owned());
+            return (StatusCode::CREATED, "created").into_response();
+        }
+        if parts.method == axum::http::Method::DELETE {
+            let id = path.rsplit('/').next().unwrap().to_owned();
+            st.labs.lock().unwrap().retain(|l| *l != id);
+        }
+        "ok".into_response()
     }
-    async fn stop(State(st): State<St>, AxPath(id): AxPath<String>) -> &'static str {
-        st.calls.lock().unwrap().push(format!("DELETE {id}"));
-        let _ = std::fs::remove_dir_all(st.range.join(&id));
-        "stopped"
-    }
-    async fn touch(State(st): State<St>, AxPath(id): AxPath<String>, body: String) -> &'static str {
-        st.calls.lock().unwrap().push(format!("TOUCH {id} {body}"));
-        "ok"
-    }
-    let app = Router::new()
-        .route("/v1/instances", post(create))
-        .route("/v1/instances/{id}", delete(stop))
-        .route("/v1/instances/{id}/touch", post(touch))
-        .with_state(st);
-    let listener = UnixListener::bind(dir.join("spawner.sock")).unwrap();
+
+    let app = Router::new().fallback(handler).with_state(st);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
-    Range { dir, calls, refuse }
-}
-
-fn rand_suffix() -> String {
-    static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        .to_string()
+    Range {
+        url,
+        calls,
+        refuse,
+        labs,
+    }
 }
 
 async fn container_site(range: &Range) -> Site {
@@ -2211,10 +2215,7 @@ async fn container_site(range: &Range) -> Site {
         Some(crate::live::LiveConfig {
             domain: LIVE_DOMAIN.into(),
             host_header: None,
-            spawner: Some(crate::live::Spawner {
-                socket: range.dir.join("spawner.sock"),
-                range_dir: range.dir.join("range"),
-            }),
+            range: Some(crate::live::Range::new(&range.url, RANGE_TOKEN)),
         }),
         crate::captcha::Captcha::Off,
     )
@@ -2225,7 +2226,7 @@ fn created_flag(range: &Range) -> String {
     let calls = range.calls.lock().unwrap();
     let create = calls
         .iter()
-        .find(|c| c.starts_with("POST /v1/instances"))
+        .find(|c| c.starts_with("POST /v1/instances "))
         .unwrap();
     let json = create.trim_start_matches("POST /v1/instances ");
     let v: serde_json::Value = serde_json::from_str(json).unwrap();
@@ -2233,8 +2234,8 @@ fn created_flag(range: &Range) -> String {
 }
 
 #[tokio::test]
-async fn container_puzzles_are_hidden_without_a_spawner() {
-    // Live is on, but no spawner is configured.
+async fn container_puzzles_are_hidden_without_a_range() {
+    // Live is on, but no range VM is configured.
     let s = live_site().await;
     assert_eq!(
         s.get("/p/webshell-lab", None).await.status,
@@ -2252,7 +2253,7 @@ async fn a_container_instance_is_started_proxied_and_stopped() {
     let s = container_site(&range).await;
     let (cookie, l) = spin_up(&s, "kim", "webshell-lab").await;
 
-    // The spawner was asked for the right image, label, time and flag.
+    // The range was asked for the right lab, id, time and flag.
     {
         let calls = range.calls.lock().unwrap();
         let c = &calls[0];
@@ -2263,19 +2264,36 @@ async fn a_container_instance_is_started_proxied_and_stopped() {
     let flag = created_flag(&range);
     assert!(flag.starts_with("shell{") && flag.ends_with('}'), "{flag}");
 
-    // Requests reach the container, with their method, path, headers and body,
-    // and its answer comes back, with our safety headers added.
+    // Requests reach the lab, with their method, path, headers and body, and its
+    // answer comes back with our safety headers added.
     let r = live_send(&s, &l, "GET", "/a/b?x=1", &[("x-auth", "k")], "").await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert!(
-        r.body.starts_with("GET /a/b?x=1 body= auth=k"),
+        r.body.starts_with("GET /a/b?x=1 body= auth=-"),
         "{}",
         r.body
     );
-    assert_eq!(r.headers["x-from-container"], "yes");
+    assert!(
+        r.body
+            .contains("headers=x-auth,x-necropsy-instance,x-necropsy-token"),
+        "only ours were added: {}",
+        r.body
+    );
+    assert_eq!(r.headers["x-from-lab"], "yes");
     assert_eq!(r.headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
     let r = live_send(&s, &l, "POST", "/p", &[], "q=id").await;
     assert!(r.body.starts_with("POST /p body=q=id"), "{}", r.body);
+    // The player's own Authorization header reaches the lab: ours is a different one.
+    let r = live_send(
+        &s,
+        &l,
+        "GET",
+        "/",
+        &[("authorization", "Basic cGxheWVy")],
+        "",
+    )
+    .await;
+    assert!(r.body.contains("auth=Basic cGxheWVy"), "{}", r.body);
 
     // The player sees these in their log.
     let st = s
@@ -2287,10 +2305,10 @@ async fn a_container_instance_is_started_proxied_and_stopped() {
         "{st}"
     );
 
-    // The flag is accepted, once, from the right player.
+    // The flag is accepted from the right player.
     assert!(submit(&s, &cookie, "webshell-lab", &flag).await);
 
-    // Stopping tells the spawner, and the instance is gone.
+    // Stopping tells the range, and the instance is gone.
     let stop = s
         .send(
             Request::post("/api/p/webshell-lab/instance/stop")
@@ -2301,10 +2319,51 @@ async fn a_container_instance_is_started_proxied_and_stopped() {
         )
         .await;
     assert_eq!(stop.status, StatusCode::OK);
-    assert!(range.calls.lock().unwrap().contains(&format!("DELETE {l}")));
+    assert!(range
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|c| *c == format!("DELETE /v1/instances/{l} ")));
     assert_eq!(
         live_send(&s, &l, "GET", "/", &[], "").await.status,
         StatusCode::GONE
+    );
+}
+
+#[tokio::test]
+async fn a_player_cannot_choose_the_lab_or_borrow_the_token() {
+    let range = stub_range().await;
+    let s = container_site(&range).await;
+    let (_, mine) = spin_up(&s, "pat", "webshell-lab").await;
+    let (_, theirs) = spin_up(&s, "quinn", "webshell-lab").await;
+    // Pat asks, on their own instance's host, for someone else's lab and sends a token.
+    let r = live_send(
+        &s,
+        &mine,
+        "GET",
+        "/",
+        &[
+            ("x-necropsy-instance", &theirs),
+            ("x-necropsy-token", "stolen-0123456789abcdef"),
+        ],
+        "",
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(!r.body.contains("stolen"), "{}", r.body);
+    let calls = range.calls.lock().unwrap();
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.starts_with(&format!("LAB {mine} GET"))),
+        "{calls:?}"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|c| c.starts_with(&format!("LAB {theirs} GET"))),
+        "the player's header did not pick another lab: {calls:?}"
     );
 }
 
@@ -2342,12 +2401,12 @@ async fn a_full_or_broken_range_fails_cleanly() {
 }
 
 #[tokio::test]
-async fn a_dead_container_gives_a_bad_gateway_and_use_extends_the_instance() {
+async fn an_unreachable_range_is_a_clean_error_and_use_extends_the_instance() {
     let range = stub_range().await;
     let s = container_site(&range).await;
     let (_, l) = spin_up(&s, "max", "webshell-lab").await;
 
-    // Close to its end: a request gives it a fresh term, here and at the spawner.
+    // Close to its end: a request gives it a fresh term, here and at the range.
     let l2 = l.clone();
     let soon = crate::db::now() + 60;
     s.state
@@ -2370,7 +2429,7 @@ async fn a_dead_container_gives_a_bad_gateway_and_use_extends_the_instance() {
             .lock()
             .unwrap()
             .iter()
-            .any(|c| c.starts_with("TOUCH"))
+            .any(|c| c.contains("/touch"))
         {
             break;
         }
@@ -2381,7 +2440,7 @@ async fn a_dead_container_gives_a_bad_gateway_and_use_extends_the_instance() {
         .lock()
         .unwrap()
         .iter()
-        .any(|c| c.starts_with(&format!("TOUCH {l}")));
+        .any(|c| c.starts_with(&format!("POST /v1/instances/{l}/touch")));
     assert!(touched, "{:?}", range.calls.lock().unwrap());
     let inst = s.state.db.live_by_label(l.clone()).await.unwrap().unwrap();
     assert!(
@@ -2389,10 +2448,81 @@ async fn a_dead_container_gives_a_bad_gateway_and_use_extends_the_instance() {
         "extended to a fresh term"
     );
 
-    // A container that has gone away is a 502, not a hang or a 500.
-    std::fs::remove_file(range.dir.join("range").join(&l).join("app.sock")).unwrap();
+    // A lab the range no longer has: its 404 is passed on, not turned into a hang.
+    range.labs.lock().unwrap().clear();
     assert_eq!(
         live_send(&s, &l, "GET", "/", &[], "").await.status,
-        StatusCode::BAD_GATEWAY
+        StatusCode::NOT_FOUND
     );
+
+    // A range that cannot be reached is a 502.
+    let dead = {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        format!("http://{}", l.local_addr().unwrap())
+    };
+    let s2 = build_full(
+        None,
+        None,
+        &[],
+        ALL_RELEASED,
+        Some(crate::live::LiveConfig {
+            domain: LIVE_DOMAIN.into(),
+            host_header: None,
+            range: Some(crate::live::Range::new(&dead, RANGE_TOKEN)),
+        }),
+        crate::captcha::Captcha::Off,
+    )
+    .await;
+    s2.register_verified("zed", "zed@example.org").await;
+    let cookie = s2.login_cookie("zed").await;
+    let r = s2
+        .send(
+            Request::post("/api/p/webshell-lab/instance")
+                .header(header::COOKIE, &cookie)
+                .header(header::ORIGIN, ORIGIN)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE, "{}", r.body);
+    let st = s2.get("/api/p/webshell-lab/instance", Some(&cookie)).await;
+    assert!(
+        st.body.contains(r#""active":false"#),
+        "no instance is left behind: {}",
+        st.body
+    );
+}
+
+#[tokio::test]
+async fn a_wrong_range_token_is_refused_by_the_range() {
+    let range = stub_range().await;
+    let s = build_full(
+        None,
+        None,
+        &[],
+        ALL_RELEASED,
+        Some(crate::live::LiveConfig {
+            domain: LIVE_DOMAIN.into(),
+            host_header: None,
+            range: Some(crate::live::Range::new(
+                &range.url,
+                "wrong-token-0123456789abcdef",
+            )),
+        }),
+        crate::captcha::Captcha::Off,
+    )
+    .await;
+    s.register_verified("tia", "tia@example.org").await;
+    let cookie = s.login_cookie("tia").await;
+    let r = s
+        .send(
+            Request::post("/api/p/webshell-lab/instance")
+                .header(header::COOKIE, &cookie)
+                .header(header::ORIGIN, ORIGIN)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(range.labs.lock().unwrap().is_empty());
 }

@@ -30,16 +30,16 @@
 #                          sees it, comma-separated     (subnet gateway,127.0.0.1)
 #   DRAIN_SECONDS          how long the old color finishes requests  (15)
 #   HEALTH_TIMEOUT         seconds to wait for a new color to be healthy (90)
-# and, for a stack that runs live-puzzle labs (docs/range.md), where each deploy
-# also builds the lab images, rewrites the lab allowlist, restarts the spawner
-# and tests it before any traffic moves:
-#   RANGE_UNIT             the spawner's systemd unit; setting it turns this on
-#   RANGE_MAX_INSTANCES    most labs at once, written into the allowlist (20)
-#   RANGE_CPUS_CAP         lower every lab's cpu limit to at most this
-#   RANGE_BUILD_SPAWNER    1 to also rebuild the spawner program from the
-#                          commit (production only, see docs/range.md)
-#   RANGE_SPAWNER_BIN      where that program is installed (/usr/local/bin/necropsy-spawner)
-#   RANGE_RESTART_UNITS    other spawner units to restart when it changes
+# and, for a site that runs live-puzzle labs (docs/range.md), where each deploy
+# also ships them to the range VM before any traffic moves: it builds the
+# commit's lab images, pushes the ones the range does not have, sends the lab
+# allowlist, and has the range test every lab:
+#   RANGE_URL              the range VM's spawner, like http://10.0.0.50:9400;
+#                          setting it turns this on
+#   RANGE_TENANT           this site's name at the range (prod, dev); its labs
+#                          are necropsy-range/<tenant>/...
+#   RANGE_TOKEN_FILE       the file holding this site's token (root-only)
+#                          ($SYSCONFDIR/NAME/range.token)
 #   RANGE_SELFTEST         0 to skip the lab test (1)
 # The application's own settings are in $SYSCONFDIR/necropsy/necropsy.env.
 
@@ -59,9 +59,6 @@ SAFE_MODE='@SAFE_MODE@'
 # would clash on a host running several (container and volume names, the image
 # repository, the settings and state directories) follows it.
 NAME='@NAME@'
-# Where runtime files go (the spawner's socket and each lab's socket live in
-# RUNDIR/NAME), /run on a real host.
-RUNDIR='@RUNDIR@'
 # -----------------------------------------------------------------------------
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -110,8 +107,7 @@ proxy_dir="$bg_state/proxy"
 
 NECROPSY_REPO="" NECROPSY_BRANCH=main NECROPSY_BIND=127.0.0.1 NECROPSY_PORT=8080 NECROPSY_SUBNET=172.30.30.0/24
 NECROPSY_EDGE_TRUSTED="" DRAIN_SECONDS=15 HEALTH_TIMEOUT=90
-RANGE_UNIT="" RANGE_MAX_INSTANCES=20 RANGE_CPUS_CAP="" RANGE_BUILD_SPAWNER=0
-RANGE_SPAWNER_BIN=/usr/local/bin/necropsy-spawner RANGE_RESTART_UNITS="" RANGE_SELFTEST=1
+RANGE_URL="" RANGE_TENANT="" RANGE_TOKEN_FILE="" RANGE_SELFTEST=1
 
 # A file that someone other than root can write is a way to change what runs as
 # root, so in a real install it must be root-owned and not writable by others.
@@ -129,7 +125,7 @@ if [ -f "$deploy_conf" ]; then
     case "$key" in ''|'#'*) continue ;; esac
     value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
     case "$key" in
-      NECROPSY_REPO|NECROPSY_BRANCH|NECROPSY_BIND|NECROPSY_PORT|NECROPSY_SUBNET|NECROPSY_EDGE_TRUSTED|DRAIN_SECONDS|HEALTH_TIMEOUT|RANGE_UNIT|RANGE_MAX_INSTANCES|RANGE_CPUS_CAP|RANGE_BUILD_SPAWNER|RANGE_SPAWNER_BIN|RANGE_RESTART_UNITS|RANGE_SELFTEST)
+      NECROPSY_REPO|NECROPSY_BRANCH|NECROPSY_BIND|NECROPSY_PORT|NECROPSY_SUBNET|NECROPSY_EDGE_TRUSTED|DRAIN_SECONDS|HEALTH_TIMEOUT|RANGE_URL|RANGE_TENANT|RANGE_TOKEN_FILE|RANGE_SELFTEST)
         printf -v "$key" '%s' "$value" ;;
     esac
   done < "$deploy_conf"
@@ -137,8 +133,6 @@ fi
 
 export NECROPSY_NAME="$NAME"
 export NECROPSY_ENV_FILE="$config_dir/necropsy.env"
-# Where this stack's spawner keeps its sockets, mounted into the app container.
-export NECROPSY_RANGE_HOST_DIR="$RUNDIR/$NAME"
 export NECROPSY_PROXY_DIR="$proxy_dir"
 export NECROPSY_BIND NECROPSY_PORT NECROPSY_SUBNET
 
@@ -174,18 +168,13 @@ esac
   || die "NECROPSY_SUBNET must look like 172.30.30.0/24"
 [[ "$DRAIN_SECONDS" =~ ^[0-9]+$ && "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] \
   || die "DRAIN_SECONDS and HEALTH_TIMEOUT must be numbers"
-# The range settings end up in systemctl and docker commands and in a file.
-unit_name='^[a-z][a-z0-9-]{0,40}$'
-if [ -n "$RANGE_UNIT" ]; then
-  [[ "$RANGE_UNIT" =~ $unit_name ]] || die "RANGE_UNIT is not a plain unit name"
-  for u in $RANGE_RESTART_UNITS; do
-    [[ "$u" =~ $unit_name ]] || die "RANGE_RESTART_UNITS has an invalid unit: $u"
-  done
-  [[ "$RANGE_MAX_INSTANCES" =~ ^[0-9]{1,4}$ ]] && [ "$RANGE_MAX_INSTANCES" -ge 1 ] \
-    || die "RANGE_MAX_INSTANCES must be a number from 1 to 9999"
-  [ -z "$RANGE_CPUS_CAP" ] || [[ "$RANGE_CPUS_CAP" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "RANGE_CPUS_CAP must be a number like 0.25"
-  [[ "$RANGE_BUILD_SPAWNER" =~ ^[01]$ && "$RANGE_SELFTEST" =~ ^[01]$ ]] || die "RANGE_BUILD_SPAWNER and RANGE_SELFTEST must be 0 or 1"
-  [[ "$RANGE_SPAWNER_BIN" =~ ^/[A-Za-z0-9._/+-]+$ ]] || die "RANGE_SPAWNER_BIN must be an absolute path"
+# The range settings end up in docker and curl commands.
+if [ -n "$RANGE_URL" ]; then
+  [[ "$RANGE_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || die "RANGE_URL must look like http://10.0.0.50:9400"
+  [[ "$RANGE_TENANT" =~ ^[a-z][a-z0-9]{0,15}$ ]] || die "RANGE_TENANT must be 1 to 16 lower-case letters and digits, like prod"
+  RANGE_TOKEN_FILE="${RANGE_TOKEN_FILE:-$config_dir/range.token}"
+  [[ "$RANGE_TOKEN_FILE" =~ ^/[A-Za-z0-9._/+-]+$ ]] || die "RANGE_TOKEN_FILE must be an absolute path"
+  [[ "$RANGE_SELFTEST" =~ ^[01]$ ]] || die "RANGE_SELFTEST must be 0 or 1"
 fi
 # These end up inside the proxy config, so accept only addresses and ranges.
 IFS=',' read -r -a edge_list <<< "$edge_trusted"
@@ -353,121 +342,129 @@ ensure_env_file() {
   log "created $NECROPSY_ENV_FILE with defaults. Edit it, then deploy again to apply changes."
 }
 
-# ---- the range: labs and spawner ----------------------------------------------
+# ---- the range: labs, pushed to the range VM ----------------------------------
 
-range_unit_active() { systemctl is-active "$1" 2>/dev/null || true; }
-
-# Puts the previous allowlist and spawner program back, restarts the spawner on
-# them, and stops the deploy. Uses build_range's variables.
-range_fail() { # message
-  [ "$had_images" = 1 ] && mv -f "$images_file.prev" "$images_file"
-  [ "$had_bin" = 1 ] && mv -f "$RANGE_SPAWNER_BIN.prev" "$RANGE_SPAWNER_BIN"
-  local u
-  for u in $RANGE_UNIT $([ "$changed_bin" = 1 ] && echo "$RANGE_RESTART_UNITS"); do
-    systemctl restart "$u" >/dev/null 2>&1 || true
-  done
-  die "$1 The site was not changed, and the spawner is back on the previous allowlist."
+# A call to the range's control API with this site's token. The token goes in
+# through a file descriptor, never on a command line, where `ps` would show it.
+# Sets range_code and range_body. $1 is the method, $2 the path, the rest are
+# curl options (a body, an upload).
+range_code="" range_body=""
+range_call() {
+  local token out
+  token="$(tr -d '[:space:]' < "$RANGE_TOKEN_FILE")"
+  out="$(mktemp "$bg_state/range.XXXXXX")"
+  range_code="$(curl -sS --max-time 900 -o "$out" -w '%{http_code}' -X "$1" \
+      -H @<(printf 'X-Necropsy-Token: %s\n' "$token") "${@:3}" "$RANGE_URL$2" 2>"$out.err")" || range_code=000
+  range_body="$(cat "$out" "$out.err" 2>/dev/null || true)"
+  rm -f "$out" "$out.err"
+  [[ "$range_code" =~ ^2 ]]
 }
 
-# Builds this commit's lab images, rewrites the allowlist to point at them,
-# optionally rebuilds the spawner, restarts it, and tests the result. Everything
-# runs before traffic moves, so a broken lab stops the deploy with the live site
-# untouched, and the previous allowlist and spawner are put back.
+# Builds one lab and tags it by what it is: necropsy-range/<tenant>/<lab>:<image
+# id>. A lab that did not change keeps its tag, so it is not pushed again.
+# Sets lab_ref.
+lab_ref=""
+build_lab() { # lab dir
+  local lab="$1" dir="$2" tmp id
+  tmp="necropsy-range/$RANGE_TENANT/$lab:build"
+  log "building lab $lab"
+  docker build --pull -t "$tmp" "$dir" >&2
+  id="$(docker image inspect -f '{{.Id}}' "$tmp")"
+  id="${id#sha256:}"
+  [[ "$id" =~ ^[0-9a-f]{12,} ]] || die "lab $lab: docker gave no image id"
+  lab_ref="necropsy-range/$RANGE_TENANT/$lab:${id:0:12}"
+  docker tag "$tmp" "$lab_ref"
+  docker rmi "$tmp" >/dev/null 2>&1 || true
+}
+
+# Builds this commit's labs, pushes the images the range does not have, sends the
+# allowlist, and has the range test every lab. Everything runs before traffic
+# moves, so a lab that cannot be started safely stops the deploy with the live
+# site untouched, and the range's previous allowlist is put back.
 #
-# The lab images are sandboxed containers like any other. The spawner program is
-# different: it runs as root. So only a stack with RANGE_BUILD_SPAWNER=1
-# (production, which builds only reviewed commits on main) ever replaces it.
-build_range() { # build_dir full-sha
-  local dir="$1" short="${2:0:12}" labdir lab tmp ref images_file="$config_dir/images.toml"
-  local changed_bin=0 had_images=0 had_bin=0 u waited sock="$RUNDIR/$NAME/spawner.sock"
+# The range VM never builds anything and never runs a program from this commit:
+# it loads the image archives pushed here (after checking their tags are this
+# site's own) and runs them, sandboxed.
+build_range() { # build_dir
+  local dir="$1" labdir lab refs=() ref have body prev allow out
   [ -f "$dir/range/images.toml" ] || { log "this commit has no range, skipping it"; return 0; }
+  [ -s "$RANGE_TOKEN_FILE" ] || die "no token for the range at $RANGE_TOKEN_FILE"
+  if [ "$SAFE_MODE" = 1 ]; then
+    trusted_file "$RANGE_TOKEN_FILE" && [ $(( 8#$(stat -c %a "$RANGE_TOKEN_FILE") & 8#077 )) -eq 0 ] \
+      || die "$RANGE_TOKEN_FILE must be owned by root and readable by no one else"
+  fi
+  command -v curl >/dev/null || die "curl is required to reach the range"
 
   for labdir in "$dir"/range/*/; do
     [ -f "$labdir/Dockerfile" ] || continue
     lab="$(basename "$labdir")"
     [[ "$lab" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "bad lab name: $lab"
-    log "building lab $lab"
-    docker build --pull -t "necropsy-range/$NAME/$lab:$short" "$labdir" >&2
+    build_lab "$lab" "$labdir"
+    refs+=("$lab_ref")
   done
 
-  # The allowlist: the commit's, pointed at the images just built, with this
-  # stack's own limits on how many.
-  tmp="$images_file.new"
-  sed -e "s|\"necropsy-range/\([a-z0-9-]*\):1\"|\"necropsy-range/$NAME/\1:$short\"|" \
-      -e "s|^max_instances *=.*|max_instances = $RANGE_MAX_INSTANCES|" \
-      "$dir/range/images.toml" > "$tmp"
-  if [ -n "$RANGE_CPUS_CAP" ]; then
-    awk -v c="$RANGE_CPUS_CAP" '/^cpus *=/ { if ($3 + 0 > c + 0) $3 = c } { print }' "$tmp" > "$tmp.2"
-    mv -f "$tmp.2" "$tmp"
-  fi
+  # The allowlist: the commit's, pointed at the images just built. What is left
+  # pointing anywhere else names a lab with no Dockerfile here, or an outside image.
+  allow="$(mktemp "$bg_state/allowlist.XXXXXX")"
+  cp "$dir/range/images.toml" "$allow"
+  for ref in "${refs[@]}"; do
+    lab="${ref#necropsy-range/$RANGE_TENANT/}"; lab="${lab%%:*}"
+    sed -i "s|\"necropsy-range/$lab:1\"|\"$ref\"|" "$allow"
+  done
   while read -r ref; do
     case "$ref" in
-      "necropsy-range/$NAME/"*) docker image inspect "$ref" >/dev/null 2>&1 \
-        || die "the allowlist names $ref, but this commit has no lab image for it" ;;
-      *) die "the allowlist names an image that is not one of this commit's labs: $ref" ;;
+      "necropsy-range/$RANGE_TENANT/"*) ;;
+      *) rm -f "$allow"; die "the allowlist names an image that is not one of this commit's labs: $ref" ;;
     esac
-  done < <(sed -n 's/^image *= *"\([^"]*\)".*/\1/p' "$tmp")
+  done < <(sed -n 's/^image *= *"\([^"]*\)".*/\1/p' "$allow")
 
-  if [ "$RANGE_BUILD_SPAWNER" = 1 ]; then
-    local rust out
-    rust="$(sed -n 's/^ARG RUST_VERSION=//p' "$dir/Dockerfile" | head -n 1)"
-    [[ "$rust" =~ ^[0-9][0-9.]*$ ]] || die "cannot find the Rust version in this commit's Dockerfile"
-    log "building the spawner"
-    out="$(mktemp -d "$bg_state/spawner.XXXXXX")"
-    docker run --rm \
-      -v "$dir":/src:ro \
-      -v necropsy-build-cargo:/usr/local/cargo/registry \
-      -v necropsy-build-target:/target \
-      -v "$out":/out \
-      -e CARGO_TARGET_DIR=/target -w /src \
-      "rust:$rust-alpine" \
-      sh -c 'apk add --no-cache musl-dev >/dev/null && cargo build --release --locked -p necropsy-spawner && cp /target/release/necropsy-spawner /out/' >&2 \
-      || { rm -rf "$out"; die "the spawner did not build"; }
-    [ -s "$out/necropsy-spawner" ] || { rm -rf "$out"; die "the spawner did not build"; }
-    if ! cmp -s "$out/necropsy-spawner" "$RANGE_SPAWNER_BIN"; then
-      if [ -f "$RANGE_SPAWNER_BIN" ]; then cp -p "$RANGE_SPAWNER_BIN" "$RANGE_SPAWNER_BIN.prev"; had_bin=1; fi
-      install -m 755 "$out/necropsy-spawner" "$RANGE_SPAWNER_BIN.new"
-      mv -f "$RANGE_SPAWNER_BIN.new" "$RANGE_SPAWNER_BIN"
-      changed_bin=1
+  # Push what the range does not have.
+  range_call GET /v1/images || { rm -f "$allow"; die "the range did not list its images ($range_code): $range_body"; }
+  have="$range_body"
+  for ref in "${refs[@]}"; do
+    if grep -qxF "$ref" <<<"$have"; then
+      log "the range already has $ref"
+      continue
     fi
-    rm -rf "$out"
-  fi
-
-  # From here on a failure puts the previous allowlist (and program) back.
-  if [ -f "$images_file" ]; then cp -p "$images_file" "$images_file.prev"; had_images=1; fi
-  mv -f "$tmp" "$images_file"
-  chmod 644 "$images_file"
-
-  # The spawner always restarts: it reads its allowlist once, at start, and
-  # labs already running are found again afterwards. The other stacks' spawners
-  # restart only when the program they share changed.
-  local units="$RANGE_UNIT"
-  [ "$changed_bin" = 1 ] && units="$RANGE_UNIT $RANGE_RESTART_UNITS"
-  for u in $units; do
-    log "restarting $u"
-    systemctl restart "$u" || range_fail "Could not restart $u."
+    log "pushing $ref"
+    out="$(mktemp "$bg_state/save.XXXXXX")"
+    if ! docker save -o "$out" "$ref" >&2; then rm -f "$out" "$allow"; die "could not export $ref"; fi
+    if ! range_call POST /v1/images -T "$out"; then
+      rm -f "$out" "$allow"
+      die "the range refused $ref ($range_code): $range_body"
+    fi
+    rm -f "$out"
   done
 
-  if [ "$RANGE_SELFTEST" = 1 ]; then
-    waited=0
-    while [ ! -e "$sock" ] && [ "$waited" -lt 20 ]; do sleep 1; waited=$((waited + 1)); done
-    [ -e "$sock" ] || range_fail "The spawner has no socket at $sock (systemctl status $RANGE_UNIT)."
-    log "testing the labs"
-    "$LIBDIR/range-selftest.sh" "$images_file" "$sock" "$RUNDIR/$NAME/range" >&2 \
-      || range_fail "The labs failed their test."
+  # Swap the allowlist. A failure from here puts the previous one back.
+  prev="$(mktemp "$bg_state/prev.XXXXXX")"
+  range_call GET /v1/allowlist && printf '%s' "$range_body" > "$prev" || : > "$prev"
+  if ! range_call PUT /v1/allowlist --data-binary "@$allow"; then
+    rm -f "$allow" "$prev"
+    die "the range refused the allowlist ($range_code): $range_body"
   fi
-  rm -f "$images_file.prev" "$RANGE_SPAWNER_BIN.prev"
+  if [ "$RANGE_SELFTEST" = 1 ]; then
+    log "having the range test every lab"
+    if ! range_call POST /v1/selftest; then
+      body="$range_body"
+      if [ -s "$prev" ]; then range_call PUT /v1/allowlist --data-binary "@$prev" >/dev/null || true; fi
+      rm -f "$allow" "$prev"
+      printf '%s\n' "$body" >&2
+      die "the labs failed their test. The site was not changed, and the range is back on its previous allowlist."
+    fi
+    printf '%s\n' "$range_body" >&2
+  fi
+  rm -f "$allow" "$prev"
 
-  # Keep this commit's lab images and the last deploy's, for the running labs
-  # and a rollback; remove older ones.
-  local tags="$bg_state/lab-tags" prev keep
-  prev="$({ grep -v "^$short$" "$tags" 2>/dev/null || true; } | tail -n 1)"
-  printf '%s\n' ${prev:+"$prev"} "$short" > "$tags.new" && mv -f "$tags.new" "$tags"
-  keep=" $short $prev "
+  # Keep this deploy's lab images and the previous deploy's here (for a rollback),
+  # and remove older ones. lab-tags holds the previous deploy's.
+  local tags="$bg_state/lab-tags" keep
+  keep="$({ cat "$tags" 2>/dev/null || true; printf '%s\n' "${refs[@]}"; })"
+  printf '%s\n' "${refs[@]}" > "$tags.new" && mv -f "$tags.new" "$tags"
   # Best effort: a failed cleanup must never fail a deploy.
-  { docker image ls --filter "reference=necropsy-range/$NAME/*" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true; } \
+  { docker image ls --filter "reference=necropsy-range/$RANGE_TENANT/*" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || true; } \
     | while read -r ref; do
-        case "$keep" in *" ${ref##*:} "*) ;; *) docker rmi "$ref" >/dev/null 2>&1 || true ;; esac
+        grep -qxF "$ref" <<<"$keep" || docker rmi "$ref" >/dev/null 2>&1 || true
       done || true
   return 0
 }
@@ -515,7 +512,7 @@ build_commit() { # full commit hash
   tag="$NAME:${sha:0:12}"
   log "building $tag"
   docker build --pull -t "$tag" --build-arg "GIT_SHA=$sha" "$build_dir" >&2
-  if [ -n "$RANGE_UNIT" ]; then build_range "$build_dir" "$sha"; fi
+  if [ -n "$RANGE_URL" ]; then build_range "$build_dir"; fi
   rm -rf "$build_dir"
   trap - EXIT
   built_image="$tag"
@@ -528,8 +525,8 @@ status() {
   echo "blue:    $(image_of blue)"
   echo "green:   $(image_of green)"
   echo "port:    $NECROPSY_BIND:$NECROPSY_PORT"
-  if [ -n "$RANGE_UNIT" ]; then
-    printf '%-8s %s (%s), at most %s labs\n' "range:" "$RANGE_UNIT" "$(range_unit_active "$RANGE_UNIT")" "$RANGE_MAX_INSTANCES"
+  if [ -n "$RANGE_URL" ]; then
+    printf '%-8s %s as %s\n' "range:" "$RANGE_URL" "$RANGE_TENANT"
   fi
   local c
   for c in "$NAME-blue" "$NAME-green" "$NAME-proxy"; do

@@ -285,144 +285,173 @@ sed -i 's/^NECROPSY_BRANCH=.*/NECROPSY_BRANCH=a..b/' "$droot/etc/necropsy/deploy
 check "an invalid branch in deploy.env is refused" out_has "not a valid branch name"
 
 
-echo "# the range (labs and spawner)"
-# The commit gets a range: a Dockerfile naming the Rust version, an allowlist
-# with one lab, the lab's Dockerfile, and a marker standing in for the spawner.
+echo "# the range (labs, pushed to the range VM)"
+# The commit gets a range: a Dockerfile, an allowlist template with two labs, and
+# the labs' own Dockerfiles.
 mkdir -p "$src/range/lab-a" "$src/range/lab-b"
-printf 'ARG RUST_VERSION=1.100\nFROM scratch\n' > "$src/Dockerfile"
-printf 'max_instances = 20\n\n[images.lab-a]\nimage = "necropsy-range/lab-a:1"\ncpus = 0.5\n\n[images.lab-b]\nimage = "necropsy-range/lab-b:1"\ncpus = 0.1\n' > "$src/range/images.toml"
-echo 'FROM scratch' > "$src/range/lab-a/Dockerfile"; echo 'FROM scratch' > "$src/range/lab-b/Dockerfile"
-echo one > "$src/spawner-marker.txt"
+echo 'FROM scratch' > "$src/Dockerfile"
+printf '[images.lab-a]\nimage = "necropsy-range/lab-a:1"\ncpus = 0.5\n\n[images.lab-b]\nimage = "necropsy-range/lab-b:1"\ncpus = 0.1\n' > "$src/range/images.toml"
+printf 'FROM scratch\nCOPY a /a\n' > "$src/range/lab-a/Dockerfile"; echo a1 > "$src/range/lab-a/a"
+printf 'FROM scratch\nCOPY b /b\n' > "$src/range/lab-b/Dockerfile"; echo b1 > "$src/range/lab-b/b"
 git -C "$src" add -A; git -C "$src" commit -q -m range; git -C "$src" push -q origin main
 sha_r1="$(git -C "$src" rev-parse HEAD)"
 
 rroot="$work/r"
-rrun="$work/run"
-mkdir -p "$rrun/necropsy"
-install_at r --unsafe-for-tests --rundir "$rrun"
+install_at r --unsafe-for-tests
 rbin="$rroot/usr/bin/necropsy-deploy"
 rconf="$rroot/etc/necropsy"
 rstate="$rroot/var/necropsy/bluegreen"
-spawner_bin="$work/spawner-bin"
+TOKEN="range-token-0123456789abcdef"
+mkdir -p "$FAKE_DIR/range"; printf '%s' "$TOKEN" > "$FAKE_DIR/range/token"
+printf '%s\n' "$TOKEN" > "$rconf/range.token"; chmod 600 "$rconf/range.token"
 cat >> "$rconf/deploy.env" <<ENV
 DRAIN_SECONDS=0
 HEALTH_TIMEOUT=3
-RANGE_UNIT=necropsy-spawner
-RANGE_MAX_INSTANCES=7
-RANGE_CPUS_CAP=0.25
-RANGE_BUILD_SPAWNER=1
-RANGE_SPAWNER_BIN=$spawner_bin
-RANGE_RESTART_UNITS=necropsy-dev-spawner
+RANGE_URL=http://10.9.9.9:9400
+RANGE_TENANT=prod
 ENV
-# The test stands in for the self-test script: it records its arguments and
-# fails when told to.
-cat > "$rroot/usr/lib/necropsy/range-selftest.sh" <<'STUB'
-#!/bin/sh
-echo "$@" > "$FAKE_DIR/selftest_args"
-[ ! -e "$FAKE_DIR/selftest_fail" ]
-STUB
-chmod +x "$rroot/usr/lib/necropsy/range-selftest.sh"
-: > "$rrun/necropsy/spawner.sock"   # the spawner's socket, as far as the program can tell
 rrun_() { "$rbin" "$@" > "$work/out" 2>&1; }
-calls_since() { tail -n +"$(( $1 + 1 ))" "$FAKE_DIR/calls"; }
-mark() { wc -l < "$FAKE_DIR/calls"; }
+rcalls() { cat "$FAKE_DIR/range_calls" 2>/dev/null; }
+count() { rcalls | grep -c "$1" || true; }
+pushes() { rcalls | grep -c '^push ' || true; }
+lab_tag() { sed -n "s|^image = \"necropsy-range/prod/$1:\([0-9a-f]*\)\"|\1|p" "$FAKE_DIR/range/allowlist"; }
 
-m="$(mark)"
 rrun_ deploy "$sha_r1"
 check "a deploy with a range succeeds" test $? -eq 0
-check "the lab images are tagged by stack, lab and commit" img_exists "necropsy-range/necropsy/lab-a:${sha_r1:0:12}"
-check "...both labs" img_exists "necropsy-range/necropsy/lab-b:${sha_r1:0:12}"
-check "the allowlist points at them" grep -qx "image = \"necropsy-range/necropsy/lab-a:${sha_r1:0:12}\"" "$rconf/images.toml"
-check "the stack's own limit replaces the repository's" grep -qx 'max_instances = 7' "$rconf/images.toml"
-check "a higher cpu limit is lowered" grep -qx 'cpus = 0.25' "$rconf/images.toml"
-check "a lower one is kept" grep -qx 'cpus = 0.1' "$rconf/images.toml"
-check "the spawner was built" bash -c "calls_since() { tail -n +\"\$(( \$1 + 1 ))\" '$FAKE_DIR/calls'; }; calls_since $m | grep -q 'run spawner build'"
-check "and installed" grep -q '^spawner$' "$spawner_bin"
-check "both spawner units were restarted (the binary changed)" bash -c "calls_since() { tail -n +\"\$(( \$1 + 1 ))\" '$FAKE_DIR/calls'; }; calls_since $m | grep -q 'systemctl restart necropsy-spawner' && calls_since $m | grep -q 'systemctl restart necropsy-dev-spawner'"
-check "the labs were tested with this stack's files" grep -q "$rconf/images.toml $rrun/necropsy/spawner.sock $rrun/necropsy/range" "$FAKE_DIR/selftest_args"
+tag_a1="$(lab_tag lab-a)"; tag_b1="$(lab_tag lab-b)"
+check "a lab is tagged by its image id, under the site's tenant" test ${#tag_a1} -eq 12
+check "both labs were built here" img_exists "necropsy-range/prod/lab-a:$tag_a1"
+check "...and pushed to the range" equals "$(pushes)" 2
+check "the range lists its images before anything is pushed" bash -c "rcalls() { cat '$FAKE_DIR/range_calls'; }; [ \"\$(rcalls | head -n 1)\" = 'GET /v1/images' ]"
+check "the allowlist points at them" grep -qx "image = \"necropsy-range/prod/lab-b:$tag_b1\"" "$FAKE_DIR/range/allowlist"
+check "the allowlist keeps the lab's own limits" grep -qx 'cpus = 0.1' "$FAKE_DIR/range/allowlist"
+check "the labs were tested" bash -c "grep -q '^POST /v1/selftest' '$FAKE_DIR/range_calls'"
+check "in order: list, push, allowlist, test" bash -c "grep -v '^push' '$FAKE_DIR/range_calls' | tr '\n' ' ' | grep -q 'GET /v1/images POST /v1/images POST /v1/images GET /v1/allowlist PUT /v1/allowlist POST /v1/selftest'"
 check "the site went live" equals "$(cat "$rstate/active")" blue
-check "the program's own settings are not passed on to labs" bash -c "! grep -q RANGE_ '$rconf/images.toml'"
+check "the token never appears on a command line" bash -c "! grep -q '$TOKEN' '$FAKE_DIR/curl_argv'"
+check "nor in the deploy's output" bash -c "! grep -q '$TOKEN' '$work/out'"
+check "the build temp tag is gone" bash -c "! test -e '$FAKE_DIR/images/necropsy-range_prod_lab-a:build'"
 
-# Same commit again: nothing changed, nothing restarted.
-m="$(mark)"
-echo site-only-one > "$src/file.txt"; git -C "$src" commit -q -am "site only"; git -C "$src" push -q origin main
-sha_r2="$(git -C "$src" rev-parse HEAD)"
-rrun_ deploy "$sha_r2"
+# A commit that changes nothing in the labs pushes nothing: the images are the same.
+p0="$(pushes)"
+echo site-one > "$src/file.txt"; git -C "$src" commit -q -am "site only"; git -C "$src" push -q origin main
+rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
 check "a site-only commit deploys" test $? -eq 0
-check "...and changes the lab tag in the allowlist" grep -q "lab-a:${sha_r2:0:12}" "$rconf/images.toml"
-check "the stack's spawner restarts on a new allowlist" bash -c "tail -n +\"\$(( $m + 1 ))\" '$FAKE_DIR/calls' | grep -q 'systemctl restart necropsy-spawner'"
-check "but the other stack's spawner does not (the binary is the same)" bash -c "! tail -n +\"\$(( $m + 1 ))\" '$FAKE_DIR/calls' | grep -q 'restart necropsy-dev-spawner'"
-check "the previous deploy's labs are kept for running labs" img_exists "necropsy-range/necropsy/lab-a:${sha_r1:0:12}"
+check "...and pushes no lab again" equals "$(pushes)" "$p0"
+check "...and says the range already has them" out_has "already has"
+check "...and still has the labs tested" equals "$(count '^POST /v1/selftest')" 2
+check "the labs keep their tags" equals "$(lab_tag lab-a)" "$tag_a1"
 
-# A third deploy prunes the first one's labs.
-echo site-only-two > "$src/file.txt"; git -C "$src" commit -q -am "site only 2"; git -C "$src" push -q origin main
-sha_r3="$(git -C "$src" rev-parse HEAD)"
-rrun_ deploy "$sha_r3"
-check "labs two deploys old are removed" bash -c "! test -e '$FAKE_DIR/images/necropsy-range_necropsy_lab-a:${sha_r1:0:12}'"
-check "the last two deploys' labs remain" img_exists "necropsy-range/necropsy/lab-a:${sha_r2:0:12}"
+# One lab changes: only it is pushed.
+echo a2 > "$src/range/lab-a/a"; git -C "$src" add -A; git -C "$src" commit -q -m "lab a changed"; git -C "$src" push -q origin main
+rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
+tag_a2="$(lab_tag lab-a)"
+check "a changed lab is rebuilt with a new tag" test "$tag_a2" != "$tag_a1"
+check "...and only it is pushed" equals "$(pushes)" "$((p0 + 1))"
+check "an unchanged lab keeps its tag" equals "$(lab_tag lab-b)" "$tag_b1"
+check "the previous deploy's lab image is kept here" img_exists "necropsy-range/prod/lab-a:$tag_a1"
 
-# A spawner change.
-m="$(mark)"
-echo two > "$src/spawner-marker.txt"; git -C "$src" add -A; git -C "$src" commit -q -m "spawner"; git -C "$src" push -q origin main
-sha_r4="$(git -C "$src" rev-parse HEAD)"
-rrun_ deploy "$sha_r4"
-check "a changed spawner is rebuilt and installed" grep -q '^two$' "$spawner_bin"
-check "and restarts both units" bash -c "tail -n +\"\$(( $m + 1 ))\" '$FAKE_DIR/calls' | grep -q 'restart necropsy-dev-spawner'"
+# A third version prunes the first.
+echo a3 > "$src/range/lab-a/a"; git -C "$src" add -A; git -C "$src" commit -q -m "lab a changed again"; git -C "$src" push -q origin main
+rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
+tag_a3="$(lab_tag lab-a)"
+check "a lab image two deploys old is removed here" bash -c "! test -e '$FAKE_DIR/images/necropsy-range_prod_lab-a:$tag_a1'"
+check "the last two are kept" img_exists "necropsy-range/prod/lab-a:$tag_a2"
+check "an unchanged lab's image is never pruned" img_exists "necropsy-range/prod/lab-b:$tag_b1"
 
 # Failures stop the deploy before the site changes.
-live_before="$(cat "$rstate/active")"; img_before="$(cat "$rstate/images.env")"; imgs_before="$(cat "$rconf/images.toml")"
-echo site-only-three > "$src/file.txt"; git -C "$src" commit -q -am "will fail"; git -C "$src" push -q origin main
-sha_f="$(git -C "$src" rev-parse HEAD)"
+live_before="$(cat "$rstate/active")"; img_before="$(cat "$rstate/images.env")"
+good_allow="$(cat "$FAKE_DIR/range/allowlist")"
+# Each failure below gets a commit with a lab the range has not seen, so the push is needed.
+lab_commit() { echo "$1" > "$src/range/lab-b/b"; git -C "$src" add -A; git -C "$src" commit -q -m "lab $1"; git -C "$src" push -q origin main; git -C "$src" rev-parse HEAD; }
+sha_f="$(lab_commit f1)"
 : > "$FAKE_DIR/selftest_fail"
 rrun_ deploy "$sha_f"
-check "a lab that fails its test fails the deploy" test $? -ne 0
+check "a lab that fails the range's test fails the deploy" test $? -ne 0
+check "and the range's report is shown" out_has "it has a network"
 check "and says the site was not changed" out_has "site was not changed"
-check "the previous allowlist is put back" equals "$(cat "$rconf/images.toml")" "$imgs_before"
-check "and the spawner is restarted on it" bash -c "tail -n 2 '$FAKE_DIR/calls' | grep -q 'restart necropsy-spawner'"
-check "no leftovers from the failed attempt" bash -c "! ls '$rconf'/images.toml.* >/dev/null 2>&1"
+check "the range is put back on its previous allowlist" equals "$(cat "$FAKE_DIR/range/allowlist")" "$good_allow"
 check "the live color is unchanged" equals "$(cat "$rstate/active")" "$live_before"
 check "and so are the images" equals "$(cat "$rstate/images.env")" "$img_before"
 rm -f "$FAKE_DIR/selftest_fail"
-FAKE_SPAWNER_BUILD_FAIL=1 rrun_ deploy "$sha_f"
-check "a spawner that does not build fails the deploy" test $? -ne 0
-FAKE_SYSTEMCTL_FAIL=1 rrun_ deploy "$sha_f"
-check "a unit that will not restart fails the deploy" test $? -ne 0
-check "...without changing the site" equals "$(cat "$rstate/active")" "$live_before"
-rm -f "$rrun/necropsy/spawner.sock"
-rrun_ deploy "$sha_f"
-check "a spawner without a socket fails the deploy" test $? -ne 0
-: > "$rrun/necropsy/spawner.sock"
-rrun_ deploy "$sha_f"
-check "and the next deploy works once it is fixed" test $? -eq 0
 
-# An allowlist naming a lab that has no image.
-git -C "$src" show "$sha_f:range/images.toml" > "$work/good-images.toml"
-printf 'max_instances = 20\n\n[images.ghost]\nimage = "necropsy-range/ghost:1"\n' > "$src/range/images.toml"
+sha_g="$(lab_commit g1)"
+FAKE_RANGE_REFUSE_IMAGES=1 rrun_ deploy "$sha_g"
+check "an image the range refuses fails the deploy" test $? -ne 0
+check "and says why" out_has "carries a tag that is not under"
+check "the allowlist was not changed by it" equals "$(cat "$FAKE_DIR/range/allowlist")" "$good_allow"
+FAKE_RANGE_DOWN=1 rrun_ deploy "$sha_g"
+check "a range that cannot be reached fails the deploy" test $? -ne 0
+check "...without changing the site" equals "$(cat "$rstate/active")" "$live_before"
+printf 'a-different-token-0123456789' > "$rconf/range.token"
+rrun_ deploy "$sha_g"
+check "a wrong token fails the deploy" test $? -ne 0
+check "and the range says why" out_has "X-Necropsy-Token"
+printf '%s\n' "$TOKEN" > "$rconf/range.token"
+: > "$rconf/range.token"
+rrun_ deploy "$sha_g"
+check "an empty token file fails the deploy" test $? -ne 0
+printf '%s\n' "$TOKEN" > "$rconf/range.token"
+rrun_ deploy "$sha_g"
+check "and the next deploy works once it is fixed" test $? -eq 0
+check "...and the site moved" test "$(cat "$rstate/active")" != "$live_before"
+
+# An allowlist naming something that is not one of this commit's labs.
+printf '[images.ghost]\nimage = "necropsy-range/ghost:1"\n' > "$src/range/images.toml"
 git -C "$src" commit -q -am "ghost"; git -C "$src" push -q origin main
+live_before="$(cat "$rstate/active")"
 rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
 check "an allowlist naming a lab with no Dockerfile is refused" test $? -ne 0
-printf 'max_instances = 20\n\n[images.evil]\nimage = "alpine:latest"\n' > "$src/range/images.toml"
+printf '[images.evil]\nimage = "alpine:latest"\n' > "$src/range/images.toml"
 git -C "$src" commit -q -am "evil"; git -C "$src" push -q origin main
 rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
 check "an allowlist naming an outside image is refused" test $? -ne 0
 check "and says so" out_has "not one of this commit"
-cp "$work/good-images.toml" "$src/range/images.toml"; git -C "$src" commit -q -am "restore the allowlist"; git -C "$src" push -q origin main
+check "neither moved the site" equals "$(cat "$rstate/active")" "$live_before"
+printf '[images.lab-a]\nimage = "necropsy-range/lab-a:1"\n\n[images.lab-b]\nimage = "necropsy-range/lab-b:1"\n' > "$src/range/images.toml"
+git -C "$src" commit -q -am "restore"; git -C "$src" push -q origin main
+
+# A commit with no range at all is just a site deploy.
+echo "no range" > /dev/null
+p1="$(count '^POST /v1/selftest')"
+git -C "$src" rm -q -r range; git -C "$src" commit -q -m "no range"; git -C "$src" push -q origin main
+rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
+check "a commit without a range deploys" test $? -eq 0
+check "...and does not touch the range" equals "$(count '^POST /v1/selftest')" "$p1"
+check "...and says so" out_has "has no range"
+git -C "$src" revert --no-edit HEAD >/dev/null; git -C "$src" push -q origin main
 
 # Settings are checked.
-for bad in 'RANGE_UNIT=a b' 'RANGE_UNIT=../x' 'RANGE_RESTART_UNITS=ok;rm' 'RANGE_MAX_INSTANCES=0' 'RANGE_MAX_INSTANCES=lots' 'RANGE_CPUS_CAP=fast' 'RANGE_BUILD_SPAWNER=2' 'RANGE_SPAWNER_BIN=bin/x'; do
+for bad in 'RANGE_URL=ftp://x' 'RANGE_URL=http://a b' 'RANGE_URL=http://10.0.0.1;rm' 'RANGE_URL=10.0.0.1:9400' 'RANGE_TENANT=Prod' 'RANGE_TENANT=pr-od' 'RANGE_TENANT=' 'RANGE_TOKEN_FILE=relative/path' 'RANGE_SELFTEST=2'; do
   cp "$rconf/deploy.env" "$work/deploy.env.bak"
   printf '%s\n' "$bad" >> "$rconf/deploy.env"
   rrun_ status; check "'$bad' is refused" test $? -ne 0
   cp "$work/deploy.env.bak" "$rconf/deploy.env"
 done
 rrun_ status
-check "status shows the range" out_has 'range:'
+check "status shows the range and the tenant" out_has 'range:.*as prod'
+
+echo "# the self-test can be skipped, and a site without a range ignores all of it"
+echo 'RANGE_SELFTEST=0' >> "$rconf/deploy.env"
+echo site-two > "$src/file.txt"; git -C "$src" commit -q -am "again"; git -C "$src" push -q origin main
+st="$(count '^POST /v1/selftest')"
+rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
+check "RANGE_SELFTEST=0 skips the test" equals "$(count '^POST /v1/selftest')" "$st"
+sed -i '/^RANGE_SELFTEST=/d' "$rconf/deploy.env"
+calls_before="$(wc -l < "$FAKE_DIR/range_calls")"
+cp "$rconf/deploy.env" "$work/deploy.env.range"
+sed -i '/^RANGE_/d' "$rconf/deploy.env"
+echo site-three > "$src/file.txt"; git -C "$src" commit -q -am "plain"; git -C "$src" push -q origin main
+rrun_ deploy "$(git -C "$src" rev-parse HEAD)"
+check "a site with no RANGE_URL deploys" test $? -eq 0
+check "...and never calls the range" equals "$(wc -l < "$FAKE_DIR/range_calls")" "$calls_before"
+cp "$work/deploy.env.range" "$rconf/deploy.env"
 
 echo "# two stacks on one host"
 # Production above and a dev stack here share the fake docker: names, images,
 # volumes and ports must not collide, and one stack's cleanup must not touch the other's.
 d2root="$work/d2"
-install_at d2 --unsafe-for-tests --name necropsy-dev --branch main --rundir "$rrun"
+install_at d2 --unsafe-for-tests --name necropsy-dev --branch main
 d2bin="$d2root/usr/bin/necropsy-dev-deploy"
 d2conf="$d2root/etc/necropsy-dev"
 d2state="$d2root/var/necropsy-dev/bluegreen"
@@ -433,41 +462,36 @@ check "the sudo rule names the dev program" grep -qx "nobody ALL=(root) NOPASSWD
 check "the dev settings are in their own directory" test -f "$d2conf/necropsy.env"
 check "the dev program has the stack name baked in" grep -q "^NAME='necropsy-dev'" "$d2bin"
 check "a bad name is refused" bash -c "! '$installer' --user nobody --repo https://example.com/x --name 'Bad Name' --prefix $work/r7/usr --sysconfdir $work/r7/etc --statedir $work/r7/var --sudoers-dir $work/r7/s --unsafe-for-tests"
+printf '%s' "$TOKEN" > "$d2conf/range.token"; chmod 600 "$d2conf/range.token"
 cat >> "$d2conf/deploy.env" <<ENV
 DRAIN_SECONDS=0
 HEALTH_TIMEOUT=3
 NECROPSY_PORT=8081
 NECROPSY_SUBNET=172.30.31.0/24
-RANGE_UNIT=necropsy-dev-spawner
-RANGE_MAX_INSTANCES=3
+RANGE_URL=http://10.9.9.9:9400
+RANGE_TENANT=dev
 ENV
-mkdir -p "$rrun/necropsy-dev"; : > "$rrun/necropsy-dev/spawner.sock"
-cp "$rroot/usr/lib/necropsy/range-selftest.sh" "$d2root/usr/lib/necropsy-dev/range-selftest.sh"
+echo marker-dev > "$src/range/lab-a/a"; echo a5 > "$src/file.txt"; git -C "$src" add -A; git -C "$src" commit -q -m "d"; git -C "$src" push -q origin main
 prod_live="$(cat "$rstate/active")"; prod_img="$(cat "$rstate/images.env")"
-m="$(mark)"
 sha_now="$(git -C "$src" rev-parse HEAD)"
 "$d2bin" deploy "$sha_now" > "$work/out" 2>&1
 check "the dev stack deploys beside production" test $? -eq 0
 check "its containers are named for it" test -d "$FAKE_DIR/c/necropsy-dev-blue"
 check "...and its proxy" test -d "$FAKE_DIR/c/necropsy-dev-proxy"
 check "its image repository is its own" img_exists "necropsy-dev:${sha_now:0:12}"
-check "its labs are its own" img_exists "necropsy-range/necropsy-dev/lab-a:${sha_now:0:12}"
-check "its allowlist has its own limit" grep -qx 'max_instances = 3' "$d2conf/images.toml"
-check "production's allowlist is untouched" grep -qx 'max_instances = 7' "$rconf/images.toml"
+check "its labs are under its own tenant" bash -c "ls '$FAKE_DIR/images' | grep -q '^necropsy-range_dev_lab-a:'"
 check "the dev proxy is published on its own port" equals "$(cat "$FAKE_DIR/c/necropsy-dev-proxy/published")" "127.0.0.1 8081"
 check "the dev proxy points at the dev container" grep -q 'to necropsy-dev-blue:8080' "$d2state/proxy/upstream.caddy"
 check "production's state did not move" equals "$(cat "$rstate/active")" "$prod_live"
 check "production's images did not change" equals "$(cat "$rstate/images.env")" "$prod_img"
 check "production's proxy still points at production" grep -q "to necropsy-" "$rstate/proxy/upstream.caddy"
 check "...not at dev" bash -c "! grep -q 'necropsy-dev' '$rstate/proxy/upstream.caddy'"
-check "the dev deploy restarted only its own spawner" bash -c "tail -n +\"\$(( $m + 1 ))\" '$FAKE_DIR/calls' | grep -q 'restart necropsy-dev-spawner' && ! tail -n +\"\$(( $m + 1 ))\" '$FAKE_DIR/calls' | grep -q 'restart necropsy-spawner'"
-check "the dev stack does not rebuild the spawner program" bash -c "! tail -n +\"\$(( $m + 1 ))\" '$FAKE_DIR/calls' | grep -q 'run spawner build'"
 check "dev refuses an image of production's" bash -c "! '$d2bin' switch necropsy:x"
 check "the dev program tells its own name" bash -c "'$d2bin' deploy 2>&1 | grep -q 'necropsy-dev-deploy deploy'"
-# Two more dev deploys, then production's images must still all be there.
-for i in 1 2; do echo "d$i" > "$src/file.txt"; git -C "$src" commit -q -am "d$i"; git -C "$src" push -q origin main; "$d2bin" deploy "$(git -C "$src" rev-parse HEAD)" >/dev/null 2>&1; done
+# More dev deploys, then production's images, here and in the range's naming, must all be there.
+for i in 1 2; do echo "d$i" > "$src/range/lab-b/b"; git -C "$src" add -A; git -C "$src" commit -q -m "d$i"; git -C "$src" push -q origin main; "$d2bin" deploy "$(git -C "$src" rev-parse HEAD)" >/dev/null 2>&1; done
 check "pruning dev's images leaves production's alone" bash -c "[ \"\$(cat '$rstate/images.env')\" = \"$prod_img\" ] && for ref in \$(sed 's/^[A-Z]*_IMAGE=//' '$rstate/images.env'); do test -e '$FAKE_DIR/images/'\"\$ref\"; done"
-check "pruning dev's labs leaves production's alone" img_exists "necropsy-range/necropsy/lab-a:${sha_r4:0:12}"
+check "pruning dev's labs leaves production's alone" img_exists "necropsy-range/prod/lab-a:$tag_a3"
 
 echo "# uninstall"
 "$installer" --uninstall --prefix "$root/usr" --sysconfdir "$root/etc" --statedir "$root/var" --sudoers-dir "$root/sudoers.d" >/dev/null 2>&1

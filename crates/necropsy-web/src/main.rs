@@ -19,7 +19,6 @@ mod mail;
 mod markdown;
 mod pages;
 mod state;
-mod unixhttp;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -175,18 +174,29 @@ fn live_from_env() -> Result<Option<live::LiveConfig>, String> {
         ),
         _ => None,
     };
-    // Container-backed puzzles need the spawner (see docs/range.md).
-    let spawner = std::env::var("NECROPSY_SPAWNER_SOCKET")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .map(|socket| live::Spawner {
-            socket: socket.trim().into(),
-            range_dir: env_or("NECROPSY_RANGE_DIR", "/run/necropsy/range").into(),
-        });
+    // Container-backed puzzles need the range VM (see docs/range.md): its
+    // address and this site's token, both or neither.
+    let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    let range = match (get("NECROPSY_RANGE_URL"), get("NECROPSY_RANGE_TOKEN")) {
+        (Some(url), Some(token)) => {
+            let url = url.trim();
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
+                return Err(format!(
+                    "NECROPSY_RANGE_URL {url:?} must start with http:// or https://"
+                ));
+            }
+            if token.trim().len() < 16 {
+                return Err("NECROPSY_RANGE_TOKEN is too short to be a token".into());
+            }
+            Some(live::Range::new(url, token.trim()))
+        }
+        (None, None) => None,
+        _ => return Err("set both NECROPSY_RANGE_URL and NECROPSY_RANGE_TOKEN, or neither".into()),
+    };
     Ok(Some(live::LiveConfig {
         domain,
         host_header,
-        spawner,
+        range,
     }))
 }
 

@@ -24,10 +24,6 @@ x-app: &app
     NECROPSY_TRUSTED_PROXIES: ${NECROPSY_SUBNET:-172.30.30.0/24}
   volumes:
     - data:/data
-    # The spawner's socket and each live instance's socket (docs/range.md). A
-    # directory on the host that necropsy-spawner keeps; empty and unused
-    # unless container puzzles are set up.
-    - ${NECROPSY_RANGE_HOST_DIR:-/run/necropsy}:/run/necropsy
   networks: [internal]
   # Never root, whatever the image says. Matches the image's own user, and the
   # owner of the data volume.

@@ -5,7 +5,7 @@ A live puzzle is a server. A signed-in player presses **Spin up instance** and g
 There are two ways to back a live puzzle:
 
 - **Simulated** (this page): a `live.toml` of routes. A response is a status, headers and a body taken from the pack. Nothing is executed: there is no shell behind a "webshell", no outbound request from a handler, and no access to the machine's files. It is cheap and safe, good for protocol emulation and exposed-file puzzles.
-- **Real** ([range.md](range.md)): a sandboxed container per player running real software, such as a working webshell or a vulnerable app. A `live.toml` with `[container] image = "..."`. It needs the spawner and costs memory.
+- **Real** ([range.md](range.md)): a sandboxed container per player running real software, such as a working webshell or a vulnerable app, on a VM of its own (the range). A `live.toml` with `[container] image = "..."`. It needs the range VM and costs memory there.
 
 Everything else here (instances, links, flags, the captcha, the proxy setup) applies to both.
 

@@ -1,6 +1,6 @@
 [package]
 name = "necropsy-spawner"
-description = "Starts and reaps the sandboxed containers behind container-backed live puzzles"
+description = "Runs the sandboxed lab containers of live puzzles, for the site servers, on a VM of their own"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,9 +11,15 @@ workspace = true
 
 [dependencies]
 axum = "0.8"
+futures-util = "0.3"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "process", "fs"] }
+sha2 = "0.10"
+tar = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "process", "fs", "io-util"] }
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

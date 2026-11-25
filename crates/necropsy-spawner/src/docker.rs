@@ -11,11 +11,20 @@ use tokio::process::Command;
 use crate::config::Image;
 
 /// Longest a single docker command may take.
-const TIMEOUT: Duration = Duration::from_secs(60);
+const TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone)]
 pub struct Docker {
     bin: String,
+}
+
+/// A lab container as Docker lists it.
+pub struct Listed {
+    pub tenant: String,
+    pub id: String,
+    pub image: String,
+    pub memory_mb: u64,
+    pub expires: i64,
 }
 
 impl Docker {
@@ -43,8 +52,19 @@ impl Docker {
         }
     }
 
-    /// Our containers: `(id, image name, expiry)`.
-    pub async fn list(&self) -> Result<Vec<(String, String, i64)>, String> {
+    pub async fn image_exists(&self, reference: &str) -> bool {
+        self.run(&["image", "inspect", reference]).await.is_ok()
+    }
+
+    /// Loads an image archive that has already been checked.
+    pub async fn load(&self, path: &Path) -> Result<(), String> {
+        self.run(&["load", "-i", &path.display().to_string()])
+            .await
+            .map(|_| ())
+    }
+
+    /// Our containers.
+    pub async fn list(&self) -> Result<Vec<Listed>, String> {
         let out = self
             .run(&[
                 "ps",
@@ -52,29 +72,68 @@ impl Docker {
                 "--filter",
                 "label=necropsy.range=1",
                 "--format",
-                r#"{{.Names}} {{.Label "necropsy.image"}} {{.Label "necropsy.expires"}}"#,
+                r#"{{.Names}} {{.Label "necropsy.tenant"}} {{.Label "necropsy.image"}} {{.Label "necropsy.memory"}} {{.Label "necropsy.expires"}}"#,
             ])
             .await?;
         Ok(out
             .lines()
             .filter_map(|l| {
                 let mut f = l.split_whitespace();
-                let (name, image, expires) = (f.next()?, f.next()?, f.next()?);
-                Some((
-                    name.strip_prefix("nr-")?.to_owned(),
-                    image.to_owned(),
-                    expires.parse().ok()?,
-                ))
+                let (name, tenant, image, memory, expires) =
+                    (f.next()?, f.next()?, f.next()?, f.next()?, f.next()?);
+                let id = name.strip_prefix(&format!("nr-{tenant}-"))?;
+                Some(Listed {
+                    tenant: tenant.to_owned(),
+                    id: id.to_owned(),
+                    image: image.to_owned(),
+                    memory_mb: memory.parse().ok()?,
+                    expires: expires.parse().ok()?,
+                })
             })
             .collect())
+    }
+
+    /// `docker inspect` of one container, as JSON.
+    pub async fn inspect(&self, name: &str) -> Result<serde_json::Value, String> {
+        let out = self.run(&["inspect", name]).await?;
+        let v: serde_json::Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
+        v.get(0).cloned().ok_or_else(|| "empty inspect".into())
+    }
+
+    /// Runs a command inside a container. `None` if it could not be run at all
+    /// (the image may not have the tool), `Some((success, stdout))` otherwise.
+    pub async fn exec(&self, name: &str, cmd: &[&str]) -> Option<(bool, String)> {
+        let mut args = vec!["exec", name];
+        args.extend_from_slice(cmd);
+        let out = tokio::time::timeout(
+            Duration::from_secs(20),
+            Command::new(&self.bin)
+                .args(&args)
+                .stdin(std::process::Stdio::null())
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        // Docker exits 126 or 127 when the program is not in the image.
+        match out.status.code() {
+            Some(126) | Some(127) => None,
+            _ => Some((
+                out.status.success(),
+                String::from_utf8_lossy(&out.stdout).into_owned(),
+            )),
+        }
     }
 }
 
 /// The `docker run` arguments for an instance. The container gets no network,
 /// a read-only root, no capabilities, hard memory, cpu and process limits, and
 /// one writable tmpfs. The only door is the socket in `dir`.
+#[allow(clippy::too_many_arguments)]
 pub fn run_args(
     name: &str,
+    tenant: &str,
     image_name: &str,
     img: &Image,
     dir: &Path,
@@ -101,7 +160,9 @@ pub fn run_args(
     .collect();
     a.push(format!("--name={name}"));
     a.push("--label=necropsy.range=1".into());
+    a.push(format!("--label=necropsy.tenant={tenant}"));
     a.push(format!("--label=necropsy.image={image_name}"));
+    a.push(format!("--label=necropsy.memory={}", img.memory_mb));
     a.push(format!("--label=necropsy.expires={expires}"));
     a.push(format!("--user={0}:{0}", img.uid));
     a.push(format!("--memory={}m", img.memory_mb));

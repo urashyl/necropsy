@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! A minimal HTTP/1.1 client over a unix socket, for talking to the spawner
-//! and to the container behind a live instance. One connection per request,
-//! with a timeout and a cap on the size of the answer.
+//! A minimal HTTP/1.1 client over a unix socket, for talking to a lab. One
+//! connection per request, with a timeout and a cap on the size of the answer.
 
 use std::path::Path;
 use std::time::Duration;
@@ -15,8 +14,6 @@ use tokio::net::UnixStream;
 /// Longest a request may take, connecting and reading the answer included.
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Sends `req` to the server listening on `socket` and returns its answer
-/// with the body read in full, up to `max_body` bytes.
 pub async fn send(
     socket: &Path,
     req: Request<Full<Bytes>>,

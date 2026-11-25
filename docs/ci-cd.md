@@ -4,7 +4,7 @@ Two GitHub Actions workflows live in `.github/workflows/`.
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| `ci.yml` | pull requests, pushes to any branch except `main` and `dev` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, pack validation, script syntax and the installer tests; and with real Docker: the image, the deploy program (two deploys under load, rollback, a second stack beside the first), and the range (every lab comes up locked down, passes its own test, is reaped) |
+| `ci.yml` | pull requests, pushes to any branch except `main` and `dev` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, pack validation, script syntax and the installer tests; and with real Docker: the image, the deploy program (two deploys under load, rollback), and the range (the real spawner with two tenants: every lab comes up locked down, passes its own test, is reaped, and tenants cannot touch each other) |
 | `deploy.yml` | pushes to `main` or `dev`, manual run | runs `ci.yml`, then deploys over SSH only if it passed: `main` to the `production` environment, `dev` to `development` |
 
 Deploys of the same branch never overlap: a second push waits for the running one instead of cancelling it. A manual run from a branch other than `main` or `dev` does nothing.
@@ -20,19 +20,19 @@ The usual flow is push (or merge) into `dev`, which deploys to development, then
 
 ## What a deploy does
 
-CI connects to the server over SSH and runs one command: `sudo -n <program> deploy <commit>`, where the program is `necropsy-deploy` for `main` and `necropsy-dev-deploy` for `dev` (see [One VM for both](#one-vm-for-both-environments)). That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on the branch it was installed for (`main` on the production server, `dev` on the dev server), builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
+CI connects to the server over SSH and runs one command: `sudo -n necropsy-deploy deploy <commit>`. That is a root-owned program the deploy user may run without a password, and the only thing they may ([docker.md](docker.md) explains why it is safe to). The program fetches the repository itself, refuses a commit that is not on the branch it was installed for (`main` on the production server, `dev` on the dev server), builds the image, starts the new version beside the old one, waits for it to be healthy, and only then switches traffic. If anything fails before traffic moves, the live site is untouched.
 
 CI sends no image and no files, only the commit hash. The server needs Docker and git, not Rust.
 
-For a stack that runs live-puzzle labs ([range.md](range.md)), the same command also ships them, before any traffic moves: it builds the commit's lab images, rewrites that stack's lab allowlist to point at them, restarts that stack's spawner, and starts a real lab of every image to check it is locked down and answers. If any of that fails, the previous allowlist is put back and the site is untouched. A new lab is therefore just a commit: its `range/<name>/` directory, its entry in `range/images.toml` and its pack. The spawner *program* itself is replaced only by a production deploy (see below).
+For a site that runs live-puzzle labs ([range.md](range.md)), the same command also ships them, before any traffic moves: it builds the commit's lab images, pushes the ones the range VM does not have, sends the range this site's lab allowlist, and has the range start every lab and check it is locked down and answers. If any of that fails, the range's previous allowlist is put back and the site is untouched. A new lab is therefore just a commit: its `range/<name>/` directory, its entry in `range/images.toml` and its pack. The spawner *program* on the range VM is not updated by deploys: it runs as root there, so a site, least of all the dev branch, must not be able to change it. Re-run `deploy/install-range.sh` from an up-to-date checkout to update it.
 
-CI also builds the image on every PR and runs it with the production hardening (read-only filesystem, no capabilities, fresh data volume), and a separate end-to-end job installs the deploy program, deploys twice with real Docker while requesting the site continuously, and checks that not one request failed during the switch.
+CI also builds the image on every PR and runs it with the production hardening (read-only filesystem, no capabilities, fresh data volume). A separate end-to-end job installs the deploy program, deploys twice with real Docker while requesting the site continuously, and checks that not one request failed during the switch. A `range` job runs the real spawner and labs against real Docker.
 
 ## Secrets
 
 Each environment, `production` and `development` (Settings, Environments), has its own copy of these. Environment secrets are only given to the deploy job, each environment only accepts deploys from its own branch, and the environment is where you can add required reviewers if you want a manual approval before each deploy.
 
-Production and dev each have their own deploy program, so they can run on separate hosts or share one VM; the next section covers sharing.
+Production and dev are separate VMs, each with its own install of the deploy program (`deploy/install-site.sh`: on `main` for production, with `--branch dev` for dev), so each environment's `DEPLOY_HOST`, `DEPLOY_USER` and key are its own. A third VM, the range, runs the live-puzzle labs for both ([range.md](range.md)). CI never connects to it: it is reached only from the sites' deploys and web servers, with a token per site.
 
 | Secret | Required | Value |
 | --- | --- | --- |
@@ -50,29 +50,13 @@ Optional **variable** (not a secret). Set it on each environment (Settings, Envi
 
 The workflow fails early with the names of any missing secrets.
 
-## One VM for both environments
+## The range VM
 
-Production and dev can share one VM. They are then two independent stacks, made by `deploy/install-vm.sh --dev-domain ...` (or `deploy/bluegreen/install-system.sh --name necropsy-dev` by hand, see [docker.md](docker.md#several-stacks-on-one-host)):
+Container-backed puzzles run on the range VM, shared by production and dev, and need nothing in GitHub: no secrets, no workflow. Each site's deploy talks to it directly, with that site's token (`/etc/necropsy/range.token` on the site VM, made by `deploy/install-range.sh` on the range VM). The token says which **tenant** the site is (`prod` or `dev`), so:
 
-| | production | dev |
-| --- | --- | --- |
-| branch built | `main` | `dev` |
-| deploy program (what CI runs) | `necropsy-deploy` | `necropsy-dev-deploy` |
-| SSH / sudo user | `deploy` | `deploy-dev` |
-| containers, volume | `necropsy-blue`, `necropsy-data`, ... | `necropsy-dev-blue`, `necropsy-dev-data`, ... |
-| site port on the VM | 8080 | 8081 |
-| spawner, labs | `necropsy-spawner`, `/etc/necropsy/images.toml` | `necropsy-dev-spawner`, `/etc/necropsy-dev/images.toml` |
-| domain | `necropsy.urashyl.dev` | e.g. `necropsy-dev.urashyl.dev` |
-
-Each environment's secrets differ only in `DEPLOY_USER` and `DEPLOY_SSH_KEY`: `DEPLOY_HOST`, `DEPLOY_PORT` and `DEPLOY_KNOWN_HOSTS` are the same VM's. The two users each have a sudo rule for their own program only, so **a push to `dev`, which accepts direct pushes, cannot run production's deploy**, and the dev program refuses any commit that is not on `dev`.
-
-Things to know about sharing:
-
-- **The VM's capacity is shared.** Each stack has its own lab limit (`RANGE_MAX_INSTANCES`), and `install-vm.sh` splits what the VM holds two thirds to production, one third to dev. The limits are independent, so keep their sum within what [range.md](range.md#how-many-players-it-holds) says the VM holds.
-- **The spawner program is shared and runs as root, so only production replaces it.** A production deploy builds it from the commit on `main` (reviewed through a pull request) and restarts both spawners. A dev deploy builds the dev labs (sandboxed containers, like any other) but never replaces that program, so write access to `dev` does not reach root on the VM. A change to the spawner is therefore live in production before dev, and can only be tried on dev by merging it to `main`.
-- **Lab images are separate per stack** (`necropsy-range/<stack>/<lab>`), and one stack's cleanup never removes the other's.
-- **One firewall rule** keeps both sites' ports reachable only from your reverse proxy.
-- **A dev server on its own host** is still possible: install it with the default name, and set the `DEPLOY_PROGRAM` variable on the `development` environment to `necropsy-deploy`.
+- a push to `dev` deploys dev's labs and allowlist and can only ever touch dev's tenant: it cannot see, stop or replace production's labs, and cannot push an image under production's name;
+- each tenant has its own cap on labs and on their memory, so dev being busy cannot take room from production;
+- the dev branch accepts direct pushes, and the labs it ships are sandboxed containers on a VM with nothing else on it. The spawner program that runs them is not something a deploy can change.
 
 ## Setting up the key and host key
 
@@ -82,7 +66,7 @@ Use a key made only for this. On your own machine:
 ssh-keygen -t ed25519 -N '' -C necropsy-deploy -f necropsy_deploy
 ```
 
-Do this once per environment, with a different key each (on one VM, they belong to different users). Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to that environment's deploy user's `~/.ssh/authorized_keys` on the server (`deploy` for production, `deploy-dev` for dev). The `restrict` prefix turns off forwarding and other extras:
+Do this once per environment, with a different key each. Put the contents of `necropsy_deploy` in `DEPLOY_SSH_KEY`, then delete the file. Add the public key to that environment's deploy user's `~/.ssh/authorized_keys` on the server (`deploy`, on each environment's own VM). The `restrict` prefix turns off forwarding and other extras:
 
 ```text
 restrict ssh-ed25519 AAAA... necropsy-deploy
@@ -99,7 +83,7 @@ Compare that fingerprint with the one on the server (`ssh-keygen -lf /etc/ssh/ss
 
 ## Server requirements
 
-On a dedicated VM, run `deploy/install-vm.sh` once ([range.md](range.md#setting-it-up)): it installs Docker, the deploy programs, the spawners and the firewall rule for each environment. To do the site alone by hand, as described in [docker.md](docker.md): Docker with the compose plugin, `git`, `curl`, and the installer run as root with `--user` set to the deploy user. The deploy user's SSH key should be one made for this (above), and the user must not be in the `docker` group, which would make the sudo restriction pointless; the installer refuses that.
+On each site's VM, run `deploy/install-site.sh` once ([range.md](range.md#setting-it-up)): it installs Docker, the deploy program, the settings, the connection to the range and the firewall rule. To do it by hand, as described in [docker.md](docker.md): Docker with the compose plugin, `git`, `curl`, and the installer run as root with `--user` set to the deploy user. The deploy user's SSH key should be one made for this (above), and the user must not be in the `docker` group, which would make the sudo restriction pointless; the installer refuses that.
 
 ## When it fails
 
@@ -108,7 +92,8 @@ On a dedicated VM, run `deploy/install-vm.sh` once ([range.md](range.md#setting-
 - **Permission denied:** the public key is not in the deploy user's `authorized_keys`, or `DEPLOY_USER` is wrong.
 - **"sudo: a password is required":** the sudo rule is missing or does not match. Re-run the installer as root, and check that `DEPLOY_USER` is the user it was given in `--user`.
 - **"commit ... is not on main":** the commit was pushed to another branch, or `main` was rewritten. Only commits on `main` are built (on `dev` for the dev program).
-- **"sudo: necropsy-dev-deploy: command not found" or a password prompt:** the program name is wrong for the user. `main` runs `necropsy-deploy` as the production user, `dev` runs `necropsy-dev-deploy` as the dev user; check `DEPLOY_USER` on each environment.
-- **"the labs failed their test. The site was not changed":** a lab in that commit did not come up locked down, or does not answer. The log above it says which check failed, and the previous allowlist is back in place. Run `deploy/range/ci-test.sh` locally to reproduce.
+- **"the labs failed their test. The site was not changed":** a lab in that commit did not come up locked down, or does not answer. The range's report above it says which check failed, and its previous allowlist is back in place. Run `deploy/range/ci-test.sh` to reproduce it against real Docker.
+- **"the range refused the allowlist" or "did not list its images (401)":** the token in `/etc/necropsy/range.token` is not the one the range made for this site's tenant, or the range's firewall does not let this VM in. Check with `curl http://<range>:9400/healthz`.
+- **"The range is full right now" on the site:** the tenant is at its lab limit or its memory budget. Players can retry; raise the limits in `/etc/necropsy-range/tenants.toml` if it is routine.
 - **"did not become healthy":** the new version failed to start. The log run prints its last lines. The old version is still serving.
 - **Build errors:** shown in the deploy step of the run log. The live version keeps serving.
