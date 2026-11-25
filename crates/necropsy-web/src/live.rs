@@ -40,15 +40,44 @@ pub struct LiveConfig {
     /// Optional header carrying the original host, for a proxy that rewrites
     /// `Host`. Believed only from `NECROPSY_TRUSTED_PROXIES` (any peer if none).
     pub host_header: Option<HeaderName>,
-    /// The spawner, for container-backed puzzles. Without it those puzzles
+    /// The range VM, for container-backed puzzles. Without it those puzzles
     /// are hidden.
-    pub spawner: Option<Spawner>,
+    pub range: Option<Range>,
 }
 
-/// Where the spawner listens, and where it puts each instance's socket.
-pub struct Spawner {
-    pub socket: std::path::PathBuf,
-    pub range_dir: std::path::PathBuf,
+/// The range VM that runs container-backed labs: where it is, and this site's
+/// token (see `docs/range.md`). Every call carries the token, and a lab's
+/// traffic is passed to it with the lab's id; the labs themselves have no
+/// network and are reachable only through it.
+pub struct Range {
+    pub url: String,
+    pub token: String,
+    client: reqwest::Client,
+}
+
+impl Range {
+    pub fn new(url: &str, token: &str) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(5))
+            // A lab's redirect is the lab's answer, for the player's browser to follow.
+            .redirect(reqwest::redirect::Policy::none())
+            // The range is on the private network, whatever HTTP_PROXY says.
+            .no_proxy()
+            .build()
+            .expect("cannot build the range http client");
+        Self {
+            url: url.trim_end_matches('/').to_owned(),
+            token: token.to_owned(),
+            client,
+        }
+    }
+
+    fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        self.client
+            .request(method, format!("{}{}", self.url, path))
+            .header("x-necropsy-token", &self.token)
+    }
 }
 
 /// An instance of a container puzzle is kept alive while it is used, but never
@@ -539,54 +568,46 @@ fn log_request(state: &AppState, label: &str, info: &ReqInfo, status: StatusCode
 
 // ------------------------------------------------------------------ containers
 
-/// Headers that belong to one connection and are never passed along.
+/// Headers that belong to one connection and are never passed along. The
+/// `x-necropsy-*` ones are between this site and the range: a player's request
+/// never carries them on, and cannot choose which lab or whose token.
 fn hop_by_hop(name: &str) -> bool {
-    matches!(
-        name,
-        "connection"
-            | "keep-alive"
-            | "proxy-authenticate"
-            | "proxy-authorization"
-            | "te"
-            | "trailer"
-            | "transfer-encoding"
-            | "upgrade"
-            | "content-length"
-    )
+    name.starts_with("x-necropsy-")
+        || matches!(
+            name,
+            "connection"
+                | "keep-alive"
+                | "proxy-authenticate"
+                | "proxy-authorization"
+                | "te"
+                | "trailer"
+                | "transfer-encoding"
+                | "upgrade"
+                | "content-length"
+        )
 }
 
-fn spawner_req(
-    method: &str,
-    uri: &str,
-    json: Option<String>,
-) -> hyper::Request<http_body_util::Full<axum::body::Bytes>> {
-    hyper::Request::builder()
-        .method(method)
-        .uri(uri)
-        .header(header::HOST, "spawner")
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(header::CONNECTION, "close")
-        .body(http_body_util::Full::new(axum::body::Bytes::from(
-            json.unwrap_or_default(),
-        )))
-        .expect("a fixed request is valid")
-}
-
-/// Calls the spawner. `Ok` only for a 2xx answer.
-async fn spawner_call(
-    sp: &Spawner,
-    method: &str,
-    uri: &str,
+/// Calls the range's control API. `Ok` only for a 2xx answer.
+async fn range_call(
+    range: &Range,
+    method: reqwest::Method,
+    path: &str,
     json: Option<String>,
 ) -> Result<(), (StatusCode, String)> {
-    let res = crate::unixhttp::send(&sp.socket, spawner_req(method, uri, json), 4096)
+    let mut req = range.request(method, path);
+    if let Some(j) = json {
+        req = req.header("content-type", "application/json").body(j);
+    }
+    let res = req
+        .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
-    if res.status().is_success() {
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let status = res.status();
+    if status.is_success() {
         Ok(())
     } else {
-        let text = String::from_utf8_lossy(res.body()).into_owned();
-        Err((res.status(), text))
+        let text = res.text().await.unwrap_or_default();
+        Err((status, text))
     }
 }
 
@@ -597,7 +618,7 @@ async fn start_container(
     scenario: &Scenario,
     image: &str,
 ) -> Result<(), Response> {
-    let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) else {
+    let Some(range) = state.live.as_ref().and_then(|l| l.range.as_ref()) else {
         return Err(StatusCode::NOT_FOUND.into_response());
     };
     let body = serde_json::json!({
@@ -609,10 +630,17 @@ async fn start_container(
             "NECROPSY_INSTANCE": inst.label,
         },
     });
-    match spawner_call(sp, "POST", "/v1/instances", Some(body.to_string())).await {
+    match range_call(
+        range,
+        reqwest::Method::POST,
+        "/v1/instances",
+        Some(body.to_string()),
+    )
+    .await
+    {
         Ok(()) => Ok(()),
         Err((status, why)) => {
-            tracing::error!("spawner refused {}: {status} {why}", inst.label);
+            tracing::error!("the range refused {}: {status} {why}", inst.label);
             let msg = if status == StatusCode::TOO_MANY_REQUESTS {
                 "The range is full right now. Try again in a few minutes."
             } else {
@@ -623,12 +651,17 @@ async fn start_container(
     }
 }
 
-/// Stops a container and forgets it. Best effort: the spawner reaps by time
+/// Stops a container and forgets it. Best effort: the range reaps by time
 /// anyway.
 async fn stop_container(state: &AppState, label: &str) {
-    if let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) {
-        if let Err((status, why)) =
-            spawner_call(sp, "DELETE", &format!("/v1/instances/{label}"), None).await
+    if let Some(range) = state.live.as_ref().and_then(|l| l.range.as_ref()) {
+        if let Err((status, why)) = range_call(
+            range,
+            reqwest::Method::DELETE,
+            &format!("/v1/instances/{label}"),
+            None,
+        )
+        .await
         {
             tracing::warn!("stopping {label}: {status} {why}");
         }
@@ -652,11 +685,11 @@ fn keep_alive(state: &Arc<AppState>, inst: &Instance, ttl: i64) {
             tracing::error!("extending {label} failed: {e}");
             return;
         }
-        if let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) {
+        if let Some(range) = state.live.as_ref().and_then(|l| l.range.as_ref()) {
             let body = format!(r#"{{"ttl_secs":{}}}"#, new_expiry - now());
-            let _ = spawner_call(
-                sp,
-                "POST",
+            let _ = range_call(
+                range,
+                reqwest::Method::POST,
                 &format!("/v1/instances/{label}/touch"),
                 Some(body),
             )
@@ -665,8 +698,8 @@ fn keep_alive(state: &Arc<AppState>, inst: &Instance, ttl: i64) {
     });
 }
 
-/// Passes a request to the instance's container, over its unix socket, and
-/// returns what it answers.
+/// Passes a request to the instance's lab, through the range, and returns what
+/// it answers.
 async fn proxy(
     state: &Arc<AppState>,
     inst: &Instance,
@@ -674,58 +707,71 @@ async fn proxy(
     parts: &axum::http::request::Parts,
     body: axum::body::Bytes,
 ) -> Response {
-    let Some(sp) = state.live.as_ref().and_then(|l| l.spawner.as_ref()) else {
+    let Some(range) = state.live.as_ref().and_then(|l| l.range.as_ref()) else {
         return plain(StatusCode::NOT_FOUND, "No such instance.\n");
     };
     keep_alive(state, inst, i64::from(scenario.ttl_minutes) * 60);
 
-    let mut b = hyper::Request::builder().method(parts.method.clone()).uri(
-        parts
-            .uri
-            .path_and_query()
-            .map(|p| p.as_str())
-            .unwrap_or("/"),
-    );
+    let target = parts
+        .uri
+        .path_and_query()
+        .map(|p| p.as_str())
+        .unwrap_or("/");
+    let mut req = range
+        .request(parts.method.clone(), target)
+        .header("x-necropsy-instance", &inst.label)
+        .body(body);
     for (k, v) in &parts.headers {
         if !hop_by_hop(k.as_str()) {
-            b = b.header(k, v);
+            req = req.header(k, v);
         }
     }
-    let req = match b
-        .header(header::CONNECTION, "close")
-        .header(header::CONTENT_LENGTH, body.len())
-        .body(http_body_util::Full::new(body))
-    {
-        Ok(r) => r,
-        Err(_) => return plain(StatusCode::BAD_REQUEST, "Bad request.\n"),
-    };
-    let socket = sp.range_dir.join(&inst.label).join("app.sock");
-    let res = match crate::unixhttp::send(&socket, req, MAX_PROXY_RESPONSE).await {
+    let mut res = match req.send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("instance {} did not answer: {e}", inst.label);
             return plain(StatusCode::BAD_GATEWAY, "The instance is not answering.\n");
         }
     };
-    let (rp, rbody) = res.into_parts();
-    let mut out = Response::builder().status(rp.status);
-    for (k, v) in &rp.headers {
+    let mut out = Response::builder().status(res.status());
+    for (k, v) in res.headers() {
         if !hop_by_hop(k.as_str()) {
             out = out.header(k, v);
         }
     }
-    // Defaults the container's own headers can override.
+    // Defaults the lab's own headers can override.
     for (k, v) in [
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
         (header::REFERRER_POLICY, "no-referrer"),
         (header::X_FRAME_OPTIONS, "DENY"),
         (header::CACHE_CONTROL, "no-store"),
     ] {
-        if !rp.headers.contains_key(&k) {
+        if !res.headers().contains_key(&k) {
             out = out.header(k, v);
         }
     }
-    out.body(Body::from(rbody))
+    let mut bytes = Vec::new();
+    loop {
+        match res.chunk().await {
+            Ok(Some(c)) => {
+                bytes.extend_from_slice(&c);
+                if bytes.len() > MAX_PROXY_RESPONSE {
+                    return plain(
+                        StatusCode::BAD_GATEWAY,
+                        "The instance's answer is too large.\n",
+                    );
+                }
+            }
+            Ok(None) => break,
+            Err(_) => {
+                return plain(
+                    StatusCode::BAD_GATEWAY,
+                    "The instance's answer broke off.\n",
+                )
+            }
+        }
+    }
+    out.body(Body::from(bytes))
         .unwrap_or_else(|_| plain(StatusCode::BAD_GATEWAY, "Bad answer from the instance.\n"))
 }
 

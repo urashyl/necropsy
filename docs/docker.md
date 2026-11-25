@@ -46,7 +46,7 @@ Changing the program, compose file or settings means running the installer again
 
 ## Server setup, once
 
-On a dedicated Debian or Ubuntu VM, [`deploy/install-vm.sh`](range.md#setting-it-up) does all of this and the live-puzzle range too. The steps below are what it automates for the site.
+On a dedicated Debian or Ubuntu VM, [`deploy/install-site.sh`](range.md#setting-it-up) does all of this, and connects the site to the range VM that runs live-puzzle labs. The steps below are what it automates.
 
 You need Docker with the compose plugin, `git`, `curl` and `flock` (util-linux), and a user for deployments that is not root and not in the `docker` group. As root, from a checkout of the repository:
 
@@ -97,13 +97,13 @@ Caddy passes the `Host` header through unchanged, which the app needs. The `X-Re
 
 ## Several stacks on one host
 
-A host can run more than one stack, such as production and a dev site, as long as each has its own name. `install-system.sh --name necropsy-dev` installs a second one next to the first:
+Production and dev normally have a VM each, with the default stack name, `necropsy`. A host can run more than one stack, as long as each has its own name. `install-system.sh --name necropsy-dev` installs a second one next to the first:
 
 ```bash
 deploy/bluegreen/install-system.sh --name necropsy-dev --user deploy-dev --repo https://github.com/urashyl/necropsy --branch dev
 ```
 
-Everything that could clash follows the name: the program (`necropsy-dev-deploy`), its settings (`/etc/necropsy-dev/`), state, sudo rule, containers (`necropsy-dev-blue`, `-green`, `-proxy`), the data volume, the image repository (`necropsy-dev:<commit>`), the lab images and the runtime directory (`/run/necropsy-dev`). The default name, `necropsy`, keeps every path as it was. Give each stack its own port and subnet in its `deploy.env`, and its own domain in its `necropsy.env`:
+Everything that could clash follows the name: the program (`necropsy-dev-deploy`), its settings (`/etc/necropsy-dev/`), state, sudo rule, containers (`necropsy-dev-blue`, `-green`, `-proxy`), the data volume and the image repository (`necropsy-dev:<commit>`). The default name keeps every path as it was. Give each stack its own port and subnet in its `deploy.env`, and its own `RANGE_TENANT` if it uses the range:
 
 ```bash
 # /etc/necropsy-dev/deploy.env
@@ -111,7 +111,7 @@ NECROPSY_PORT=8081
 NECROPSY_SUBNET=172.30.31.0/24
 ```
 
-Use a different deploy user per stack, so write access to one branch cannot run the other's deploy ([ci-cd.md](ci-cd.md#one-vm-for-both-environments)). The firewall rule in the proxy section covers every stack, since the port it names is the container's own.
+Use a different deploy user per stack, so write access to one branch cannot run the other's deploy, and set `DEPLOY_PROGRAM` on its GitHub environment to its program's name ([ci-cd.md](ci-cd.md)). The firewall rule in the proxy section covers every stack, since the port it names is the container's own.
 
 ## Settings that differ in Docker
 

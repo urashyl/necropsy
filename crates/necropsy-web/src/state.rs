@@ -96,11 +96,11 @@ impl AppState {
         let hl = Highlighter::new();
         // Live puzzles need the live domain; without it they stay hidden.
         let live_on = config.live.is_some();
-        let spawner_on = config.live.as_ref().is_some_and(|l| l.spawner.is_some());
+        let range_on = config.live.as_ref().is_some_and(|l| l.range.is_some());
         let packs: Vec<RenderedPack> = packs
             .into_iter()
             .filter(|p| live_on || !p.is_live())
-            .filter(|p| spawner_on || p.container().is_none())
+            .filter(|p| range_on || p.container().is_none())
             .map(|pack| {
                 let files = pack
                     .files

@@ -6,14 +6,11 @@
 #
 # Needs the secrets listed in docs/ci-cd.md, stored on each environment. Each
 # environment only accepts deploys from its own branch. Nothing about the
-# server is written in this file, except the names of the two deploy programs.
+# server is written in this file.
 #
-# Production and dev can share one VM: they are two independent stacks there,
-# each with its own deploy program, SSH user and sudo rule, so a push to dev
-# can never run production's deploy. main calls necropsy-deploy and dev calls
-# necropsy-dev-deploy. For a dev server on its own host, which has the plain
-# necropsy-deploy, set the DEPLOY_PROGRAM variable on the development
-# environment to necropsy-deploy.
+# Production and dev are separate VMs, each with the plain necropsy-deploy. If one
+# host ever runs both (docs/docker.md, several stacks), set the DEPLOY_PROGRAM
+# variable on that environment to its program's name, such as necropsy-dev-deploy.
 name: Deploy
 
 on:
@@ -106,7 +103,7 @@ jobs:
       - name: Deploy
         env:
           SHA: ${{ github.sha }}
-          PROGRAM: ${{ vars.DEPLOY_PROGRAM || (github.ref == 'refs/heads/main' && 'necropsy-deploy' || 'necropsy-dev-deploy') }}
+          PROGRAM: ${{ vars.DEPLOY_PROGRAM || 'necropsy-deploy' }}
         run: |
           # It ends up in a command line on the server.
           if ! [[ "$PROGRAM" =~ ^necropsy(-[a-z0-9]+)*-deploy$ ]]; then

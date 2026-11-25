@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-# Records what the deploy program asks systemd to do. FAKE_SYSTEMCTL_FAIL=1 makes restarts fail.
-d="${FAKE_DIR:-$(cat "$(dirname "$0")/state_dir")}"
-mkdir -p "$d"
-echo "systemctl $*" >> "$d/calls"
-case "${1:-}" in
-  restart) [ -z "${FAKE_SYSTEMCTL_FAIL:-}" ] ;;
-  is-active) echo active ;;
-esac
