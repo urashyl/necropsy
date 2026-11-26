@@ -89,9 +89,12 @@ fn now() -> i64 {
 /// A lab id: what the site uses as the lab's subdomain.
 pub fn valid_id(id: &str) -> bool {
     (1..=40).contains(&id.len())
+        && !id.starts_with('-')
+        && !id.ends_with('-')
+        && !id.contains("--")
         && id
             .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn valid_env_value(v: &str) -> bool {

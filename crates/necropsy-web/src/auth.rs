@@ -67,6 +67,19 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
+/// A uniformly random index below `n` (`n` at most 65536), without modulo bias.
+pub fn random_index(n: usize) -> usize {
+    assert!((1..=65_536).contains(&n));
+    let limit = 65_536 - (65_536 % n);
+    loop {
+        let b = random_bytes::<2>();
+        let v = u16::from_be_bytes(b) as usize;
+        if v < limit {
+            return v % n;
+        }
+    }
+}
+
 /// `len` random characters from `alphabet`, without modulo bias.
 pub fn random_string(alphabet: &[u8], len: usize) -> String {
     let limit = 256 - (256 % alphabet.len());

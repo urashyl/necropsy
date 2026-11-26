@@ -12,7 +12,7 @@ Everything else here (instances, links, flags, the captcha, the proxy setup) app
 ## How it works
 
 - `*.<NECROPSY_LIVE_DOMAIN>` is pointed at the same process as the site. Requests whose `Host` falls under that domain are answered from the scenario; anything else is the normal site. The two never share pages, cookies or CSRF logic.
-- An instance has a random label (the subdomain), a time to live (`ttl_minutes`, at most 240), and a random seed kept in the database. The seed makes the flag, and every `{{d:name}}` value, different for every instance. Flags cannot be passed between players.
+- An instance has a random label (the subdomain): four diceware words such as `plank-orbit-velvet-cargo`, about 51 bits, a time to live (`ttl_minutes`, at most 240), and a random seed kept in the database. The seed makes the flag, and every `{{d:name}}` value, different for every instance. Flags cannot be passed between players.
 - The player submits the flag on the puzzle page as usual. It is checked against the flags of that player's own instances of the pack, including recently expired ones, and the solve is recorded like any other.
 - Limits: one running instance per pack per player, three running in all, 100 requests per 10 seconds per instance, request bodies up to 1 MiB. The latest 100 requests are shown to the player on the puzzle page.
 
