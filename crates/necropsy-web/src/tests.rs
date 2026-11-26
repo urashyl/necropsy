@@ -3120,3 +3120,26 @@ async fn a_lab_that_was_never_shipped_says_so() {
         r.body
     );
 }
+
+#[tokio::test]
+async fn the_admin_page_says_whether_the_captcha_is_on() {
+    let s = site().await;
+    let admin = s.admin_cookie().await;
+    assert!(
+        s.get("/admin", Some(&admin)).await.body.contains("Captcha"),
+        "shown even when off"
+    );
+    assert!(s
+        .get("/admin", Some(&admin))
+        .await
+        .body
+        .contains("Off. Set NECROPSY_TURNSTILE_SITE_KEY"));
+    let s = captcha_site().await;
+    let admin = s.admin_cookie().await;
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(page.contains("Cloudflare Turnstile, site key"), "{page}");
+    assert!(
+        page.contains("test-site-"),
+        "the start of the key is shown, never the secret"
+    );
+}
