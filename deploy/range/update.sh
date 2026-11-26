@@ -94,6 +94,14 @@ if [ "$new" = "$failed" ]; then
   log "${new:0:12} failed before; waiting for a newer commit on $BRANCH"
   exit 0
 fi
+# A branch that has no spawner yet (main, before the change that adds it is
+# merged) has nothing to build. Leave what is installed alone, and look again next
+# time; this is not a failure.
+if ! git -C "$src" cat-file -e "$new:crates/necropsy-spawner/Cargo.toml" 2>/dev/null; then
+  log "${new:0:12} on $BRANCH has no spawner in it (yet), so the installed one is left alone"
+  exit 0
+fi
+
 if [ -n "$installed" ] && ! git -C "$src" merge-base --is-ancestor "$installed" "$new"; then
   echo "$new" > "$STATE_DIR/failed"
   die "$BRANCH is no longer a descendant of what is installed (${installed:0:12}): history was rewritten. Not updating. Fix it by hand, then delete $STATE_DIR/installed"
