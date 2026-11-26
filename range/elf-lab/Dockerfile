@@ -15,11 +15,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY implant.c /tmp/implant.c
-RUN gcc -O0 -s -no-pie -fno-stack-protector -o /srv-implant.bin /tmp/implant.c \
+RUN gcc -O0 -s -no-pie -fno-stack-protector -o /srv/implant.bin /tmp/implant.c \
  && rm /tmp/implant.c \
  && apt-get purge -y gcc libc6-dev \
- && apt-get autoremove -y \
- && mkdir /srv && mv /srv-implant.bin /srv/implant.bin
+ && apt-get autoremove -y
 
 COPY server.py /srv/server.py
 COPY entrypoint.sh /entrypoint.sh
