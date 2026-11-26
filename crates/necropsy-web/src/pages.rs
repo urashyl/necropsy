@@ -28,7 +28,7 @@ const FONTS: &str = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:
 pub enum Nav {
     Today,
     Learn,
-    Live,
+    Library,
     Archive,
     Format,
     Account,
@@ -109,21 +109,23 @@ pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeU
     )
 }
 
-/// The live puzzles: a server of their own for each player. Always available,
-/// not part of the daily rotation.
-pub async fn live_list(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
+/// The library: puzzles that are not part of the daily rotation. Always available.
+pub async fn library_list(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+) -> Markup {
     let body = html! {
         section.wrap.page-head {
-            h1 { "Live" }
+            h1 { "Library" }
             p.page-lead {
-                "Puzzles that run as real servers. Start one and you get a link to a server made "
-                "just for you: attack it, emulate a client of it, or pick through what it exposes. "
-                "You need an account to start one."
+                "Puzzles that are not part of the daily rotation. They are always available, in any "
+                "order, and the library grows as we add to it. Some run as a server made just for you: "
+                "you need an account to start one."
             }
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for p in state.lives() { (pack_row(&state, p)) }
+                @for p in state.library() { (pack_row(&state, p)) }
             }
             @if viewer.is_none() {
                 p.after-list { a href="/login" { "Log in" } " or " a href="/register" { "register" } " to start one." }
@@ -133,10 +135,10 @@ pub async fn live_list(State(state): State<Arc<AppState>>, MaybeUser(viewer): Ma
     layout(
         &state,
         viewer.as_ref(),
-        "Live",
-        "Puzzles that run as real servers.",
-        Nav::Live,
-        "/live",
+        "Library",
+        "Puzzles that are not part of the daily rotation.",
+        Nav::Library,
+        "/library",
         body,
     )
 }
@@ -329,8 +331,8 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                         (rp.label())
                         @if let Some(d) = &m.date { " · " (d) }
                         @if state.is_today(rp) { " " span.badge { "Today" } }
-                    } @else if m.track == Track::Live {
-                        "Live " (m.number) " of " (state.lives().len())
+                    } @else if m.track == Track::Library {
+                        "Library " (m.number) " of " (state.library().len())
                     } @else {
                         "Intro " (m.number) " of " (state.intros().len())
                     }
@@ -508,8 +510,8 @@ pub fn layout(
                         nav.site-nav aria-label="Main" {
                             a href="/" aria-current=[current(Nav::Today)] { "Today" }
                             a href="/learn" aria-current=[current(Nav::Learn)] { "Learn" }
-                            @if !state.lives().is_empty() {
-                                a href="/live" aria-current=[current(Nav::Live)] { "Live" }
+                            @if !state.library().is_empty() {
+                                a href="/library" aria-current=[current(Nav::Library)] { "Library" }
                             }
                             a href="/archive" aria-current=[current(Nav::Archive)] { "Archive" }
                             a href="/format" aria-current=[current(Nav::Format)] { "Format" }

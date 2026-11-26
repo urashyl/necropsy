@@ -1,0 +1,12 @@
+id = "skimmer"
+track = "library"
+number = 2
+title = "Checkout, with extras"
+difficulty = 2
+modes = ["web", "live"]
+tags = ["javascript", "magecart", "skimmer", "obfuscation", "live"]
+hints = [
+  "Which script on the checkout page is not the shop's own? Its name is meant to look like analytics.",
+  "Every string it needs is stored encoded in one array at the top. Work out what each decoder function does to its input, in the order they are applied.",
+  "A function that nothing calls is a developer's leftover. Read what it asks the gate for.",
+]

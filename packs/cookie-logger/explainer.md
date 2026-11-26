@@ -1,0 +1,5 @@
+This is the oldest trick in web malware, stored cross-site scripting. The guestbook printed visitors' messages as raw HTML, so one of them, an `<img>` with a broken `src` and an `onerror` handler, loaded a script from the same site. Because the script runs in the visitor's browser *as the bakery's page*, it can read `document.cookie` and send it anywhere.
+
+The script is tiny and mostly honest: it hides the collector's path in `atob()` so a `grep` for the URL finds nothing, and it sends a token so the collector only talks to its owner's script. Both are one-line decodes. The real mistake is the thief's: the collector directory has an index enabled, so its viewer page is one `GET` away, and the token that guards it is the one the script itself carries.
+
+What to take from it as a defender: an `HttpOnly` flag on the session cookie would have kept `document.cookie` empty; a Content-Security-Policy with no inline handlers would have stopped the `onerror`; and the planted `<img>` is a pattern to hunt for in a database: user content that contains `onerror=` or `<script`.

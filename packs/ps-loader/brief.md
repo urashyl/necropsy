@@ -1,0 +1,3 @@
+An accountant opened an "invoice" from a supplier and a few minutes later the network team saw the workstation reach out to an unfamiliar content-delivery domain. We kept the attachment, `invoice-2026-1137.bat.txt` (renamed so it cannot run by accident), and rebuilt what it talks to on your instance. Start it below.
+
+The attachment calls out to `updates.msedge-cdn.invalid`. That name does not exist anywhere, so send what the sample would send to your instance's link instead, paths and headers exactly as the sample sets them. It is a staged loader: each stage fetches the next. The last one carries the campaign's key. Submit it as the flag.

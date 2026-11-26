@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 const SCHEMA: &str = "
 CREATE TABLE users (
@@ -47,6 +47,7 @@ CREATE TABLE solves (
     solved_at INTEGER NOT NULL,
     seconds   INTEGER NOT NULL,
     hints     INTEGER NOT NULL,
+    tz        INTEGER NOT NULL DEFAULT 0,  -- minutes ahead of UTC when it was solved
     PRIMARY KEY (user_id, pack_id)
 );
 ";
@@ -120,6 +121,8 @@ pub struct Solve {
     pub solved_at: i64,
     pub seconds: i64,
     pub hints: i64,
+    /// The solver's timezone when they solved it, in minutes ahead of UTC.
+    pub tz: i64,
 }
 
 #[derive(Debug)]
@@ -170,8 +173,11 @@ impl Db {
             conn.execute_batch(SCHEMA)?;
             conn.execute_batch(LIVE_SCHEMA)?;
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-        } else if version == 1 {
-            conn.execute_batch(LIVE_SCHEMA)?;
+        } else if version == 1 || version == 2 {
+            if version == 1 {
+                conn.execute_batch(LIVE_SCHEMA)?;
+            }
+            conn.execute_batch("ALTER TABLE solves ADD COLUMN tz INTEGER NOT NULL DEFAULT 0;")?;
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         } else if version != SCHEMA_VERSION {
             return Err(rusqlite::Error::InvalidParameterName(format!(
@@ -501,12 +507,13 @@ impl Db {
         pack_id: String,
         seconds: i64,
         hints: i64,
+        tz: i64,
     ) -> rusqlite::Result<()> {
         self.run(move |c| {
             c.execute(
-                "INSERT INTO solves (user_id, pack_id, solved_at, seconds, hints)
-                 VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO NOTHING",
-                params![user_id, pack_id, now(), seconds, hints],
+                "INSERT INTO solves (user_id, pack_id, solved_at, seconds, hints, tz)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING",
+                params![user_id, pack_id, now(), seconds, hints, tz],
             )
             .map(|_| ())
         })
@@ -527,7 +534,7 @@ impl Db {
     pub async fn solves_of(&self, user_id: i64) -> rusqlite::Result<Vec<Solve>> {
         self.run(move |c| {
             let mut st = c.prepare(
-                "SELECT pack_id, solved_at, seconds, hints FROM solves WHERE user_id = ?1 ORDER BY solved_at",
+                "SELECT pack_id, solved_at, seconds, hints, tz FROM solves WHERE user_id = ?1 ORDER BY solved_at",
             )?;
             let rows = st.query_map([user_id], |r| {
                 Ok(Solve {
@@ -535,6 +542,7 @@ impl Db {
                     solved_at: r.get(1)?,
                     seconds: r.get(2)?,
                     hints: r.get(3)?,
+                    tz: r.get(4)?,
                 })
             })?;
             rows.collect()

@@ -18,8 +18,8 @@ phone-home/
 | Key | Type | Notes |
 | --- | --- | --- |
 | `id` | string | Slug, unique. Lowercase letters, digits and `-`, at most 40 characters. Used in URLs. |
-| `track` | string | `intro` or `daily`, see below. Required. |
-| `date` | string | `YYYY-MM-DD` (UTC) release date. Required for `daily`, not allowed for `intro`. Unique among dailies. |
+| `track` | string | `intro`, `daily` or `library`, see below. Required. |
+| `date` | string | `YYYY-MM-DD` release date: the puzzle comes out on that calendar day in each player's own timezone (see [web.md](web.md#days-and-timezones)). Required for `daily`, not allowed for `intro` or `library`. Unique among dailies. |
 | `number` | integer | Display number and order within its track. Unique within the track. |
 | `title` | string | |
 | `difficulty` | integer | 1 (easy) to 5 (hard). |
@@ -31,12 +31,12 @@ Unknown keys are rejected.
 
 ### Tracks
 
-There are three tracks of puzzles.
+There are three tracks of puzzles: `intro`, `daily` and `library`.
 
 - **`intro`** stages are always available, in order. They teach the techniques the dailies assume, and the last one leads on to today's puzzle.
 - **`daily`** puzzles have a release `date`. The latest one released is today's puzzle, earlier ones stay playable from the archive, and later ones are hidden everywhere: their page, files, answer check and explainer all answer "not found" until their day, so nothing can be read early. To add a daily, give it a date after the last one.
 
-- **`live`** puzzles are [live puzzles](live.md): a server of their own for each player. They are always available, in order, with no release `date` (a date is an error) and no place in the daily rotation. (To put a live puzzle into the daily rotation instead, give it `track = "daily"` and a `date`: it is released on that day like any daily and also listed on the Live page. The schedule mixes live and static dailies.) For the `live` track itself: they are listed on the Live page, not in the archive, and never become today's puzzle. A pack on this track needs the `live` mode. Because they are always available, a new one can be played, and tried by the admin, the moment it is deployed.
+- **`library`** puzzles are not part of the daily rotation. They are always available, in order, with no release `date` (a date is an error), listed on the Library page, not in the archive, and they never become today's puzzle. They can be any kind of puzzle, [live](live.md) or not, so the Library is where a collection grows without waiting for a date. A new one can be played, and tried by the admin, the moment it is deployed. (A live puzzle that should be one day's puzzle is just a `daily` with the `live` mode: there is no separate place for live puzzles.)
 
 Streaks count only dailies solved on their own release day, so replaying old puzzles or the intro stages does not extend one.
 

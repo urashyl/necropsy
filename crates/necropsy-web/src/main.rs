@@ -318,7 +318,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/p/{id}", get(pages::puzzle))
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
         .route("/learn", get(pages::learn))
-        .route("/live", get(pages::live_list))
+        .route("/library", get(pages::library_list))
+        .route(
+            "/live",
+            get(|| async { axum::response::Redirect::permanent("/library") }),
+        )
         .route("/archive", get(pages::archive))
         .route("/format", get(pages::format))
         // accounts
@@ -380,6 +384,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             state.clone(),
             client_ip_layer,
         ))
+        .layer(middleware::from_fn(viewer_tz))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
         .layer(middleware::from_fn_with_state(state.clone(), request_log))
@@ -388,6 +393,24 @@ pub fn router(state: Arc<AppState>) -> Router {
         // scenario and skip everything above: the main site's CSP, cookies and
         // CSRF logic have no business on those hosts.
         .layer(middleware::from_fn_with_state(state, live_dispatch))
+}
+
+/// Makes "today" for this request the date in the viewer's timezone, which the
+/// page's script keeps in the `necropsy_tz` cookie. The offset is clamped to the
+/// real timezones (UTC-12 to UTC+14), so a forged cookie can only reach the date
+/// in the furthest-ahead timezone: a few hours early, never days.
+async fn viewer_tz(req: Request, next: Next) -> Response {
+    let tz = state::parse_tz(
+        req.headers()
+            .get_all(header::COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .collect::<Vec<_>>()
+            .join("; ")
+            .as_str()
+            .into(),
+    );
+    state::with_tz(tz, next.run(req)).await
 }
 
 /// Logs each request's method, path and status, but only when
@@ -566,7 +589,11 @@ async fn check_answer(
         if let Some(user) = viewer {
             let seconds = req.seconds.clamp(0, 7 * 86_400);
             let hints = req.hints.clamp(0, p.pack.meta.hints.len() as i64);
-            if let Err(e) = state.db.record_solve(user.id, id, seconds, hints).await {
+            if let Err(e) = state
+                .db
+                .record_solve(user.id, id, seconds, hints, state::client_tz_min())
+                .await
+            {
                 tracing::error!("recording solve failed: {e}");
             }
         }
@@ -637,9 +664,11 @@ async fn progress(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUs
             solves: rows
                 .into_iter()
                 .map(|s| {
-                    let day = s.solved_at.div_euclid(86_400);
+                    // The day it was solved on is the solver's own calendar day.
+                    let day = (s.solved_at + s.tz * 60).div_euclid(86_400);
+                    // Visible when it was solved, so look it up without the viewer's date.
                     let ontime = state
-                        .get(&s.pack_id)
+                        .get_any(&s.pack_id)
                         .is_some_and(|p| p.pack.meta.release_day() == Some(day));
                     SolveOut {
                         id: s.pack_id,

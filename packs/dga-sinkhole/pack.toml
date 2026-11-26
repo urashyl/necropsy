@@ -1,0 +1,12 @@
+id = "dga-sinkhole"
+track = "library"
+number = 7
+title = "Domain of the day"
+difficulty = 3
+modes = ["web", "live"]
+tags = ["python", "dga", "sinkhole", "threat intel", "live"]
+hints = [
+  "The domain depends only on the date. Run the function, but give it the date from the brief, not today's.",
+  "The generator uses an integer recurrence. Python's integers do not overflow, so mask them as the sample does.",
+  "The lookup answers on `/lookup`. Ask it for a domain with `?domain=`.",
+]

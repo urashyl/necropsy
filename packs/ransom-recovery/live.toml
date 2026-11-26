@@ -1,0 +1,100 @@
+ttl_minutes = 60
+flag_prefix = "locked"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><title>Payment portal</title><h2>Recovery portal</h2>
+<p>Read <a href="/README_RESTORE.txt">README_RESTORE.txt</a>. Recovered from the victim: <a href="/dl/locker.py.txt">locker.py.txt</a> and <a href="/files/finance-q3.xlsx.locked">finance-q3.xlsx.locked</a>.</p>
+<p>Send <code>POST /recover</code> with the fields named in the note.</p>
+'''
+
+[[route]]
+method = "GET"
+path = "/README_RESTORE.txt"
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''YOUR FILES HAVE BEEN ENCRYPTED
+
+All documents on this computer were locked with a unique key.
+Victim ID: KORVA-7731
+
+To recover them, open the portal and prove that you can unlock one file:
+form fields:  key  (32 hex characters)   phrase  (the recovery phrase inside the file)
+Do not rename or edit the files. You have 72 hours.
+'''
+
+[[route]]
+method = "GET"
+path = "/dl/locker.py.txt"
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+headers = { "content-disposition" = 'attachment; filename="locker.py.txt"' }
+body = '''# locker.py - encryptor (demonstration build: only touches the folder in argv[1])
+import hashlib, os, sys
+
+SALT = "r3d-herring"
+
+
+def victim_id():
+    # derived from the machine name and a counter in the registry; printed in the note
+    return open(os.path.join(sys.argv[1], ".victim")).read().strip()
+
+
+def derive_key(vid):
+    return hashlib.sha256((vid + "|" + SALT).encode()).digest()[:16]
+
+
+def crypt(data, key):
+    return bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+
+
+def main():
+    key = derive_key(victim_id())
+    for name in os.listdir(sys.argv[1]):
+        if name.startswith(".") or name.endswith(".locked"):
+            continue
+        path = os.path.join(sys.argv[1], name)
+        data = open(path, "rb").read()
+        open(path + ".locked", "wb").write(crypt(data, key))
+        os.remove(path)
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+[[route]]
+method = "GET"
+path = "/files/finance-q3.xlsx.locked"
+[route.respond]
+status = 200
+content_type = "application/octet-stream"
+headers = { "content-disposition" = 'attachment; filename="finance-q3.xlsx.locked"' }
+file = "finance-q3.xlsx.locked"
+
+[[route]]
+method = "POST"
+path = "/recover"
+[route.when]
+form = { "key" = '7a62f6607349778f6f0bb2daf96ea4fe', "phrase" = 'quiet harbour lantern' }
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''Verified. Your recovery token is {{flag}}
+'''
+
+[[route]]
+method = "POST"
+path = "/recover"
+[route.respond]
+status = 403
+content_type = "text/plain; charset=utf-8"
+body = '''Not verified. Prove you can unlock the file.
+'''
+

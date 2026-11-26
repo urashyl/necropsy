@@ -81,10 +81,9 @@ pub enum Mode {
 pub enum Track {
     Intro,
     Daily,
-    /// Live puzzles (a server of their own for each player). Always
-    /// available, in order, with no release date, and not part of the daily
-    /// rotation.
-    Live,
+    /// The library: puzzles that are not part of the daily rotation. Always
+    /// available, in order, with no release date. Any kind of puzzle, live or not.
+    Library,
 }
 
 /// Contents of `pack.toml`.
@@ -313,10 +312,10 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
                 "intro packs must not have a date",
             ))
         }
-        (Track::Live, Some(_)) => {
+        (Track::Library, Some(_)) => {
             return Err(invalid(
                 &dir.join("pack.toml"),
-                "live packs must not have a date",
+                "library packs must not have a date",
             ))
         }
         (Track::Daily, None) => {
@@ -335,12 +334,6 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
     }
 
     let is_live = meta.modes.contains(&Mode::Live);
-    if meta.track == Track::Live && !is_live {
-        return Err(invalid(
-            &dir.join("pack.toml"),
-            "a pack on the live track needs the live mode",
-        ));
-    }
     let has_raw = |name: &str| raw.iter().any(|(p, _)| p == name);
     let live = if is_live {
         let has_file = |f: &str| raw.iter().any(|(p, _)| p.strip_prefix("live/") == Some(f));
@@ -435,7 +428,7 @@ pub fn load_all(root: &Path) -> Result<Vec<Pack>, PackError> {
             match p.meta.track {
                 Track::Intro => 0,
                 Track::Daily => 1,
-                Track::Live => 2,
+                Track::Library => 2,
             },
             p.meta.release_day(),
             p.meta.number,
@@ -689,15 +682,18 @@ mod tests {
         .contains("must not have a date"));
         assert!(load_error("b", &[("x", "track = \"daily\"\nnumber = 1")]).contains("need a date"));
         assert!(load_error(
-            "live-date",
-            &[("x", "track = \"live\"\nnumber = 1\ndate = \"2026-01-01\"")]
+            "library-date",
+            &[(
+                "x",
+                "track = \"library\"\nnumber = 1\ndate = \"2026-01-01\""
+            )]
         )
         .contains("must not have a date"));
-        assert!(
-            load_error("live-mode", &[("x", "track = \"live\"\nnumber = 1")])
-                .contains("needs the live mode"),
-            "a pack on the live track must be a live pack"
-        );
+        // A library pack is any kind of puzzle: it does not need the live mode.
+        let root = packs_dir("library", &[("x", "track = \"library\"\nnumber = 1")]);
+        let loaded = load_all(&root);
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(loaded.unwrap()[0].meta.track, Track::Library);
         assert!(load_error(
             "c",
             &[("x", "track = \"daily\"\nnumber = 1\ndate = \"2026-02-30\"")]

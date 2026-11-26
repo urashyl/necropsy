@@ -1,0 +1,12 @@
+id = "vbs-dropper"
+track = "library"
+number = 4
+title = "Shipping notice"
+difficulty = 3
+modes = ["web", "live"]
+tags = ["vbscript", "dropper", "obfuscation", "live"]
+hints = [
+  "The strings are not readable because each character is shifted. The function at the top shows by how much.",
+  "`StrReverse` on a quoted string is a reversal. Decode the token first, then build the URL the script builds.",
+  "The server wants a header the script sets. A request without it gets a 404.",
+]

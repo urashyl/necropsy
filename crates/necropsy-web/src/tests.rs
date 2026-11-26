@@ -2579,8 +2579,8 @@ async fn live_site_on(today: &str) -> Site {
 }
 
 #[tokio::test]
-async fn live_puzzles_appear_on_their_day_and_on_the_live_page() {
-    // c2-gate is dated 2026-11-27, kit-left-open 2026-11-29.
+async fn live_dailies_are_dailies_and_the_library_holds_the_rest() {
+    // c2-gate is a live daily dated 2026-11-27, kit-left-open one dated 2026-11-29.
     let s = live_site_on("2026-11-27").await;
     assert_eq!(s.get("/p/c2-gate", None).await.status, StatusCode::OK);
     assert_eq!(
@@ -2588,42 +2588,53 @@ async fn live_puzzles_appear_on_their_day_and_on_the_live_page() {
         StatusCode::NOT_FOUND,
         "not released yet"
     );
-
     let page = s.get("/p/c2-gate", None).await.body;
     assert!(page.contains("Daily #4"), "it is a daily: {page}");
 
-    let list = s.get("/live", None).await;
-    assert_eq!(list.status, StatusCode::OK);
-    assert!(list.body.contains("Answer the door"));
-    assert!(
-        !list.body.contains("Kit left open"),
-        "unreleased puzzles are not listed"
-    );
-    assert!(list.body.contains("href=\"/login\""), "it says to log in");
-    // Static dailies are not on the live page, and live ones are in the archive.
-    assert!(!list.body.contains("ILOVEYOU: the source"));
-    assert!(s.get("/learn", None).await.body.contains("href=\"/live\""));
+    // There is no Live tab: the nav has the library, and a live daily is in the
+    // archive like any other.
+    let learn = s.get("/learn", None).await.body;
+    assert!(!learn.contains("href=\"/live\""), "no Live tab");
+    assert!(learn.contains("href=\"/library\""));
+    assert!(s
+        .get("/archive", None)
+        .await
+        .body
+        .contains("Answer the door"));
 
-    let later = live_site_on("2026-11-29").await;
-    assert!(later
-        .get("/live", None)
-        .await
-        .body
-        .contains("Kit left open"));
+    // The library holds the puzzles that are not part of the daily rotation, and
+    // none of the dailies, live or not.
+    let list = s.get("/library", None).await;
+    assert_eq!(list.status, StatusCode::OK);
+    assert!(list.body.contains("Guestbook guest") && list.body.contains("Quiet implant"));
+    assert!(
+        !list.body.contains("Answer the door"),
+        "dailies are not in the library"
+    );
+    assert!(!list.body.contains("ILOVEYOU: the source"));
+    assert!(list.body.contains("href=\"/login\""), "it says to log in");
+    let lib = s.get("/p/cookie-logger", None).await.body;
+    assert!(lib.contains("Library 1 of"), "{lib}");
+    assert!(!lib.contains("Daily #"));
+
+    // The old address leads to the library.
+    let old = s.get("/live", None).await;
+    assert!(old.status.is_redirection(), "{:?}", old.status);
+
     // Labs need the range, so with none configured they are not loaded.
-    assert!(!later
-        .get("/live", None)
-        .await
-        .body
-        .contains("Back inside the shell"));
+    assert!(!list.body.contains("Back inside the shell"));
 }
 
 #[tokio::test]
-async fn without_live_puzzles_there_is_no_live_page_or_link() {
+async fn without_live_puzzles_the_library_has_no_link() {
     let s = site().await;
-    assert!(!s.get("/learn", None).await.body.contains("href=\"/live\""));
-    let list = s.get("/live", None).await;
-    assert!(!list.body.contains("Answer the door"));
+    assert!(!s
+        .get("/learn", None)
+        .await
+        .body
+        .contains("href=\"/library\""));
+    let list = s.get("/library", None).await;
+    assert!(!list.body.contains("Guestbook guest"));
     assert_eq!(
         s.get("/p/c2-gate", None).await.status,
         StatusCode::NOT_FOUND
@@ -3190,6 +3201,12 @@ fn templates_can_encode_per_player_values() {
         d.bytes().map(|b| format!("{b:02x}")).collect::<String>()
     );
     assert_eq!(r("{{d:tok}}"), d);
+    // They nest, innermost first.
+    {
+        use base64::Engine;
+        let b = base64::engine::general_purpose::STANDARD.encode(&d);
+        assert_eq!(r("{{rev:b64:d:tok}}"), b.chars().rev().collect::<String>());
+    }
     // Another seed gives another value, and an unknown name is left as it was written.
     let other = crate::live::template_context_for_tests(
         "seed-two",
@@ -3202,4 +3219,501 @@ fn templates_can_encode_per_player_values() {
         r("{{nope}} {{b64:nope}} {{b64"),
         "{{nope}} {{b64:nope}} {{b64"
     );
+}
+
+// ------------------------------------------- the malware analysis library (live track)
+//
+// Each test plays one puzzle as a player would: reads the sample the instance serves,
+// decodes what it hides, sends what the sample would send, and submits the flag the
+// server then returns.
+
+mod library {
+    use super::*;
+    use base64::Engine;
+
+    fn b64d(s: &str) -> Vec<u8> {
+        base64::engine::general_purpose::STANDARD
+            .decode(s)
+            .unwrap_or_else(|e| panic!("base64 {s:?}: {e}"))
+    }
+
+    /// The text between the first `from` and the next `to` after it.
+    fn between<'a>(s: &'a str, from: &str, to: &str) -> &'a str {
+        let a = s.find(from).unwrap_or_else(|| panic!("no {from:?} in {s}")) + from.len();
+        let b = a + s[a..]
+            .find(to)
+            .unwrap_or_else(|| panic!("no {to:?} after {from:?}"));
+        &s[a..b]
+    }
+
+    fn flag_in(body: &str, prefix: &str) -> String {
+        let a = body
+            .find(&format!("{prefix}{{"))
+            .unwrap_or_else(|| panic!("no {prefix}{{ in {body}"));
+        let b = a + body[a..].find('}').unwrap() + 1;
+        body[a..b].to_owned()
+    }
+
+    fn hexd(s: &str) -> String {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap() as char)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn cookie_logger() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib1", "cookie-logger").await;
+        let page = live_send(&s, &l, "GET", "/", &[], "").await.body;
+        let w = between(&page, "s.src='/static/", ".js'");
+        let js = live_send(&s, &l, "GET", &format!("/static/{w}.js"), &[], "")
+            .await
+            .body;
+        let gif = String::from_utf8(b64d(between(&js, "atob(\"", "\")"))).unwrap();
+        assert_eq!(gif, "/collect/gif.php");
+        let tok = between(&js, "var t = \"", "\"");
+        let idx = live_send(&s, &l, "GET", "/collect/", &[], "").await.body;
+        assert!(idx.contains("view.php"));
+        let denied = live_send(&s, &l, "GET", "/collect/view.php", &[], "").await;
+        assert_eq!(denied.status, StatusCode::FORBIDDEN);
+        let view = live_send(
+            &s,
+            &l,
+            "GET",
+            &format!("/collect/view.php?t={tok}"),
+            &[],
+            "",
+        )
+        .await
+        .body;
+        assert!(submit(&s, &cookie, "cookie-logger", &flag_in(&view, "crumb")).await);
+    }
+
+    #[tokio::test]
+    async fn skimmer() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib2", "skimmer").await;
+        let shop = live_send(&s, &l, "GET", "/checkout", &[], "").await.body;
+        assert!(shop.contains("/static/analytics-v3.min.js"));
+        let js = live_send(&s, &l, "GET", "/static/analytics-v3.min.js", &[], "")
+            .await
+            .body;
+        let arr = between(&js, "var a=[\"", "\"]");
+        let mut it = arr.split("\",\"");
+        let gate_rev: String = it.next().unwrap().chars().rev().collect();
+        let gate = String::from_utf8(b64d(&gate_rev)).unwrap();
+        let key = hexd(it.next().unwrap());
+        let bad = live_send(&s, &l, "GET", &format!("/{gate}?k=nope&dump=1"), &[], "").await;
+        assert_eq!(bad.status, StatusCode::NOT_FOUND);
+        let ok = live_send(&s, &l, "GET", &format!("/{gate}?k={key}&d=e30="), &[], "").await;
+        assert_eq!(ok.status, StatusCode::OK);
+        assert!(!ok.body.contains("skim{"));
+        let dump = live_send(&s, &l, "GET", &format!("/{gate}?k={key}&dump=1"), &[], "")
+            .await
+            .body;
+        assert!(submit(&s, &cookie, "skimmer", &flag_in(&dump, "skim")).await);
+    }
+
+    #[tokio::test]
+    async fn ps_loader() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib3", "ps-loader").await;
+        let bat = live_send(&s, &l, "GET", "/dl/invoice-2026-1137.bat.txt", &[], "")
+            .await
+            .body;
+        let blob = b64d(bat.split("-enc ").nth(1).unwrap().trim());
+        let units: Vec<u16> = blob
+            .chunks(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        let ps = String::from_utf16(&units).unwrap();
+        assert!(ps.contains("/a/stage1.ps1"));
+        let ua = between(&ps, "Add('User-Agent','", "'");
+        // Stage two does not answer before stage one was fetched, and stage one
+        // does not answer without the sample's User-Agent.
+        let none = live_send(&s, &l, "GET", "/a/stage1.ps1", &[], "").await;
+        assert_eq!(none.status, StatusCode::NOT_FOUND);
+        let st1 = live_send(&s, &l, "GET", "/a/stage1.ps1", &[("user-agent", ua)], "")
+            .await
+            .body;
+        let s2 = String::from_utf8(b64d(between(&st1, "FromBase64String('", "'"))).unwrap();
+        let st2 = live_send(&s, &l, "GET", &format!("/b/{s2}"), &[("x-stage", "1")], "").await;
+        assert_eq!(st2.status, StatusCode::OK);
+        assert!(submit(&s, &cookie, "ps-loader", &flag_in(&st2.body, "invoice")).await);
+    }
+
+    #[tokio::test]
+    async fn ps_loader_stage_two_needs_stage_one() {
+        let s = live_site().await;
+        let (_, l) = spin_up(&s, "lib3b", "ps-loader").await;
+        // Even a correct path and header, in the wrong order, is a 404.
+        let page = live_send(&s, &l, "GET", "/b/0123456789ab", &[("x-stage", "1")], "").await;
+        assert_eq!(page.status, StatusCode::NOT_FOUND);
+    }
+
+    fn shift(s: &str, n: i32) -> String {
+        s.chars()
+            .map(|c| char::from_u32((c as i32 + n) as u32).unwrap())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn vbs_dropper() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib4", "vbs-dropper").await;
+        let vbs = live_send(&s, &l, "GET", "/dl/Shipment_Notice.vbs.txt", &[], "")
+            .await
+            .body;
+        let rev: String = between(&vbs, "StrReverse(\"", "\")")
+            .chars()
+            .rev()
+            .collect();
+        let mut dec = Vec::new();
+        let mut rest = vbs.as_str();
+        while let Some(i) = rest.find("D(\"") {
+            let after = &rest[i + 3..];
+            let j = after.find('"').unwrap();
+            dec.push(shift(&after[..j], -3));
+            rest = &after[j..];
+        }
+        assert_eq!(dec[0], "MSXML2.XMLHTTP.6.0");
+        let url = format!("{}{}{}", dec[1], rev, dec[2]);
+        let path = url.strip_prefix("http://cdn.shipnotice.invalid").unwrap();
+        let none = live_send(&s, &l, "GET", path, &[], "").await;
+        assert_eq!(none.status, StatusCode::NOT_FOUND);
+        let r = live_send(
+            &s,
+            &l,
+            "GET",
+            path,
+            &[(dec[3].as_str(), dec[4].as_str())],
+            "",
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert!(submit(&s, &cookie, "vbs-dropper", &flag_in(&r.body, "notice")).await);
+    }
+
+    #[tokio::test]
+    async fn macro_stager() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib5", "macro-stager").await;
+        let vba = live_send(&s, &l, "GET", "/dl/PO-88231_macro.bas.txt", &[], "")
+            .await
+            .body;
+        let tok = hexd(between(&vba, "HexDecode(\"", "\")"));
+        let ua = between(&vba, "\"User-Agent\", \"", "\"");
+        let path = format!("/upd/{tok}/po.bin");
+        let build = format!("B{}", 1337 ^ 42);
+        let no_build = live_send(&s, &l, "GET", &path, &[("user-agent", ua)], "").await;
+        assert_eq!(no_build.status, StatusCode::NOT_FOUND);
+        let no_ua = live_send(&s, &l, "GET", &path, &[("x-build", &build)], "").await;
+        assert_eq!(no_ua.status, StatusCode::NOT_FOUND);
+        let r = live_send(
+            &s,
+            &l,
+            "GET",
+            &path,
+            &[("user-agent", ua), ("x-build", &build)],
+            "",
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert!(submit(&s, &cookie, "macro-stager", &flag_in(&r.body, "order")).await);
+    }
+
+    #[tokio::test]
+    async fn xor_implant() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib6", "xor-implant").await;
+        let py = live_send(&s, &l, "GET", "/dl/implant.py.txt", &[], "")
+            .await
+            .body;
+        let bot = between(&py, "BOT = \"", "\"");
+        let un = |name: &str| -> String {
+            let enc = between(&py, &format!("\"{name}\": u(\""), "\"");
+            b64d(enc).iter().map(|b| (b ^ 0x5a) as char).collect()
+        };
+        let (ci, tk, rs, ua) = (un("checkin"), un("tasks"), un("result"), un("ua"));
+        let h = [("user-agent", ua.as_str())];
+        // The tasking is refused before the implant has registered.
+        let early = live_send(&s, &l, "GET", &format!("{tk}?s=x"), &h, "").await;
+        assert_eq!(early.status, StatusCode::FORBIDDEN);
+        let body = format!(r#"{{"id": "{bot}", "os": "win10", "pid": 4120}}"#);
+        let wrong = live_send(&s, &l, "POST", &ci, &h, r#"{"id":"someone-else"}"#).await;
+        assert_eq!(wrong.status, StatusCode::FORBIDDEN);
+        let reg = live_send(&s, &l, "POST", &ci, &h, &body).await;
+        assert_eq!(reg.status, StatusCode::OK);
+        let sess = between(&reg.body, "\"session\":\"", "\"");
+        let tasks = live_send(&s, &l, "GET", &format!("{tk}?s={sess}"), &h, "").await;
+        assert!(tasks.body.contains("\"op\":\"exfil\""));
+        let res = live_send(
+            &s,
+            &l,
+            "POST",
+            &format!("{rs}?s={sess}"),
+            &h,
+            &format!(r#"{{"id": "{bot}", "task": 7, "data": "AAAA"}}"#),
+        )
+        .await;
+        assert!(submit(&s, &cookie, "xor-implant", &flag_in(&res.body, "bot")).await);
+    }
+
+    /// The sample's generator, as written in `netcheck.py`.
+    fn dga(y: i64, m: i64, d: i64) -> String {
+        let mut s: i64 = 0x2F1C9 ^ (y * 10000 + m * 100 + d);
+        let mut out = String::new();
+        for _ in 0..12 {
+            s = (s * 1103515245 + 12345) & 0x7FFFFFFF;
+            out.push((97 + (s >> 16) % 26) as u8 as char);
+        }
+        out + [".top", ".xyz", ".info", ".biz"][(s % 4) as usize]
+    }
+
+    #[tokio::test]
+    async fn dga_sinkhole() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib7", "dga-sinkhole").await;
+        let py = live_send(&s, &l, "GET", "/dl/netcheck.py.txt", &[], "")
+            .await
+            .body;
+        assert!(py.contains("1103515245"));
+        let miss = live_send(
+            &s,
+            &l,
+            "GET",
+            &format!("/lookup?domain={}", dga(2026, 12, 23)),
+            &[],
+            "",
+        )
+        .await;
+        assert!(miss.body.contains("NXDOMAIN"));
+        let hit = live_send(
+            &s,
+            &l,
+            "GET",
+            &format!("/lookup?domain={}", dga(2026, 12, 24)),
+            &[],
+            "",
+        )
+        .await;
+        assert!(submit(&s, &cookie, "dga-sinkhole", &flag_in(&hit.body, "sink")).await);
+    }
+
+    #[tokio::test]
+    async fn ransom_recovery() {
+        use sha2::{Digest, Sha256};
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib8", "ransom-recovery").await;
+        let note = live_send(&s, &l, "GET", "/README_RESTORE.txt", &[], "")
+            .await
+            .body;
+        let vid = between(&note, "Victim ID: ", "\n");
+        let py = live_send(&s, &l, "GET", "/dl/locker.py.txt", &[], "")
+            .await
+            .body;
+        let salt = between(&py, "SALT = \"", "\"");
+        let key: String = Sha256::digest(format!("{vid}|{salt}").as_bytes())[..16]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let form = |k: &str, p: &str| format!("key={k}&phrase={p}");
+        let post = |body: String| {
+            let s = &s;
+            let l = &l;
+            async move {
+                live_send(
+                    s,
+                    l,
+                    "POST",
+                    "/recover",
+                    &[("content-type", "application/x-www-form-urlencoded")],
+                    &body,
+                )
+                .await
+            }
+        };
+        assert_eq!(
+            post(form(&key, "wrong")).await.status,
+            StatusCode::FORBIDDEN
+        );
+        // Decrypt the locked file, as the sample would in reverse.
+        let locked = live_send(&s, &l, "GET", "/files/finance-q3.xlsx.locked", &[], "").await;
+        assert_eq!(locked.status, StatusCode::OK);
+        let r = post(form(&key, "quiet+harbour+lantern")).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        assert!(submit(&s, &cookie, "ransom-recovery", &flag_in(&r.body, "locked")).await);
+    }
+}
+
+// ------------------------------------------------------------- the viewer's timezone
+
+/// A site whose clock reads `secs` (UTC) and which does not pin "today", so the
+/// viewer's timezone matters.
+async fn site_at_clock(secs: i64) -> Site {
+    let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packs"
+    )))
+    .unwrap();
+    let mail = Arc::new(Mutex::new(Vec::new()));
+    let mut state = AppState::new(
+        packs,
+        Config {
+            base_url: ORIGIN.into(),
+            client_ip_header: None,
+            trusted_proxies: Vec::new(),
+            live: None,
+            captcha: crate::captcha::Captcha::Off,
+            log_requests: false,
+        },
+        Db::open(":memory:").unwrap(),
+        Mailer::Memory(mail.clone()),
+    );
+    state.clock_override = Some(secs);
+    let state = Arc::new(state);
+    Site {
+        app: router(state.clone()),
+        state,
+        mail,
+    }
+}
+
+fn utc_secs(date: &str, hour: i64) -> i64 {
+    necropsy_pack::parse_date(date).unwrap() * 86_400 + hour * 3600
+}
+
+#[tokio::test]
+async fn today_follows_the_viewers_timezone() {
+    // 23:00 UTC on 3 December. kerberoast is dated 4 December, lockfile 2 December.
+    let s = site_at_clock(utc_secs("2026-12-03", 23)).await;
+    let status = |p: &'static str, tz: Option<&'static str>| {
+        let s = &s;
+        async move { s.get(p, tz).await.status }
+    };
+    // No cookie is UTC: still the 3rd.
+    assert_eq!(status("/p/kerberoast", None).await, StatusCode::NOT_FOUND);
+    assert_eq!(status("/p/lockfile", None).await, StatusCode::OK);
+    // Two hours ahead of UTC it is already the 4th.
+    assert_eq!(
+        status("/p/kerberoast", Some("necropsy_tz=120")).await,
+        StatusCode::OK
+    );
+    // Five hours behind, it is the evening of the 3rd.
+    assert_eq!(
+        status("/p/kerberoast", Some("necropsy_tz=-300")).await,
+        StatusCode::NOT_FOUND
+    );
+    // The home page's "today" follows too.
+    let ahead = s.get("/", Some("necropsy_tz=120")).await.body;
+    assert!(
+        ahead.contains("Routine bump")
+            || ahead.contains("Kerberoast")
+            || ahead.contains("kerberoast")
+    );
+    // Rubbish in the cookie is UTC.
+    assert_eq!(
+        status("/p/kerberoast", Some("necropsy_tz=banana")).await,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn a_forged_timezone_reaches_at_most_the_furthest_ahead_real_one() {
+    // 10:00 UTC on 5 December. password-spray is dated 6 December. UTC+14 is where
+    // it is already 00:00 on the 6th, the furthest ahead anyone can be.
+    let s = site_at_clock(utc_secs("2026-12-05", 10)).await;
+    let get = |tz: &'static str| {
+        let s = &s;
+        async move { s.get("/p/password-spray", Some(tz)).await.status }
+    };
+    assert_eq!(get("necropsy_tz=0").await, StatusCode::NOT_FOUND);
+    assert_eq!(get("necropsy_tz=839").await, StatusCode::NOT_FOUND);
+    assert_eq!(get("necropsy_tz=840").await, StatusCode::OK);
+    // Ten years ahead, or a billion minutes, is the same as UTC+14: no further.
+    assert_eq!(get("necropsy_tz=5256000").await, StatusCode::OK);
+    assert_eq!(get("necropsy_tz=999999999999").await, StatusCode::OK);
+    // And a day further ahead than that is out of reach however it is asked for.
+    let early = site_at_clock(utc_secs("2026-12-04", 12)).await;
+    for tz in ["840", "5256000", "-5256000", "1440"] {
+        let r = early
+            .get("/p/password-spray", Some(&format!("necropsy_tz={tz}")))
+            .await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND, "tz {tz}");
+        let a = early
+            .post_json(
+                "/api/p/password-spray/answer",
+                r#"{"answer":"x"}"#,
+                Some(&format!("necropsy_tz={tz}")),
+            )
+            .await;
+        assert_eq!(a.status, StatusCode::NOT_FOUND, "its answer check, tz {tz}");
+    }
+}
+
+#[tokio::test]
+async fn a_solve_counts_on_the_day_it_was_solved_in_the_solvers_timezone() {
+    // 23:00 UTC on 27 November is already 28 November two hours ahead, the day peanuts
+    // is released.
+    let s = site_at_clock(utc_secs("2026-11-27", 23)).await;
+    s.register_verified("tzuser", "tzuser@example.org").await;
+    let session = s.login_cookie("tzuser").await;
+    let ahead = format!("{session}; necropsy_tz=120");
+    let r = s
+        .post_json(
+            "/api/p/peanuts/answer",
+            r#"{"answer":"sess_9f2c41ab77e0"}"#,
+            Some(&ahead),
+        )
+        .await;
+    assert!(r.body.contains(r#""correct":true"#), "{}", r.body);
+    // The test's database clock is the real one, so place the solve where the
+    // fake clock is.
+    let at = utc_secs("2026-11-27", 23);
+    s.state
+        .db
+        .run(move |c| c.execute("UPDATE solves SET solved_at = ?1", [at]))
+        .await
+        .unwrap();
+    let day = necropsy_pack::parse_date("2026-11-28").unwrap();
+    // Read back from another timezone: it still counts for the 28th, on time.
+    for cookie in [ahead.clone(), session.clone()] {
+        let p = s.get("/api/me/progress", Some(&cookie)).await.body;
+        assert!(
+            p.contains(&format!(r#""id":"peanuts","day":{day},"ontime":true"#)),
+            "{p}"
+        );
+    }
+}
+
+#[test]
+fn no_server_timezone_is_used() {
+    // Every "today" must come from the epoch clock plus the viewer's clamped offset,
+    // never from the machine's own timezone. Guard against code that reads local time.
+    let banned = [
+        ["chr", "ono"].concat(),
+        ["now", "_local"].concat(),
+        ["local", "time"].concat(),
+        ["Local", "::now"].concat(),
+        ["Offset", "DateTime"].concat(),
+        ["std::env::var(\"", "TZ"].concat(),
+    ];
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for entry in std::fs::read_dir(src).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "rs") && !path.ends_with("tests.rs") {
+            let text = std::fs::read_to_string(&path).unwrap().to_lowercase();
+            for word in &banned {
+                assert!(
+                    !text.contains(&word.to_lowercase()),
+                    "{} reads local time ({word})",
+                    path.display()
+                );
+            }
+        }
+    }
+    let cargo =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
+    assert!(!cargo.contains(&["chr", "ono"].concat()));
 }
