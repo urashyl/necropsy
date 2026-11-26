@@ -19,7 +19,7 @@ phone-home/
 | --- | --- | --- |
 | `id` | string | Slug, unique. Lowercase letters, digits and `-`, at most 40 characters. Used in URLs. |
 | `track` | string | `intro`, `daily` or `library`, see below. Required. |
-| `date` | string | `YYYY-MM-DD` (UTC) release date. Required for `daily`, not allowed for `intro` or `library`. Unique among dailies. |
+| `date` | string | `YYYY-MM-DD` release date: the puzzle comes out on that calendar day in each player's own timezone (see [web.md](web.md#days-and-timezones)). Required for `daily`, not allowed for `intro` or `library`. Unique among dailies. |
 | `number` | integer | Display number and order within its track. Unique within the track. |
 | `title` | string | |
 | `difficulty` | integer | 1 (easy) to 5 (hard). |

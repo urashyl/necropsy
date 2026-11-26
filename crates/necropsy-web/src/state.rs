@@ -72,8 +72,11 @@ pub struct AppState {
     all: Vec<RenderedPack>,
     index: HashMap<String, usize>,
     /// Treat this day (days since 1970-01-01 UTC) as today instead of reading
-    /// the clock. For tests.
+    /// the clock, for every viewer whatever their timezone. For tests.
     pub today_override: Option<i64>,
+    /// Treat this as the current UTC time (seconds since the epoch). For tests of
+    /// timezones.
+    pub clock_override: Option<i64>,
     pub base_url: String,
     /// Cookies get the `Secure` attribute when the site is served over https.
     pub secure_cookies: bool,
@@ -135,6 +138,7 @@ impl AppState {
             all: packs,
             index,
             today_override: None,
+            clock_override: None,
             secure_cookies: config.base_url.starts_with("https://"),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             client_ip_header: config.client_ip_header,
@@ -154,15 +158,22 @@ impl AppState {
         }
     }
 
-    /// Today as days since 1970-01-01 UTC.
+    /// Today for the viewer making this request, as a day number (days since
+    /// 1970-01-01 of the viewer's calendar). It is the date in the viewer's
+    /// timezone, but the timezone is clamped to the real ones (UTC-12 to UTC+14),
+    /// so the furthest ahead anyone can get is the date in UTC+14, a few hours
+    /// ahead of the server's own date: nobody can read a puzzle days early.
     pub fn today_days(&self) -> i64 {
-        self.today_override.unwrap_or_else(|| {
-            let secs = SystemTime::now()
+        if let Some(d) = self.today_override {
+            return d;
+        }
+        let secs = self.clock_override.unwrap_or_else(|| {
+            SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            (secs / 86_400) as i64
-        })
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0)
+        });
+        (secs + client_tz_min() * 60).div_euclid(86_400)
     }
 
     /// Intro stages are always visible. A daily is visible from its release
@@ -277,4 +288,36 @@ impl AppState {
 fn short_hash(s: &str) -> String {
     let d = Sha256::digest(s.as_bytes());
     d[..5].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+// ---------------------------------------------------------------- viewer timezone
+
+/// The furthest-behind and furthest-ahead real UTC offsets, in minutes.
+pub const TZ_MIN: i64 = -12 * 60;
+pub const TZ_MAX: i64 = 14 * 60;
+
+tokio::task_local! {
+    /// The current request's timezone, in minutes ahead of UTC, already clamped.
+    static CLIENT_TZ: i64;
+}
+
+/// The offset a cookie claims, clamped to the real timezones; 0 (UTC) if it is
+/// missing or not a number.
+pub fn parse_tz(cookie_header: Option<&str>) -> i64 {
+    cookie_header
+        .into_iter()
+        .flat_map(|h| h.split(';'))
+        .filter_map(|c| c.trim().strip_prefix("necropsy_tz="))
+        .find_map(|v| v.parse::<i64>().ok())
+        .map_or(0, |m| m.clamp(TZ_MIN, TZ_MAX))
+}
+
+/// Runs `fut` with this timezone as the viewer's.
+pub async fn with_tz<F: std::future::Future>(minutes: i64, fut: F) -> F::Output {
+    CLIENT_TZ.scope(minutes, fut).await
+}
+
+/// The viewer's timezone for the request being handled, in minutes ahead of UTC.
+pub fn client_tz_min() -> i64 {
+    CLIENT_TZ.try_with(|m| *m).unwrap_or(0)
 }

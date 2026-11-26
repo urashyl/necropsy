@@ -10,7 +10,10 @@
 
   const KEY = "necropsy:v1";
   const DAY_MS = 86400000;
-  const utcDay = () => Math.floor(Date.now() / DAY_MS);
+  // The viewer's calendar day, as days since 1970. The server uses the same rule: the
+  // timezone is the browser's, limited to the real ones (UTC-12 to UTC+14).
+  const tzMinutes = () => Math.min(14 * 60, Math.max(-12 * 60, -new Date().getTimezoneOffset()));
+  const localDay = () => Math.floor((Date.now() + tzMinutes() * 60000) / DAY_MS);
 
   // ---- local storage -------------------------------------------------------
 
@@ -76,7 +79,7 @@
       try {
         const r = await postAnswer(id, s.answer, s.seconds || 0, s.hints || 0);
         if (r.correct) {
-          server.solved[id] = { id, day: s.day ?? utcDay(), ontime: !!s.ontime, seconds: s.seconds || 0, hints: s.hints || 0 };
+          server.solved[id] = { id, day: s.day ?? localDay(), ontime: !!s.ontime, seconds: s.seconds || 0, hints: s.hints || 0 };
         } else {
           forgetSolve(id);
         }
@@ -97,7 +100,7 @@
     const days = new Set();
     for (const s of Object.values(state.solved)) if (s.ontime && typeof s.day === "number") days.add(s.day);
     for (const s of Object.values(server.solved)) if (s.ontime) days.add(s.day);
-    let d = utcDay();
+    let d = localDay();
     if (!days.has(d)) d -= 1;
     let n = 0;
     while (days.has(d)) {
@@ -177,7 +180,7 @@
 
   const id = puzzle.dataset.id;
   const label = puzzle.dataset.label;
-  // The day a daily is released, as days since 1970 UTC. Empty for intro stages.
+  // The calendar day a daily is released, as days since 1970. Empty for intro stages.
   const releaseDay = puzzle.dataset.day === "" ? null : Number(puzzle.dataset.day);
   const shareUrl = puzzle.dataset.url;
   const hintTotal = Number(puzzle.dataset.hints) || 0;
@@ -276,8 +279,8 @@
     try {
       const r = await postAnswer(id, answer, seconds, hintsShown);
       if (r.correct) {
-        const ontime = releaseDay !== null && utcDay() === releaseDay;
-        state.solved[id] = { answer, seconds, hints: hintsShown, day: utcDay(), ontime };
+        const ontime = releaseDay !== null && localDay() === releaseDay;
+        state.solved[id] = { answer, seconds, hints: hintsShown, day: localDay(), ontime };
         state.time[id] = seconds;
         save(state);
         renderStreak();

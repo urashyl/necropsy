@@ -31,7 +31,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 
 | Route | |
 | --- | --- |
-| `/` | Today's puzzle: the latest daily released by today (UTC). Goes to `/learn` if none is out yet. |
+| `/` | Today's puzzle: the latest daily released by today (the viewer's own date, see [Days and timezones](#days-and-timezones)). Goes to `/learn` if none is out yet. |
 | `/learn` | The intro stages, in order. |
 | `/p/{id}` | A puzzle by id. Unreleased dailies are "not found". |
 | `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. |
@@ -46,7 +46,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 
 ## Player state
 
-Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive UTC days, ending today or yesterday, with at least one solve. Time only counts while the tab is visible.
+Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. Time only counts while the tab is visible.
 
 A returning player's solved answer is kept locally and re-submitted on page load to bring the explainer back.
 
@@ -73,3 +73,13 @@ The CLI, packs 4 and 5 (multi-file, CLI-first), and deployment.
 ## Network use and the AGPL
 
 The project is AGPL-3.0-or-later. Anyone who runs a modified version as a public service must offer its users the modified source. The footer's "Source" link is how this site does that, so a modified deployment should point it at its own source.
+
+## Days and timezones
+
+A puzzle comes out on its `date` in the player's own timezone, like Wordle, so "today" changes at local midnight. The browser keeps its UTC offset in a `necropsy_tz` cookie (minutes ahead of UTC, set by `theme.js`; the page reloads once if it changed), and the server turns the real clock into the viewer's calendar day for each request.
+
+The server never trusts that offset further than a real timezone: it is clamped to UTC-12 to UTC+14, so the furthest ahead anyone can get is the date where it is already tomorrow, a few hours early, and never days. A forged or garbage cookie is clamped or treated as UTC. Everything that reveals a puzzle (its page, files, answer check and explainer) uses the same rule, so there is no other way to read one early.
+
+The clock is the machine's epoch time (`SystemTime`), plus the viewer's clamped offset, in whole days. The server's own timezone setting (`TZ`, `/etc/localtime`, a container's zone) is never read, so the host can be in any zone and nothing changes. A test (`no_server_timezone_is_used`) fails if code that reads local time is added.
+
+A solve records the solver's offset at the time, so it counts as "on time" for the day it was solved in the solver's own calendar.

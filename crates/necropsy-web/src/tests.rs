@@ -3546,3 +3546,174 @@ mod library {
         assert!(submit(&s, &cookie, "ransom-recovery", &flag_in(&r.body, "locked")).await);
     }
 }
+
+// ------------------------------------------------------------- the viewer's timezone
+
+/// A site whose clock reads `secs` (UTC) and which does not pin "today", so the
+/// viewer's timezone matters.
+async fn site_at_clock(secs: i64) -> Site {
+    let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packs"
+    )))
+    .unwrap();
+    let mail = Arc::new(Mutex::new(Vec::new()));
+    let mut state = AppState::new(
+        packs,
+        Config {
+            base_url: ORIGIN.into(),
+            client_ip_header: None,
+            trusted_proxies: Vec::new(),
+            live: None,
+            captcha: crate::captcha::Captcha::Off,
+            log_requests: false,
+        },
+        Db::open(":memory:").unwrap(),
+        Mailer::Memory(mail.clone()),
+    );
+    state.clock_override = Some(secs);
+    let state = Arc::new(state);
+    Site {
+        app: router(state.clone()),
+        state,
+        mail,
+    }
+}
+
+fn utc_secs(date: &str, hour: i64) -> i64 {
+    necropsy_pack::parse_date(date).unwrap() * 86_400 + hour * 3600
+}
+
+#[tokio::test]
+async fn today_follows_the_viewers_timezone() {
+    // 23:00 UTC on 3 December. kerberoast is dated 4 December, lockfile 2 December.
+    let s = site_at_clock(utc_secs("2026-12-03", 23)).await;
+    let status = |p: &'static str, tz: Option<&'static str>| {
+        let s = &s;
+        async move { s.get(p, tz).await.status }
+    };
+    // No cookie is UTC: still the 3rd.
+    assert_eq!(status("/p/kerberoast", None).await, StatusCode::NOT_FOUND);
+    assert_eq!(status("/p/lockfile", None).await, StatusCode::OK);
+    // Two hours ahead of UTC it is already the 4th.
+    assert_eq!(
+        status("/p/kerberoast", Some("necropsy_tz=120")).await,
+        StatusCode::OK
+    );
+    // Five hours behind, it is the evening of the 3rd.
+    assert_eq!(
+        status("/p/kerberoast", Some("necropsy_tz=-300")).await,
+        StatusCode::NOT_FOUND
+    );
+    // The home page's "today" follows too.
+    let ahead = s.get("/", Some("necropsy_tz=120")).await.body;
+    assert!(
+        ahead.contains("Routine bump")
+            || ahead.contains("Kerberoast")
+            || ahead.contains("kerberoast")
+    );
+    // Rubbish in the cookie is UTC.
+    assert_eq!(
+        status("/p/kerberoast", Some("necropsy_tz=banana")).await,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn a_forged_timezone_reaches_at_most_the_furthest_ahead_real_one() {
+    // 10:00 UTC on 5 December. password-spray is dated 6 December. UTC+14 is where
+    // it is already 00:00 on the 6th, the furthest ahead anyone can be.
+    let s = site_at_clock(utc_secs("2026-12-05", 10)).await;
+    let get = |tz: &'static str| {
+        let s = &s;
+        async move { s.get("/p/password-spray", Some(tz)).await.status }
+    };
+    assert_eq!(get("necropsy_tz=0").await, StatusCode::NOT_FOUND);
+    assert_eq!(get("necropsy_tz=839").await, StatusCode::NOT_FOUND);
+    assert_eq!(get("necropsy_tz=840").await, StatusCode::OK);
+    // Ten years ahead, or a billion minutes, is the same as UTC+14: no further.
+    assert_eq!(get("necropsy_tz=5256000").await, StatusCode::OK);
+    assert_eq!(get("necropsy_tz=999999999999").await, StatusCode::OK);
+    // And a day further ahead than that is out of reach however it is asked for.
+    let early = site_at_clock(utc_secs("2026-12-04", 12)).await;
+    for tz in ["840", "5256000", "-5256000", "1440"] {
+        let r = early
+            .get("/p/password-spray", Some(&format!("necropsy_tz={tz}")))
+            .await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND, "tz {tz}");
+        let a = early
+            .post_json(
+                "/api/p/password-spray/answer",
+                r#"{"answer":"x"}"#,
+                Some(&format!("necropsy_tz={tz}")),
+            )
+            .await;
+        assert_eq!(a.status, StatusCode::NOT_FOUND, "its answer check, tz {tz}");
+    }
+}
+
+#[tokio::test]
+async fn a_solve_counts_on_the_day_it_was_solved_in_the_solvers_timezone() {
+    // 23:00 UTC on 27 November is already 28 November two hours ahead, the day peanuts
+    // is released.
+    let s = site_at_clock(utc_secs("2026-11-27", 23)).await;
+    s.register_verified("tzuser", "tzuser@example.org").await;
+    let session = s.login_cookie("tzuser").await;
+    let ahead = format!("{session}; necropsy_tz=120");
+    let r = s
+        .post_json(
+            "/api/p/peanuts/answer",
+            r#"{"answer":"sess_9f2c41ab77e0"}"#,
+            Some(&ahead),
+        )
+        .await;
+    assert!(r.body.contains(r#""correct":true"#), "{}", r.body);
+    // The test's database clock is the real one, so place the solve where the
+    // fake clock is.
+    let at = utc_secs("2026-11-27", 23);
+    s.state
+        .db
+        .run(move |c| c.execute("UPDATE solves SET solved_at = ?1", [at]))
+        .await
+        .unwrap();
+    let day = necropsy_pack::parse_date("2026-11-28").unwrap();
+    // Read back from another timezone: it still counts for the 28th, on time.
+    for cookie in [ahead.clone(), session.clone()] {
+        let p = s.get("/api/me/progress", Some(&cookie)).await.body;
+        assert!(
+            p.contains(&format!(r#""id":"peanuts","day":{day},"ontime":true"#)),
+            "{p}"
+        );
+    }
+}
+
+#[test]
+fn no_server_timezone_is_used() {
+    // Every "today" must come from the epoch clock plus the viewer's clamped offset,
+    // never from the machine's own timezone. Guard against code that reads local time.
+    let banned = [
+        ["chr", "ono"].concat(),
+        ["now", "_local"].concat(),
+        ["local", "time"].concat(),
+        ["Local", "::now"].concat(),
+        ["Offset", "DateTime"].concat(),
+        ["std::env::var(\"", "TZ"].concat(),
+    ];
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for entry in std::fs::read_dir(src).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "rs") && !path.ends_with("tests.rs") {
+            let text = std::fs::read_to_string(&path).unwrap().to_lowercase();
+            for word in &banned {
+                assert!(
+                    !text.contains(&word.to_lowercase()),
+                    "{} reads local time ({word})",
+                    path.display()
+                );
+            }
+        }
+    }
+    let cargo =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
+    assert!(!cargo.contains(&["chr", "ono"].concat()));
+}
