@@ -22,3 +22,19 @@ cpus = 0.5
 pids = 64
 tmpfs_mb = 16
 uid = 10001
+
+[images.implant-lab]
+image = "necropsy-range/implant-lab:1"
+memory_mb = 128
+cpus = 0.5
+pids = 64
+tmpfs_mb = 16
+uid = 10001
+
+[images.elf-lab]
+image = "necropsy-range/elf-lab:1"
+memory_mb = 128
+cpus = 0.5
+pids = 64
+tmpfs_mb = 16
+uid = 10001

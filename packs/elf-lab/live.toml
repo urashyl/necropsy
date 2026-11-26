@@ -1,0 +1,6 @@
+ttl_minutes = 60
+flag_prefix = "elf"
+
+# A real compiled ELF for each player, built from source: range/elf-lab.
+[container]
+image = "elf-lab"

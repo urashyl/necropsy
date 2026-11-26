@@ -1,0 +1,6 @@
+ttl_minutes = 60
+flag_prefix = "implant"
+
+# A real C2 server and a real packed implant for each player: range/implant-lab.
+[container]
+image = "implant-lab"

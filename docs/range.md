@@ -147,6 +147,8 @@ For reference (the web server and the deploy program are its only clients). Ever
 
    Most servers listen on TCP. The `socat` line at the end of `range/webshell-lab/entrypoint.sh` bridges loopback TCP to the socket, which is all it takes.
 2. An entry in `range/images.toml`: the limits the lab may use. It is a template; each deploy rewrites the image names.
+   A lab does not have to be a stock web server. `implant-lab` and `elf-lab` are Python servers that derive everything per player from the flag file, patch or generate their sample at start, and keep their state in memory. `range/local-test.sh` runs those two without Docker (their `solve.py` is the walkthrough) and is part of CI's fast checks.
+
 3. Optionally, `range/<name>/test.sh <spawner url> <token> <lab>`: a test of the lab's own behaviour, run by CI against the real spawner (see `range/webshell-lab/test.sh`). The self-test already checks that it answers and is locked down.
 4. A pack with `modes = ["web", "live"]` and a `live.toml` containing:
 

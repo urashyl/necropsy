@@ -1,0 +1,13 @@
+id = "implant-lab"
+track = "library"
+number = 9
+title = "Speak its language"
+difficulty = 4
+modes = ["web", "live"]
+tags = ["python", "implant", "c2 protocol", "cryptography", "unpacking", "live"]
+hints = [
+  "The file you were given is not the implant. It is a loader. What does `exec(zlib.decompress(...))` run?",
+  "Do not reimplement the protocol from reading. The implant's own functions are in the unpacked source: load them and call them.",
+  "The key is a constant XORed with a short repeating seed. The capture is a test vector: if you can open its frames, your key and your framing are right.",
+  "The server keeps state: it wants a hello, then the tasking, then a result for the job it handed out. And it never accepts the same message twice.",
+]

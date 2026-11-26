@@ -119,6 +119,10 @@ The Library (the always-available `library` track) is where these live. It grows
 | 6 | `xor-implant` | Python implant with XOR'd strings | Single-byte XOR; being the other side of a C2 protocol |
 | 7 | `dga-sinkhole` | Domain generation algorithm | Running a DGA for a chosen date; sinkholes |
 | 8 | `ransom-recovery` | Ransomware encryptor, Python | Key derivation flaws; repeating-key XOR; what recovery needs |
+| 9 | `implant-lab` | Packed Python implant, **real C2 server** in a container | Unpacking `exec(zlib...)`; reusing the implant's own code; an authenticated, encrypted protocol with replay protection |
+| 10 | `elf-lab` | **Real compiled ELF**, stripped, with an RC4-encrypted config | Static and dynamic analysis; XOR-hidden strings and keys; anti-debugging; a gateway that answers only the right client |
+
+The first eight are simulated from a `live.toml`, which is cheap and needs no range. The last two are [container labs](range.md): real code in a sandbox, so a player faces real crypto, a real binary and a real server's state instead of canned replies. Reach for a container lab when the puzzle is the *implementation* (a protocol to reimplement, a binary to take apart) and a simulation when it is the *reading* of a sample.
 
 Conventions for new ones:
 

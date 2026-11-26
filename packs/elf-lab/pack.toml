@@ -1,0 +1,13 @@
+id = "elf-lab"
+track = "library"
+number = 10
+title = "Stripped"
+difficulty = 5
+modes = ["web", "live"]
+tags = ["linux", "elf", "reverse engineering", "rc4", "anti-debug", "live"]
+hints = [
+  "`strings` finds almost nothing, on purpose. Look at the data section instead: there is a block that looks random and is not. Find its marker, and the length that follows.",
+  "The config is RC4-encrypted. The key is not a string in the file: the program builds it from a table, one byte at a time, with a single XOR constant.",
+  "The binary refuses to run under a debugger, and does nothing useful when run normally. You do not need to run it. If you do want to, patch out `ptrace`, or break after the config is decrypted.",
+  "Three values come out of the config: a path, a header value and a password. The gateway wants them in the order the notes describe.",
+]
