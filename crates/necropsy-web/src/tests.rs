@@ -3143,3 +3143,34 @@ async fn the_admin_page_says_whether_the_captcha_is_on() {
         "the start of the key is shown, never the secret"
     );
 }
+
+#[test]
+fn the_live_domain_forgives_a_url_but_not_nonsense() {
+    use crate::parse_live_domain as parse;
+    for (typed, want) in [
+        ("necropsy.urashyl.dev", "necropsy.urashyl.dev"),
+        ("  Necropsy.Urashyl.Dev. ", "necropsy.urashyl.dev"),
+        ("https://necropsy.urashyl.dev", "necropsy.urashyl.dev"),
+        ("https://necropsy.urashyl.dev/", "necropsy.urashyl.dev"),
+        (
+            "http://necropsy.urashyl.dev/some/path?x=1",
+            "necropsy.urashyl.dev",
+        ),
+        ("necropsy.localhost:8080", "necropsy.localhost:8080"),
+        ("http://necropsy.localhost:8080/", "necropsy.localhost:8080"),
+    ] {
+        assert_eq!(parse(typed).as_deref(), Ok(want), "{typed}");
+    }
+    for bad in [
+        "",
+        "https://",
+        "/",
+        "necropsy",
+        "a b.example",
+        "user@necropsy.dev",
+        "https:///x",
+    ] {
+        let e = parse(bad).unwrap_err();
+        assert!(e.contains("like necropsy.urashyl.dev"), "{bad:?}: {e}");
+    }
+}
