@@ -28,6 +28,7 @@ const FONTS: &str = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:
 pub enum Nav {
     Today,
     Learn,
+    Live,
     Archive,
     Format,
     Account,
@@ -104,6 +105,38 @@ pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeU
         "Short introductory puzzles.",
         Nav::Learn,
         "/learn",
+        body,
+    )
+}
+
+/// The live puzzles: a server of their own for each player. Always available,
+/// not part of the daily rotation.
+pub async fn live_list(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
+    let body = html! {
+        section.wrap.page-head {
+            h1 { "Live" }
+            p.page-lead {
+                "Puzzles that run as real servers. Start one and you get a link to a server made "
+                "just for you: attack it, emulate a client of it, or pick through what it exposes. "
+                "You need an account to start one."
+            }
+        }
+        section.wrap.section-tight {
+            ul.work-list {
+                @for p in state.lives() { (pack_row(&state, p)) }
+            }
+            @if viewer.is_none() {
+                p.after-list { a href="/login" { "Log in" } " or " a href="/register" { "register" } " to start one." }
+            }
+        }
+    };
+    layout(
+        &state,
+        viewer.as_ref(),
+        "Live",
+        "Puzzles that run as real servers.",
+        Nav::Live,
+        "/live",
         body,
     )
 }
@@ -233,6 +266,46 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 
 // ---------------------------------------------------------------- puzzle
 
+/// The controls of a live puzzle: spin up an instance, see its link, its
+/// time left and the requests it has had. Driven by app.js.
+fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+    let captcha_key = state.captcha.site_key();
+    let ttl = rp.pack.live.as_ref().map(|s| s.ttl_minutes).unwrap_or(60);
+    html! {
+        section #live.live-panel data-sitekey=[captcha_key] {
+            h2 { "Live instance" }
+            p.muted {
+                "This puzzle is a real server, started just for you. It lives for "
+                (ttl) " minutes, and the flag it holds is yours alone."
+            }
+            @if viewer.is_none() {
+                p.notice { a href="/login" { "Sign in" } " to start an instance." }
+            } @else {
+                div #live-idle {
+                    button #live-start.button type="button" { "Spin up instance" }
+                    div #live-captcha.live-captcha {}
+                }
+                div #live-active.hidden {
+                    p.live-url {
+                        a #live-url target="_blank" rel="noopener noreferrer" {}
+                        " "
+                        button #live-copy.link-button type="button" { "Copy" }
+                    }
+                    p.muted {
+                        span #live-left {} " left · "
+                        button #live-stop.link-button type="button" { "Stop it" }
+                    }
+                    details.live-log-box {
+                        summary { "Requests it has received" }
+                        pre #live-log.live-log {}
+                    }
+                }
+                p #live-msg.answer-msg role="status" aria-live="polite" {}
+            }
+        }
+    }
+}
+
 fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
@@ -256,6 +329,8 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                         (rp.label())
                         @if let Some(d) = &m.date { " · " (d) }
                         @if state.is_today(rp) { " " span.badge { "Today" } }
+                    } @else if m.track == Track::Live {
+                        "Live " (m.number) " of " (state.lives().len())
                     } @else {
                         "Intro " (m.number) " of " (state.intros().len())
                     }
@@ -271,6 +346,10 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                         }
                     }
                     div.prose.brief { (PreEscaped(&rp.brief_html)) }
+
+                    @if rp.pack.is_live() {
+                        (live_panel(state, viewer, rp))
+                    }
 
                     @for f in &rp.files {
                         figure.codefile {
@@ -296,7 +375,9 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                     }
 
                     form #answer-form.answer-form {
-                        label for="answer" { "Answer" }
+                        label for="answer" {
+                            @if rp.pack.is_live() { "Flag" } @else { "Answer" }
+                        }
                         div.answer-row {
                             input #answer name="answer" type="text" required maxlength="512"
                                 autocomplete="off" autocapitalize="off" spellcheck="false";
@@ -427,6 +508,9 @@ pub fn layout(
                         nav.site-nav aria-label="Main" {
                             a href="/" aria-current=[current(Nav::Today)] { "Today" }
                             a href="/learn" aria-current=[current(Nav::Learn)] { "Learn" }
+                            @if !state.lives().is_empty() {
+                                a href="/live" aria-current=[current(Nav::Live)] { "Live" }
+                            }
                             a href="/archive" aria-current=[current(Nav::Archive)] { "Archive" }
                             a href="/format" aria-current=[current(Nav::Format)] { "Format" }
                         }

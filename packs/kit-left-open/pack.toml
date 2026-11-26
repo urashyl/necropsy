@@ -1,0 +1,12 @@
+id = "kit-left-open"
+track = "live"
+number = 2
+title = "Kit left open"
+difficulty = 2
+modes = ["web", "live"]
+tags = ["phishing", "web", "live"]
+hints = [
+  "Crooks that run their own lure page often forget that robots.txt is public, and that it tells you where they would rather you did not look.",
+  "A backup of the kit's config file is lying around. It holds the credentials for the control panel.",
+  "The panel uses HTTP Basic authentication. `curl -u user:password URL` does it for you.",
+]

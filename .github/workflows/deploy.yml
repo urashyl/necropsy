@@ -7,6 +7,10 @@
 # Needs the secrets listed in docs/ci-cd.md, stored on each environment. Each
 # environment only accepts deploys from its own branch. Nothing about the
 # server is written in this file.
+#
+# Production and dev are separate VMs, each with the plain necropsy-deploy. If one
+# host ever runs both (docs/docker.md, several stacks), set the DEPLOY_PROGRAM
+# variable on that environment to its program's name, such as necropsy-dev-deploy.
 name: Deploy
 
 on:
@@ -99,8 +103,15 @@ jobs:
       - name: Deploy
         env:
           SHA: ${{ github.sha }}
+          PROGRAM: ${{ vars.DEPLOY_PROGRAM || 'necropsy-deploy' }}
         run: |
-          ssh necropsy-deploy "sudo -n necropsy-deploy deploy $SHA"
+          # It ends up in a command line on the server.
+          if ! [[ "$PROGRAM" =~ ^necropsy(-[a-z0-9]+)*-deploy$ ]]; then
+            echo "::error::DEPLOY_PROGRAM must look like necropsy-deploy or necropsy-dev-deploy."
+            exit 1
+          fi
+          echo "deploying $SHA with $PROGRAM"
+          ssh necropsy-deploy "sudo -n $PROGRAM deploy $SHA"
 
       - name: Health check
         if: vars.DEPLOY_HEALTHCHECK_URL != ''

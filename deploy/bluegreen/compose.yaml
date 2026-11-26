@@ -7,7 +7,9 @@
 # The proxy is the only thing published to the host, on loopback. Your own
 # reverse proxy points at it.
 
-name: necropsy
+# The stack's name. A host can run several (production and dev, say): the
+# project, container and volume names all follow it. necropsy-deploy sets it.
+name: ${NECROPSY_NAME:-necropsy}
 
 x-app: &app
   restart: unless-stopped
@@ -37,16 +39,16 @@ services:
   necropsy-blue:
     <<: *app
     image: ${BLUE_IMAGE:-necropsy:unset}
-    container_name: necropsy-blue
+    container_name: ${NECROPSY_NAME:-necropsy}-blue
 
   necropsy-green:
     <<: *app
     image: ${GREEN_IMAGE:-necropsy:unset}
-    container_name: necropsy-green
+    container_name: ${NECROPSY_NAME:-necropsy}-green
 
   proxy:
     image: caddy:2-alpine
-    container_name: necropsy-proxy
+    container_name: ${NECROPSY_NAME:-necropsy}-proxy
     restart: unless-stopped
     # Loopback only unless deploy.env sets NECROPSY_BIND. The long form takes
     # an IPv6 address without brackets.
@@ -82,4 +84,4 @@ networks:
 
 volumes:
   data:
-    name: necropsy-data
+    name: ${NECROPSY_NAME:-necropsy}-data

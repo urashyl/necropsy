@@ -14,6 +14,11 @@ cargo run -p necropsy-web
 | `NECROPSY_PACKS` | `packs` | Directory containing one subdirectory per pack. |
 | `NECROPSY_BASE_URL` | `https://necropsy.urashyl.dev` | Origin used in links, emails and canonical URLs. Change it when the domain changes. Cookies are `Secure` when it starts with `https://`. |
 | `NECROPSY_DB` | `necropsy.db` | SQLite file for accounts and solves. |
+| `NECROPSY_LIVE_DOMAIN` | unset | Turns on [live puzzles](live.md) at `<label>.<domain>`. |
+| `NECROPSY_LIVE_HOST_HEADER` | unset | Header with the original host, only if your proxy cannot pass `Host` through. |
+| `NECROPSY_RANGE_URL`, `NECROPSY_RANGE_TOKEN` | unset | The range VM that runs container-backed [live puzzles](range.md), and this site's token there. Set both or neither. |
+| `NECROPSY_TURNSTILE_SITE_KEY`, `NECROPSY_TURNSTILE_SECRET` | unset | Cloudflare Turnstile for registration and live instances, see [accounts.md](accounts.md#captcha). Set both or neither. |
+| `NECROPSY_LOG_REQUESTS` | unset | `1` logs every request (method, path, status). Off by default. |
 | `NECROPSY_CLIENT_IP_HEADER` | unset | Header your reverse proxy sets to the client address, such as `X-Real-IP`. Used for rate limiting. |
 | `NECROPSY_TRUSTED_PROXIES` | unset | IPs or CIDR ranges allowed to supply that header, comma-separated. The header from any other connection is ignored. |
 | `NECROPSY_SMTP_*`, `NECROPSY_DEV_MAIL_LOG` | unset | Email, see [accounts.md](accounts.md). |
@@ -53,7 +58,7 @@ For a signed-in user the server also stores solves. On each page load `app.js` f
 - The CSP allows only same-origin scripts, plus the Google Fonts stylesheet and font files. There is no inline script or style, so the theme bootstrap lives in `static/theme.js`.
 - The answer endpoint caps the request body at 2 KiB and ignores answers over 512 bytes.
 - Pages are sent with `Cache-Control: no-store` and `Referrer-Policy: same-origin`, since email links carry one-time tokens in the query string.
-- The access log records method and path only, never query strings.
+- Requests are not logged unless you set `NECROPSY_LOG_REQUESTS=1`; then the log records method, path and status, never query strings.
 - Cross-site POSTs are rejected, see [accounts.md](accounts.md).
 - Answer hashes and explainers are public in the repository. See the note in `pack-format.md`.
 

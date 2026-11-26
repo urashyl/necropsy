@@ -1,0 +1,12 @@
+id = "c2-gate"
+track = "live"
+number = 1
+title = "Answer the door"
+difficulty = 3
+modes = ["web", "live"]
+tags = ["c2", "network", "live"]
+hints = [
+  "The server only talks to something that looks exactly like the implant. Compare your request to the capture, character by character, and to the strings recovered from the sample.",
+  "The sync body is `d=` followed by base64 of `<client id>|<host>|<user>|<os>`. The client id is 16 lowercase hex digits, and it goes in a header as well. Any id will do.",
+  "The first reply is not the tasking. It tells you where to ask next. Ask the same way, as the same client.",
+]

@@ -11,8 +11,10 @@
 mod accounts;
 mod admin;
 mod auth;
+mod captcha;
 mod db;
 mod ipnet;
+mod live;
 mod mail;
 mod markdown;
 mod pages;
@@ -30,8 +32,6 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tower_http::compression::CompressionLayer;
-use tower_http::trace::{DefaultOnResponse, TraceLayer};
-use tracing::Level;
 
 use crate::auth::{ClientIp, MaybeUser, AUTH_WINDOW};
 use crate::db::Db;
@@ -51,7 +51,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "necropsy_web=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "necropsy_web=info".into()),
         )
         .init();
 
@@ -64,7 +64,16 @@ async fn main() {
         base_url: env_or("NECROPSY_BASE_URL", "https://necropsy.urashyl.dev"),
         client_ip_header: client_ip_header_from_env().unwrap_or_else(|e| fail(&e)),
         trusted_proxies: trusted_proxies_from_env().unwrap_or_else(|e| fail(&e)),
+        live: live_from_env().unwrap_or_else(|e| fail(&e)),
+        captcha: captcha_from_env().unwrap_or_else(|e| fail(&e)),
+        log_requests: std::env::var("NECROPSY_LOG_REQUESTS").is_ok_and(|v| v == "1"),
     };
+    if config.captcha.site_key().is_none() {
+        tracing::warn!(
+            "no captcha: set NECROPSY_TURNSTILE_SITE_KEY and NECROPSY_TURNSTILE_SECRET so scripts \
+             cannot mass-register accounts or start live instances"
+        );
+    }
 
     let packs = match necropsy_pack::load_all(&packs_dir) {
         Ok(p) => p,
@@ -105,6 +114,23 @@ async fn main() {
 
     let state = Arc::new(AppState::new(packs, config, db, mailer));
     spawn_housekeeping(state.clone());
+    // Say at startup whether the range can be reached from here, which is where a
+    // misconfigured network or firewall shows up first.
+    if state.live.as_ref().is_some_and(|l| l.range.is_some()) {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let Some(range) = state.live.as_ref().and_then(|l| l.range.as_ref()) else {
+                return;
+            };
+            match range.check().await {
+                Ok(()) => tracing::info!(
+                    "the range at {} answers and accepts this site's token",
+                    range.url
+                ),
+                Err(e) => tracing::warn!("the range is not usable: {e}"),
+            }
+        });
+    }
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind(addr)
@@ -120,6 +146,74 @@ async fn main() {
     })
     .await
     .expect("server error");
+}
+
+/// Both Turnstile keys, or neither.
+fn captcha_from_env() -> Result<captcha::Captcha, String> {
+    let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    match (
+        get("NECROPSY_TURNSTILE_SITE_KEY"),
+        get("NECROPSY_TURNSTILE_SECRET"),
+    ) {
+        (Some(site), Some(secret)) => Ok(captcha::Captcha::turnstile(
+            site.trim().to_owned(),
+            secret.trim().to_owned(),
+        )),
+        (None, None) => Ok(captcha::Captcha::Off),
+        _ => Err(
+            "set both NECROPSY_TURNSTILE_SITE_KEY and NECROPSY_TURNSTILE_SECRET, or neither".into(),
+        ),
+    }
+}
+
+/// `NECROPSY_LIVE_DOMAIN` turns live puzzles on; `NECROPSY_LIVE_HOST_HEADER`
+/// optionally names a header that carries the original host.
+fn live_from_env() -> Result<Option<live::LiveConfig>, String> {
+    let Some(domain) = std::env::var("NECROPSY_LIVE_DOMAIN")
+        .ok()
+        .map(|d| d.trim().trim_matches('.').to_ascii_lowercase())
+        .filter(|d| !d.is_empty())
+    else {
+        return Ok(None);
+    };
+    if domain.contains('/')
+        || domain.contains(' ')
+        || !domain.contains('.') && !domain.contains(':')
+    {
+        return Err(format!("NECROPSY_LIVE_DOMAIN {domain:?} is not a domain"));
+    }
+    let host_header = match std::env::var("NECROPSY_LIVE_HOST_HEADER") {
+        Ok(h) if !h.trim().is_empty() => Some(
+            h.trim()
+                .parse::<axum::http::HeaderName>()
+                .map_err(|_| format!("NECROPSY_LIVE_HOST_HEADER {h:?} is not a header name"))?,
+        ),
+        _ => None,
+    };
+    // Container-backed puzzles need the range VM (see docs/range.md): its
+    // address and this site's token, both or neither.
+    let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    let range = match (get("NECROPSY_RANGE_URL"), get("NECROPSY_RANGE_TOKEN")) {
+        (Some(url), Some(token)) => {
+            let url = url.trim();
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
+                return Err(format!(
+                    "NECROPSY_RANGE_URL {url:?} must start with http:// or https://"
+                ));
+            }
+            if token.trim().len() < 16 {
+                return Err("NECROPSY_RANGE_TOKEN is too short to be a token".into());
+            }
+            Some(live::Range::new(url, token.trim()))
+        }
+        (None, None) => None,
+        _ => return Err("set both NECROPSY_RANGE_URL and NECROPSY_RANGE_TOKEN, or neither".into()),
+    };
+    Ok(Some(live::LiveConfig {
+        domain,
+        host_header,
+        range,
+    }))
 }
 
 /// `NECROPSY_CLIENT_IP_HEADER`: the header name, or unset for the peer address.
@@ -186,6 +280,9 @@ fn spawn_housekeeping(state: Arc<AppState>) {
                 tracing::error!("purge failed: {e}");
             }
             state.limiter.prune(AUTH_WINDOW);
+            if let Ok(active) = state.db.live_active_labels().await {
+                state.hub.prune(|label| active.contains(label));
+            }
         }
     });
 }
@@ -196,15 +293,28 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/p/{id}", get(pages::puzzle))
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
         .route("/learn", get(pages::learn))
+        .route("/live", get(pages::live_list))
         .route("/archive", get(pages::archive))
         .route("/format", get(pages::format))
         // accounts
-        .route("/register", get(accounts::register_get).post(accounts::register_post))
+        .route(
+            "/register",
+            get(accounts::register_get).post(accounts::register_post),
+        )
         .route("/verify", get(accounts::verify_get))
-        .route("/login", get(accounts::login_get).post(accounts::login_post))
+        .route(
+            "/login",
+            get(accounts::login_get).post(accounts::login_post),
+        )
         .route("/logout", post(accounts::logout_post))
-        .route("/forgot", get(accounts::forgot_get).post(accounts::forgot_post))
-        .route("/reset", get(accounts::reset_get).post(accounts::reset_post))
+        .route(
+            "/forgot",
+            get(accounts::forgot_get).post(accounts::forgot_post),
+        )
+        .route(
+            "/reset",
+            get(accounts::reset_get).post(accounts::reset_post),
+        )
         .route("/account", get(accounts::account_get))
         .route("/account/password", post(accounts::account_password_post))
         .route("/account/username", post(accounts::account_username_post))
@@ -219,6 +329,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(admin::delete_confirm_get).post(admin::delete_post),
         )
         .route("/admin/users/{id}/{action}", post(admin::user_action_post))
+        .route("/admin/live/{id}/start", post(admin::live_start_post))
+        .route("/admin/live/{id}/stop", post(admin::live_stop_post))
         // json api used by app.js
         .route(
             "/api/p/{id}/answer",
@@ -226,6 +338,11 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(check_answer).layer(DefaultBodyLimit::max(2 * 1024)),
         )
         .route("/api/p/{id}/explainer", get(explainer))
+        .route(
+            "/api/p/{id}/instance",
+            get(live::instance_get).post(live::instance_post),
+        )
+        .route("/api/p/{id}/instance/stop", post(live::instance_stop))
         .route("/api/me/progress", get(progress))
         .route("/healthz", get(|| async { "ok" }))
         .route("/static/app.css", get(pages::static_css))
@@ -234,19 +351,41 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/favicon.svg", get(pages::favicon))
         .fallback(pages::not_found)
         .layer(middleware::from_fn_with_state(state.clone(), origin_check))
-        .layer(middleware::from_fn_with_state(state.clone(), client_ip_layer))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            client_ip_layer,
+        ))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
-        .layer(
-            // Log the method and path only. Query strings carry one-time
-            // tokens (email links) and must not reach the log.
-            TraceLayer::new_for_http()
-                .make_span_with(|req: &Request| {
-                    tracing::info_span!("http", method = %req.method(), path = %req.uri().path())
-                })
-                .on_response(DefaultOnResponse::new().level(Level::INFO)),
-        )
-        .with_state(state)
+        .layer(middleware::from_fn_with_state(state.clone(), request_log))
+        .with_state(state.clone())
+        // Outermost, so requests for a live instance are answered from its
+        // scenario and skip everything above: the main site's CSP, cookies and
+        // CSRF logic have no business on those hosts.
+        .layer(middleware::from_fn_with_state(state, live_dispatch))
+}
+
+/// Logs each request's method, path and status, but only when
+/// `NECROPSY_LOG_REQUESTS=1`. Off by default: a site that has visitors does not
+/// need a line per request, and the server logs what goes wrong without it. When
+/// it is on, only the method and path are logged, never the query string, since
+/// email links carry one-time tokens there.
+async fn request_log(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
+    if !state.log_requests {
+        return next.run(req).await;
+    }
+    let (method, path) = (req.method().clone(), req.uri().path().to_owned());
+    let res = next.run(req).await;
+    tracing::info!("{method} {path} {}", res.status().as_u16());
+    res
+}
+
+/// Sends requests whose host is under the live domain to the live handler.
+async fn live_dispatch(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
+    match live::live_label(&state, &req) {
+        Some(label) => live::handle(state, label, req).await,
+        None => next.run(req).await,
+    }
 }
 
 /// Headers for every response. The CSP allows only our own scripts plus the
@@ -259,9 +398,9 @@ async fn security_headers(req: Request, next: Next) -> Response {
     h.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; \
-             font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; \
-             base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; \
+             font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; \
+             frame-src https://challenges.cloudflare.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         ),
     );
     h.insert(
@@ -390,7 +529,14 @@ async fn check_answer(
         })
         .into_response();
     }
-    let correct = p.pack.check(&req.answer);
+    let correct = if p.pack.is_live() {
+        match &viewer {
+            Some(u) => live::flag_matches(&state, u.id, &p.pack, &req.answer).await,
+            None => false,
+        }
+    } else {
+        p.pack.check(&req.answer)
+    };
     if correct {
         if let Some(user) = viewer {
             let seconds = req.seconds.clamp(0, 7 * 86_400);

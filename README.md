@@ -19,6 +19,12 @@ Then open <http://127.0.0.1:8080>. On first run the server creates an admin acco
 | `crates/necropsy-web` | Web front end. |
 | `docs/pack-format.md` | The pack format. |
 | `docs/web.md` | Running and operating the web front end. |
+| `docs/live.md` | Live puzzles: per-player servers on a wildcard domain. |
+| `deploy/install-site.sh` | Installs a site (production or dev) on its own VM. |
+| `deploy/install-range.sh` | Installs the range, the VM that runs live-puzzle labs for the sites. |
+| `docs/range.md` | Container-backed live puzzles: the range VM, its sandbox, setup, and how many players it holds. |
+| `crates/necropsy-spawner` | Runs on the range VM: the sandboxed labs, for the sites. |
+| `range/` | Lab images and the image allowlist. |
 | `docs/deploy.md` | Installing as a systemd user service. |
 | `.env.example` | Every setting, documented. Copy to `.env` for local runs. |
 | `deploy/` | Service unit template and `install.sh`. |
@@ -36,7 +42,7 @@ The packs contain answer hashes and explainers, so spoilers are in this reposito
 2. Generate the answer file: `cargo run -q -p necropsy-pack --bin pack-tool -- hash <id> '<answer>' > packs/<id>/answer`
 3. Check it loads: `cargo run -q -p necropsy-pack --bin pack-tool -- validate packs`
 
-Packs must be inert text or data. See [docs/pack-format.md](docs/pack-format.md).
+The site never runs anything from a pack. See [docs/pack-format.md](docs/pack-format.md), and [docs/live.md](docs/live.md) for live puzzles, where each player gets a server of their own.
 
 ## Checks
 

@@ -41,6 +41,11 @@ pub struct Config {
     /// Peers allowed to supply `client_ip_header`. When empty, any peer is
     /// believed; otherwise the header from every other peer is ignored.
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
+    /// Live puzzles are offered only when this is set.
+    pub live: Option<crate::live::LiveConfig>,
+    pub captcha: crate::captcha::Captcha,
+    /// Log each request's method, path and status. Off unless asked for.
+    pub log_requests: bool,
 }
 
 impl RenderedPack {
@@ -50,6 +55,7 @@ impl RenderedPack {
         match m.track {
             Track::Intro => format!("Intro #{}", m.number),
             Track::Daily => format!("Daily #{}", m.number),
+            Track::Live => format!("Live #{}", m.number),
         }
     }
 }
@@ -73,6 +79,10 @@ pub struct AppState {
     pub secure_cookies: bool,
     pub client_ip_header: Option<axum::http::HeaderName>,
     pub trusted_proxies: Vec<crate::ipnet::IpNet>,
+    pub live: Option<crate::live::LiveConfig>,
+    pub captcha: crate::captcha::Captcha,
+    pub log_requests: bool,
+    pub hub: crate::live::LiveHub,
     pub db: Db,
     pub mailer: Mailer,
     pub limiter: RateLimiter,
@@ -88,8 +98,13 @@ pub struct AppState {
 impl AppState {
     pub fn new(packs: Vec<Pack>, config: Config, db: Db, mailer: Mailer) -> Self {
         let hl = Highlighter::new();
+        // Live puzzles need the live domain; without it they stay hidden.
+        let live_on = config.live.is_some();
+        let range_on = config.live.as_ref().is_some_and(|l| l.range.is_some());
         let packs: Vec<RenderedPack> = packs
             .into_iter()
+            .filter(|p| live_on || !p.is_live())
+            .filter(|p| range_on || p.container().is_none())
             .map(|pack| {
                 let files = pack
                     .files
@@ -124,6 +139,10 @@ impl AppState {
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             client_ip_header: config.client_ip_header,
             trusted_proxies: config.trusted_proxies,
+            live: config.live,
+            captcha: config.captcha,
+            log_requests: config.log_requests,
+            hub: crate::live::LiveHub::default(),
             db,
             mailer,
             limiter: RateLimiter::default(),
@@ -151,7 +170,7 @@ impl AppState {
     /// be read by its page, its files, its answer check or its explainer.
     fn is_visible(&self, p: &RenderedPack) -> bool {
         match p.pack.meta.track {
-            Track::Intro => true,
+            Track::Intro | Track::Live => true,
             Track::Daily => p
                 .pack
                 .meta
@@ -166,6 +185,25 @@ impl AppState {
             .get(id)
             .map(|&i| &self.all[i])
             .filter(|p| self.is_visible(p))
+    }
+
+    /// Any loaded pack by id, released or not. For the admin, who may start any
+    /// live puzzle. Never use it for a player.
+    pub fn get_any(&self, id: &str) -> Option<&RenderedPack> {
+        self.index.get(id).map(|&i| &self.all[i])
+    }
+
+    /// Every loaded live-mode pack, released or not, for the admin.
+    pub fn all_live(&self) -> Vec<&RenderedPack> {
+        self.all.iter().filter(|p| p.pack.is_live()).collect()
+    }
+
+    /// The live track, in order. Always available.
+    pub fn lives(&self) -> Vec<&RenderedPack> {
+        self.all
+            .iter()
+            .filter(|p| p.pack.meta.track == Track::Live)
+            .collect()
     }
 
     /// Intro stages, in order.
@@ -217,6 +255,7 @@ impl AppState {
         let list = match p.pack.meta.track {
             Track::Intro => self.intros(),
             Track::Daily => self.released_dailies(),
+            Track::Live => self.lives(),
         };
         let Some(pos) = list.iter().position(|q| q.pack.meta.id == p.pack.meta.id) else {
             return (None, None);

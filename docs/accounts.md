@@ -24,6 +24,10 @@ The admin starts with no email address. At `/account` the admin can:
 
 The admin account cannot be disabled, deleted, or self-deleted from the UI.
 
+## Trying live puzzles
+
+The admin page lists every live puzzle that is loaded, whether or not it is released, with a button to **start an instance** of it for the admin. It has no captcha and no limit of three, runs the same as a player's, and the page shows its link, the time it has left and **its flag**, so a puzzle can be tried end to end (and its flag checked) without playing it first. Stop ends it at once. A puzzle that needs the range is loaded only when `NECROPSY_RANGE_URL` is set, and the page says when live puzzles are off.
+
 ## Email
 
 SMTP is configured only through environment variables:
@@ -91,4 +95,18 @@ Every state-changing request must come from the site's own origin. `main.rs` rej
 
 SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves`. The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly.
 
-Server logs record the method and path of each request, never the query string, because email links carry one-time tokens there.
+Requests are not logged by default. With `NECROPSY_LOG_REQUESTS=1` the log records the method, path and status of each request, never the query string, because email links carry one-time tokens there.
+
+
+## Captcha
+
+Creating an account and starting a live instance both ask for a [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) check, so scripts cannot mass-register accounts or fill the range. Create a Turnstile widget in the Cloudflare dashboard for your domain (the site key is public, the secret is not) and set:
+
+```bash
+NECROPSY_TURNSTILE_SITE_KEY=0x4AAAAAAA...
+NECROPSY_TURNSTILE_SECRET=0x4AAAAAAA...
+```
+
+Set both or neither: with neither, no captcha is asked and the server warns at startup. A check that cannot reach Cloudflare is treated as failed, so the site never lets someone through because the check was down. The token is verified on the server, once per use, together with the client's address.
+
+Registration shows the widget in its form. The puzzle page loads the widget when someone presses "Spin up instance", and only a *new* instance asks: reopening a running one, or looking at its log, does not. The content security policy allows `challenges.cloudflare.com` for scripts and frames because Turnstile needs it. Login is not behind the captcha; it already has its own rate limits.

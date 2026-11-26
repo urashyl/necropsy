@@ -43,9 +43,19 @@ jobs:
 
       - name: Script syntax
         run: |
-          for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh; do
+          for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh \
+                   deploy/install-site.sh deploy/install-range.sh deploy/lib/common.sh \
+                   deploy/test/common.sh deploy/test/install-site.sh deploy/test/install-range.sh \
+                   deploy/range/ci-test.sh deploy/range/update.sh deploy/test/range-update.sh range/build.sh range/webshell-lab/entrypoint.sh range/webshell-lab/test.sh; do
             bash -n "$f"
           done
+
+      - name: VM installers
+        run: |
+          deploy/test/common.sh
+          deploy/test/install-site.sh
+          deploy/test/install-range.sh
+          deploy/test/range-update.sh
 
       # As root, so the tests of the real install (clean environment, no
       # `switch`, https only, root-owned settings) run too. They use a fake
@@ -115,6 +125,28 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: docker logs smoke || true
+
+  # The range, with real Docker: runs the real spawner with two tenants, pushes
+  # the lab images over its API, and checks every lab comes up locked down (no
+  # network, read-only root, no capabilities, limits), answers through the
+  # proxy, passes its own test, is reaped when its time is up, that a full
+  # range refuses another, and that tenants cannot touch each other. This is
+  # the part that cannot be checked with a fake docker.
+  range:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the spawner
+        run: cargo build --release --locked -p necropsy-spawner
+
+      - name: The range
+        run: sudo env "PATH=$PATH" deploy/range/ci-test.sh
 
   # The real thing, with real Docker: installs the deploy program, deploys twice
   # (so both colors and the Caddy switch run) while requesting the site
@@ -229,5 +261,5 @@ jobs:
           docker logs necropsy-proxy 2>&1 | tail -40 || true
           docker logs necropsy-blue 2>&1 | tail -20 || true
           docker logs necropsy-green 2>&1 | tail -20 || true
-          sudo cat /var/lib/necropsy/necropsy/bluegreen/history.log || true
+          sudo cat /var/lib/necropsy/bluegreen/history.log || true
 

@@ -1,0 +1,52 @@
+# Runs the spawner on the range VM (docs/range.md). Installed by
+# deploy/install-range.sh as /etc/systemd/system/necropsy-spawner.service, with
+# the program at /usr/local/bin/necropsy-spawner and its settings in
+# /etc/necropsy-range/ (spawner.env for where it listens, tenants.toml for who
+# may use it).
+
+[Unit]
+Description=necropsy range spawner
+Documentation=https://github.com/urashyl/necropsy
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/necropsy-spawner
+EnvironmentFile=/etc/necropsy-range/spawner.env
+Environment=SPAWNER_TENANTS=/etc/necropsy-range/tenants.toml
+Environment=SPAWNER_STATE=/var/lib/necropsy-range
+Environment=SPAWNER_RANGE_DIR=/run/necropsy-range
+
+# Each lab's socket directory lives here. Kept when the spawner restarts: labs that
+# are still running keep their sockets, and the spawner finds them again.
+RuntimeDirectory=necropsy-range
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+# The tenants' allowlists, and image uploads while they are checked.
+StateDirectory=necropsy-range
+StateDirectoryMode=0755
+
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+# Labs outlive the spawner on purpose: it finds them again when it starts.
+
+# It needs root to hand each lab's directory to the lab's user and to use Docker,
+# and nothing else on the machine. It listens for the site VMs, and talks to Docker
+# and to the labs over unix sockets.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/necropsy-range /var/lib/necropsy-range
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE
+LockPersonality=yes
+RestrictRealtime=yes
+
+[Install]
+WantedBy=multi-user.target

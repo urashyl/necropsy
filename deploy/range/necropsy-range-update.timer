@@ -1,0 +1,14 @@
+# Checks the trusted branch for a new spawner every few minutes, and shortly
+# after boot. A check that finds nothing new is a single git fetch.
+
+[Unit]
+Description=necropsy range: check for a new spawner
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

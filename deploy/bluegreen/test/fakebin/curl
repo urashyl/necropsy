@@ -1,3 +1,66 @@
 #!/usr/bin/env bash
-# Pretends to be the site answering through the proxy.
-[ -z "${FAKE_LIVE_FAIL:-}" ]
+# Two stand-ins in one. For the site's own health check it answers (FAKE_LIVE_FAIL=1
+# makes it fail). For the range VM's API (any URL with /v1/) it is a small range
+# server, keeping its state in $FAKE_DIR/range:
+#   images          the lab images "pushed"
+#   allowlist       the current allowlist (and allowlist.prev the one before)
+#   token           the token it accepts
+# Failures are injected with:
+#   FAKE_RANGE_DOWN=1             the range cannot be reached (curl exits 7)
+#   FAKE_RANGE_REFUSE_IMAGES=1    pushing an image is refused
+# and by the file $FAKE_DIR/selftest_fail, which makes the self-test fail.
+d="${FAKE_DIR:-$(cat "$(dirname "$0")/state_dir")}"
+method=GET url="" out="" write="" upload="" data="" hdr=""
+echo "curl $*" >> "$d/curl_argv"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -X) method="$2"; shift 2 ;;
+    -o) out="$2"; shift 2 ;;
+    -w) write="$2"; shift 2 ;;
+    -T) upload="$2"; shift 2 ;;
+    --data-binary) data="${2#@}"; shift 2 ;;
+    -H) hdr="$2"; shift 2 ;;
+    --max-time) shift 2 ;;
+    http*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$url" in
+  *"/v1/"*) ;;
+  *) [ -z "${FAKE_LIVE_FAIL:-}" ]; exit $? ;;
+esac
+
+r="$d/range"; mkdir -p "$r"; touch "$r/images"
+path="/v1/${url#*/v1/}"
+if [ -n "${FAKE_RANGE_DOWN:-}" ]; then echo "curl: (7) Failed to connect" >&2; exit 7; fi
+reply() { # code body
+  if [ -n "$out" ]; then printf '%s' "$2" > "$out"; else printf '%s' "$2"; fi
+  [ -z "$write" ] || printf '%s' "$1"
+  exit 0
+}
+echo "$method $path" >> "$d/range_calls"
+sent="$(cat "${hdr#@}" 2>/dev/null)"
+[ "$sent" = "X-Necropsy-Token: $(cat "$r/token" 2>/dev/null)" ] || reply 401 "a valid X-Necropsy-Token is required"
+
+case "$method $path" in
+  "GET /v1/images") reply 200 "$(cat "$r/images")" ;;
+  "POST /v1/images")
+    [ -z "${FAKE_RANGE_REFUSE_IMAGES:-}" ] || reply 400 "the archive carries a tag that is not under necropsy-range/"
+    ref="$(sed -n 's/^ARCHIVE://p' "$upload")"
+    [ -n "$ref" ] || reply 400 "not a docker archive"
+    echo "$ref" >> "$r/images"
+    echo "push $ref" >> "$d/range_calls"
+    reply 200 "$ref" ;;
+  "GET /v1/allowlist") reply 200 "$(cat "$r/allowlist" 2>/dev/null)" ;;
+  "PUT /v1/allowlist")
+    while read -r ref; do
+      grep -qxF "$ref" "$r/images" || reply 400 "the image $ref is not on this server, push it first"
+    done < <(sed -n 's/^image *= *"\([^"]*\)".*/\1/p' "$data")
+    [ ! -f "$r/allowlist" ] || cp "$r/allowlist" "$r/allowlist.prev"
+    cp "$data" "$r/allowlist"
+    reply 200 "ok" ;;
+  "POST /v1/selftest")
+    [ ! -e "$d/selftest_fail" ] || reply 500 "FAIL: lab-a: it has a network"
+    reply 200 "ok: lab-a: locked down in Docker's settings"$'\n'"all labs passed" ;;
+  *) reply 404 "no such route" ;;
+esac

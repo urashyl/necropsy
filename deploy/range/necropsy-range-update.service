@@ -1,0 +1,20 @@
+# Updates the range VM's spawner from the trusted branch (deploy/range/update.sh).
+# Installed by deploy/install-range.sh, run by necropsy-range-update.timer.
+
+[Unit]
+Description=necropsy range: update the spawner from the repository
+Documentation=https://github.com/urashyl/necropsy
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/necropsy-range/update.sh
+# A build and a restart can take a few minutes the first time.
+TimeoutStartSec=30min
+# Nothing here needs to be able to see other users' files or change the kernel.
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+LockPersonality=yes

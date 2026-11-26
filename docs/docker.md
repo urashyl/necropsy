@@ -46,6 +46,8 @@ Changing the program, compose file or settings means running the installer again
 
 ## Server setup, once
 
+On a dedicated Debian or Ubuntu VM, [`deploy/install-site.sh`](range.md#setting-it-up) does all of this, and connects the site to the range VM that runs live-puzzle labs. The steps below are what it automates.
+
 You need Docker with the compose plugin, `git`, `curl` and `flock` (util-linux), and a user for deployments that is not root and not in the `docker` group. As root, from a checkout of the repository:
 
 ```bash
@@ -92,6 +94,24 @@ That chain sees the port inside the container, which is always 8080, so keep `--
 ### Headers
 
 Caddy passes the `Host` header through unchanged, which the app needs. The `X-Real-IP` line is what lets rate limits see the real visitor: the proxy container believes that header only from your proxy's address (the Docker gateway and loopback by default, `NECROPSY_EDGE_TRUSTED` in `deploy.env` to change it). Your proxy should always set it itself, as above, and never forward one from a visitor.
+
+## Several stacks on one host
+
+Production and dev normally have a VM each, with the default stack name, `necropsy`. A host can run more than one stack, as long as each has its own name. `install-system.sh --name necropsy-dev` installs a second one next to the first:
+
+```bash
+deploy/bluegreen/install-system.sh --name necropsy-dev --user deploy-dev --repo https://github.com/urashyl/necropsy --branch dev
+```
+
+Everything that could clash follows the name: the program (`necropsy-dev-deploy`), its settings (`/etc/necropsy-dev/`), state, sudo rule, containers (`necropsy-dev-blue`, `-green`, `-proxy`), the data volume and the image repository (`necropsy-dev:<commit>`). The default name keeps every path as it was. Give each stack its own port and subnet in its `deploy.env`, and its own `RANGE_TENANT` if it uses the range:
+
+```bash
+# /etc/necropsy-dev/deploy.env
+NECROPSY_PORT=8081
+NECROPSY_SUBNET=172.30.31.0/24
+```
+
+Use a different deploy user per stack, so write access to one branch cannot run the other's deploy, and set `DEPLOY_PROGRAM` on its GitHub environment to its program's name ([ci-cd.md](ci-cd.md)). The firewall rule in the proxy section covers every stack, since the port it names is the container's own.
 
 ## Settings that differ in Docker
 
