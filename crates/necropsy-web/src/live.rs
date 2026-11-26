@@ -697,6 +697,10 @@ async fn start_container(
             tracing::error!("the range refused {}: {status} {why}", inst.label);
             let msg = if status == StatusCode::TOO_MANY_REQUESTS {
                 "The range is full right now. Try again in a few minutes."
+            } else if status == StatusCode::BAD_REQUEST && why.contains("allowlist") {
+                // The range is reached and the token works, but no deploy has shipped this
+                // lab there yet.
+                "This puzzle has not been set up on the range yet. It is shipped by a deploy."
             } else {
                 "Could not start the instance. Try again."
             };
