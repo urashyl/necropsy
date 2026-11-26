@@ -26,6 +26,12 @@
 #      limits sized to this VM's memory
 #   4. installs the spawner as a systemd service, listening on the private network
 #   5. restricts its port to the site VMs (and this VM itself)
+#   6. sets up self-updating: a timer that, every few minutes, checks the trusted
+#      branch (main) and, when a commit changed the spawner, builds it, installs it,
+#      restarts the spawner, and puts the old one back if it does not come up
+#      healthy. After this the range needs no manual updating. Only main is ever
+#      built, since the spawner runs as root and main is the branch that changes
+#      only through review
 #
 # Options:
 #   --listen IP            this VM's address on the private network (required).
@@ -33,6 +39,10 @@
 #   --port N               the port (9400)
 #   --tenant NAME:IP[:SHARE]  a site that may use this range (required, repeat)
 #   --reserve-mb N         memory kept for the OS, Docker and the spawner (1024)
+#   --repo URL             https URL the spawner is updated from (default: this
+#                          checkout's origin). It must be reachable without a login
+#   --branch NAME          the trusted branch it is built from (main)
+#   --no-auto-update       do not set up self-updating
 #   --no-firewall          do not touch the firewall
 #   --dry-run              print what would happen and change nothing
 #   -h, --help
@@ -44,6 +54,9 @@
 #   /etc/necropsy-range/tokens/NAME         each tenant's token (root only)
 #   /etc/systemd/system/necropsy-spawner.service
 #   /etc/systemd/system/necropsy-range-firewall.service
+#   /etc/systemd/system/necropsy-range-update.service and .timer
+#   /etc/necropsy-range/update.env          where it updates from
+#   /usr/local/lib/necropsy-range/update.sh the updater (it updates itself)
 #   /var/lib/necropsy-range/                allowlists and uploads (the spawner's)
 #   /run/necropsy-range/                    each lab's socket directory (tmpfs)
 
@@ -60,6 +73,7 @@ usage() { sed -n '2,200p' "${BASH_SOURCE[0]}" | sed -n '1,/^set -euo/p' | sed '$
 # ---- settings ----------------------------------------------------------------
 
 listen="" port=9400 reserve_mb=1024 do_firewall=1 dry=0
+repo="" branch=main do_update=1
 tenant_args=()
 
 CONF_DIR=/etc/necropsy-range
@@ -97,6 +111,9 @@ parse_args() {
       --port) port="${2:?--port needs a number}"; shift 2 ;;
       --tenant) tenant_args+=("${2:?--tenant needs NAME:IP}"); shift 2 ;;
       --reserve-mb) reserve_mb="${2:?--reserve-mb needs a number}"; shift 2 ;;
+      --repo) repo="${2:?--repo needs a URL}"; shift 2 ;;
+      --branch) branch="${2:?--branch needs a name}"; shift 2 ;;
+      --no-auto-update) do_update=0; shift ;;
       --no-firewall) do_firewall=0; shift ;;
       --dry-run) dry=1; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -113,6 +130,8 @@ validate_args() {
   valid_ipv4 "$listen" || die "--listen must be an IPv4 address, like 192.168.100.50"
   [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1024 ] && [ "$port" -le 65535 ] || die "--port must be a number from 1024 to 65535"
   [[ "$reserve_mb" =~ ^[0-9]+$ ]] && [ "$reserve_mb" -ge 256 ] || die "--reserve-mb must be a number, at least 256"
+  valid_branch "$branch" || die "--branch must be a plain branch name"
+  [ -z "$repo" ] || [[ "$repo" =~ ^https://[A-Za-z0-9._/-]+$ ]] || die "--repo must be an https URL like https://github.com/owner/name"
   [ ${#tenant_args[@]} -gt 0 ] || die "at least one --tenant NAME:IP is required"
   local a name ip weight i=0 seen=" "
   for a in "${tenant_args[@]}"; do
@@ -139,6 +158,7 @@ preflight() {
   fi
   [ -f "$repo_root/crates/necropsy-spawner/Cargo.toml" ] \
     || die "run this from a checkout of the necropsy repository (deploy/install-range.sh)"
+  [ "$do_update" = 0 ] || repo="$(checkout_repo_url "$repo")"
   total_mb=$(( $(awk '/^MemTotal:/ {print $2}' /proc/meminfo) / 1024 ))
   capacity_mb=$(( total_mb - reserve_mb ))
   info "this VM: $(nproc) vCPU, ${total_mb} MB, of which ${capacity_mb} MB for labs"
@@ -285,6 +305,29 @@ UNIT
   run systemctl restart necropsy-range-firewall
 }
 
+# The range keeps its own spawner up to date from the trusted branch: a timer runs
+# deploy/range/update.sh, which builds main's spawner when it changes, installs it,
+# restarts the spawner and rolls back if it is not healthy.
+install_auto_update() {
+  if [ "$do_update" = 0 ]; then
+    warn "no self-updating: update the spawner by running this script again from an up-to-date checkout"
+    return
+  fi
+  info "setting up self-updating from $branch"
+  run install -d -m 755 "$LIB_DIR"
+  if [ "$dry" = 0 ]; then
+    install -m 755 "$repo_root/deploy/range/update.sh" "$LIB_DIR/update.sh"
+    install -m 644 "$repo_root/deploy/range/necropsy-range-update.service" "$SYSTEMD_DIR/necropsy-range-update.service"
+    install -m 644 "$repo_root/deploy/range/necropsy-range-update.timer" "$SYSTEMD_DIR/necropsy-range-update.timer"
+  else
+    echo "+ install update.sh and necropsy-range-update.service and .timer" >&2
+  fi
+  printf 'REPO=%s\nBRANCH=%s\nHEALTH_URL=http://%s:%s/healthz\nSERVICE=necropsy-spawner\n' \
+    "$repo" "$branch" "$listen" "$port" | write_file "$CONF_DIR/update.env" 644
+  run systemctl daemon-reload
+  run systemctl enable --now necropsy-range-update.timer
+}
+
 summary() {
   echo >&2
   if [ "$dry" = 1 ]; then
@@ -311,11 +354,15 @@ summary() {
       echo "       --range-token-file /root/range-$name.token  (and its --domain, --proxy-ip, ...)"
     done
     echo
+    echo "The range updates itself: every few minutes it checks $branch and, when a commit"
+    echo "changed the spawner, builds and installs it (and rolls back if it is not healthy)."
+    echo "  journalctl -u necropsy-range-update -f      systemctl start necropsy-range-update   (check now)"
+    echo
     echo "Day to day:"
     echo "  systemctl status necropsy-spawner     journalctl -u necropsy-spawner -f"
     echo "  docker ps --filter label=necropsy.range=1          (the running labs)"
     echo "  sudoedit $CONF_DIR/tenants.toml     then: systemctl restart necropsy-spawner"
-    echo "Run this script again to update the spawner program or the limits (tokens are kept)."
+    echo "Run this script again to change the limits or the tenants (tokens are kept)."
   } >&2
 }
 
@@ -328,6 +375,7 @@ main() {
   write_tenants
   install_firewall
   install_spawner_service
+  install_auto_update
   summary
 }
 

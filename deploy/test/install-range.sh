@@ -68,6 +68,9 @@ check "a port below 1024 is refused"              fails dry "${ok_args[@]}" --po
 check "a port above 65535 is refused"             fails dry "${ok_args[@]}" --port 70000
 check "a tiny reserve is refused"                 fails dry "${ok_args[@]}" --reserve-mb 10
 check "an unknown option is refused"              fails dry "${ok_args[@]}" --frobnicate
+check "an http repository is refused"             fails dry "${ok_args[@]}" --repo http://github.com/o/r
+check "a bad branch is refused"                   fails dry "${ok_args[@]}" --repo https://github.com/o/r --branch '../x'
+check "a branch that looks like an option is refused" fails dry "${ok_args[@]}" --repo https://github.com/o/r --branch '-x'
 check "--help works"                              bash "$script" --help
 
 # ---- the real-mode steps, against a temporary /etc -----------------------------------
@@ -142,6 +145,36 @@ check "and jumps to the chain for the current port" grep -qx -- '-I INPUT -p tcp
 check "the jump is added after the old one is removed" bash -c 'a=$(grep -n -- "-D INPUT" <<<"$0" | cut -d: -f1); b=$(grep -n -- "-I INPUT" <<<"$0" | cut -d: -f1); [ "$a" -lt "$b" ]' "$log"
 check "--no-firewall writes nothing" bash -c 'NECROPSY_INSTALL_SOURCED=1; . "$0"; dry=0; do_firewall=0; LIB_DIR="$1/none"; run() { :; }; install_firewall' "$script" "$fw_dir"
 
+# ---- self-updating ---------------------------------------------------------------
+
+up_dir="$work/up"; mkdir -p "$up_dir/lib" "$up_dir/systemd" "$up_dir/conf"
+install_update() { # extra shell run first
+  NECROPSY_INSTALL_SOURCED=1 bash -c '
+    . "$0"; CONF_DIR="$1/conf"; LIB_DIR="$1/lib"; SYSTEMD_DIR="$1/systemd"; repo_root="$2"
+    dry=0; run() { :; }
+    listen=10.9.9.9; port=9400; repo=https://github.com/o/r; branch=main; do_update=1
+    '"${2:-:}"'
+    install_auto_update' "$script" "$up_dir" "$repo_root" 2>/dev/null
+}
+check "the updater step runs"                     install_update
+check "the updater is installed, executable"      test -x "$up_dir/lib/update.sh"
+check "...and is the repository's own"            cmp -s "$up_dir/lib/update.sh" "$repo_root/deploy/range/update.sh"
+check "its service and timer are installed"       test -f "$up_dir/systemd/necropsy-range-update.service" -a -f "$up_dir/systemd/necropsy-range-update.timer"
+check "it updates from the repository named"      grep -qx 'REPO=https://github.com/o/r' "$up_dir/conf/update.env"
+check "...from the trusted branch"                grep -qx 'BRANCH=main' "$up_dir/conf/update.env"
+check "...and checks the spawner where it listens" grep -qx 'HEALTH_URL=http://10.9.9.9:9400/healthz' "$up_dir/conf/update.env"
+check "...restarting the spawner's own unit"      grep -qx 'SERVICE=necropsy-spawner' "$up_dir/conf/update.env"
+check "the settings file is not writable by others" equals "$(stat -c %a "$up_dir/conf/update.env")" 644
+check "the unit runs the installed updater"       grep -qx 'ExecStart=/usr/local/lib/necropsy-range/update.sh' "$up_dir/systemd/necropsy-range-update.service"
+check "the timer checks every few minutes"        grep -q 'OnUnitInactiveSec=5min' "$up_dir/systemd/necropsy-range-update.timer"
+check "...and after boot"                         grep -q 'OnBootSec=' "$up_dir/systemd/necropsy-range-update.timer"
+rm -f "$up_dir/lib/update.sh"
+check "--no-auto-update installs nothing"         bash -c 'NECROPSY_INSTALL_SOURCED=1; . "$0"; dry=0; do_update=0; LIB_DIR="$1/lib"; run() { :; }; install_auto_update' "$script" "$up_dir"
+check "...and the updater is not there"           test ! -e "$up_dir/lib/update.sh"
+# The updater's own paths and the unit's agree with what this installer writes.
+check "the installer's lib directory is the one the unit runs from" bash -c 'grep -q "^LIB_DIR=/usr/local/lib/necropsy-range" "$0"' "$script"
+check "the updater's default state directory is the spawner's family" grep -q 'STATE_DIR=/var/lib/necropsy-range/updater' "$repo_root/deploy/range/update.sh"
+
 # ---- the unit -----------------------------------------------------------------------
 
 unit="$repo_root/deploy/range/necropsy-spawner.service"
@@ -160,11 +193,15 @@ check "it builds the spawner in a container"      grep -q 'docker run --rm .*-al
 check "it writes both tenants"                    bash -c 'grep -q "tenant prod (10.0.0.21)" <<<"$0" && grep -q "tenant dev (10.0.0.22)" <<<"$0"' "$out"
 check "it restricts the port"                     grep -q 'restricting port 9400 to the site VMs' <<<"$out"
 check "it starts the spawner"                     grep -q 'systemctl restart necropsy-spawner' <<<"$out"
+check "it sets up self-updating from main"        grep -q 'setting up self-updating from main' <<<"$out"
+check "...and starts the timer"                   grep -q 'systemctl enable --now necropsy-range-update.timer' <<<"$out"
+check "it says the range updates itself"          grep -q 'The range updates itself' <<<"$out"
 check "it tells where each token is"              grep -q 'sudo cat /etc/necropsy-range/tokens/prod' <<<"$out"
 check "it tells what to run on each site"         bash -c 'grep -q -- "--range-url http://10.9.9.9:9400 --range-tenant prod" <<<"$0" && grep -q -- "--range-tenant dev" <<<"$0"' "$out"
 check "it never prints a token"                   fails grep -Eq '[0-9a-f]{64}' <<<"$out"
 check "it says nothing was changed"               grep -q 'Dry run: nothing was changed' <<<"$out"
 out="$(dry --listen 10.9.9.9 --tenant prod:10.0.0.21 --no-firewall --port 9555 2>&1)"
+check "--no-auto-update warns that updating is manual" bash -c 'dry() { bash "$0" --dry-run "$@"; }; dry --listen 10.9.9.9 --tenant prod:10.0.0.22 --no-auto-update 2>&1 | grep -q "no self-updating"' "$script"
 check "--no-firewall warns instead"               grep -q 'no firewall' <<<"$out"
 check "--port is used"                            grep -q 'http://10.9.9.9:9555' <<<"$out"
 check "a dry run changed nothing here" \

@@ -49,7 +49,7 @@ sudo deploy/install-range.sh \
 
 `--listen` is this VM's address on the private network. A tenant is `NAME:ADDRESS`, the name of a site and the address of its VM. The first tenant gets twice the share of the others unless you give a weight (`dev:192.168.100.22:1`). Add `--dry-run` to see everything first.
 
-It installs Docker, builds the spawner in a throwaway Rust container (as a static binary, so this VM needs no Rust), makes a **token for each tenant** and limits sized to the VM's memory, starts the spawner under systemd, and adds a firewall rule so only the tenants' addresses can reach its port. It is safe to run again: it updates the program and the limits and keeps the tokens.
+It installs Docker, builds the spawner in a throwaway Rust container (as a static binary, so this VM needs no Rust), makes a **token for each tenant** and limits sized to the VM's memory, starts the spawner under systemd, and adds a firewall rule so only the tenants' addresses can reach its port. It is safe to run again: it updates the limits and the tenants and keeps the tokens. It also sets up the range's self-updating (below), so after this one run the spawner needs no manual updating.
 
 It ends by telling you where each token is (`/etc/necropsy-range/tokens/<tenant>`, root only) and what to run on each site.
 
@@ -84,7 +84,16 @@ A deploy on a site VM, before it moves any traffic:
 
 The range applies a new allowlist at once, with no restart, and labs already running are not touched. So adding a lab is a commit: `range/<name>/`, its entry in `range/images.toml`, and its pack.
 
-The spawner program itself is **not** updated by site deploys: it runs as root on the range VM, and a site, least of all the dev branch, should not be able to change what runs there. Update it by running `deploy/install-range.sh` again from an up-to-date checkout.
+**The spawner program updates itself, from `main` only.** It runs as root on the range VM, so a site deploy, and least of all the dev branch, must not be able to change it. Instead the range VM runs a timer (`necropsy-range-update.timer`) that every few minutes fetches the tip of `main` from the repository and, when a new commit changed the spawner (or its unit, or the updater), builds it in a throwaway Rust container, installs it, restarts the spawner, and checks `/healthz`. If the new spawner does not come up healthy, the previous program is put back and that commit is not retried until a newer one arrives. Commits that do not touch the spawner cost a single `git fetch`. Labs that are running are not affected, because the spawner finds them again when it starts.
+
+Only `main` is ever built, and only forward: a rewritten history is refused. `main` is the branch that changes only through a reviewed pull request, which is what makes it safe for it to change root code. So the order for a spawner change is: merge it to `main`; the range updates within minutes. It cannot be tried from `dev` first.
+
+```bash
+journalctl -u necropsy-range-update -f           # what it did
+sudo systemctl start necropsy-range-update       # check now
+```
+
+It is set up by `install-range.sh` (add `--no-auto-update` to opt out, `--branch` to follow something else). A one-time bootstrap is unavoidable: the very first install, and any change to `install-range.sh` itself, still run by hand.
 
 CI also tests the range against real Docker on every push (`deploy/range/ci-test.sh`): it starts the real spawner with two tenants, pushes the labs, runs the self-test and each lab's own test (`range/<lab>/test.sh`), and checks that tenants cannot touch each other, that an expired lab is reaped and that a full range refuses another.
 

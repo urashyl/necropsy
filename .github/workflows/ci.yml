@@ -46,7 +46,7 @@ jobs:
           for f in deploy/install.sh deploy/bluegreen/deploy.sh deploy/bluegreen/install-system.sh deploy/bluegreen/test/run.sh \
                    deploy/install-site.sh deploy/install-range.sh deploy/lib/common.sh \
                    deploy/test/common.sh deploy/test/install-site.sh deploy/test/install-range.sh \
-                   deploy/range/ci-test.sh range/build.sh range/webshell-lab/entrypoint.sh range/webshell-lab/test.sh; do
+                   deploy/range/ci-test.sh deploy/range/update.sh deploy/test/range-update.sh range/build.sh range/webshell-lab/entrypoint.sh range/webshell-lab/test.sh; do
             bash -n "$f"
           done
 
@@ -55,6 +55,7 @@ jobs:
           deploy/test/common.sh
           deploy/test/install-site.sh
           deploy/test/install-range.sh
+          deploy/test/range-update.sh
 
       # As root, so the tests of the real install (clean environment, no
       # `switch`, https only, root-owned settings) run too. They use a fake
