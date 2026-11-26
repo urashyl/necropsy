@@ -46,6 +46,13 @@ ok "the shell is hidden without its header"
 
 run() { lab_curl -f -H 'X-Auth: 4c1f9ab2' --data-urlencode "q=$1" "${shell[@]}"; }
 
+# A command that never returns (someone's `grep -R x /`) must not freeze the lab for
+# the next request.
+( run 'sleep 25' >/dev/null 2>&1 & ) 
+sleep 1
+[ "$(run 'echo alive' | tr -d '[:space:]')" = alive ] || die "a hung command blocked the lab"
+ok "a hung command does not block the lab"
+
 out="$(run 'ls -a /tmp')"
 grep -q '\.stage' <<<"$out" || die "the stash directory is not where the puzzle says (ls -a /tmp: $out)"
 out="$(run 'cat /tmp/.stage/archive-0412.txt')"

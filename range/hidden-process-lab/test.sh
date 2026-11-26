@@ -39,6 +39,13 @@ ok "the site answers"
 code="$(lab_curl -o /dev/null -w '%{http_code}' -d 'q=id' "$console")"
 [ "$code" = 401 ] || die "the console answers without its token (HTTP $code)"
 run() { lab_curl -f -H 'X-Console: support-7f3a' --data-urlencode "q=$1" "$console"; }
+
+# A command that never returns (someone's `grep -R x /`) must not freeze the lab for
+# the next request.
+( run 'sleep 25' >/dev/null 2>&1 & ) 
+sleep 1
+[ "$(run 'echo alive' | tr -d '[:space:]')" = alive ] || die "a hung command blocked the lab"
+ok "a hung command does not block the lab"
 [ "$(tr -d '[:space:]' <<<"$(run 'id -u')")" = 10001 ] || die "the console is not running as the unprivileged user"
 ok "the console needs its token, and runs unprivileged"
 

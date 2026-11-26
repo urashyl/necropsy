@@ -18,7 +18,8 @@ db_dump    wp_users    3 rows
 exfil_key  ${FLAG}
 STAGED
 
-php -S 127.0.0.1:8080 -t /srv/site >/dev/null 2>&1 &
+# Several workers: a command that never returns (grep -R /) must not block the page for everyone.
+PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8080 -t /srv/site >/dev/null 2>&1 &
 
 exec socat UNIX-LISTEN:/run/sock/app.sock,fork,mode=666,unlink-early \
      TCP:127.0.0.1:8080
