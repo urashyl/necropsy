@@ -518,7 +518,7 @@ pub fn layout(
                         }
                         div.header-tools {
                             @if let Some(u) = viewer {
-                                a.user-link href="/account" aria-current=[current(Nav::Account)] { (u.username) }
+                                a.user-link.user-name href="/account" title=(u.username) aria-current=[current(Nav::Account)] { (u.username) }
                                 @if u.is_admin {
                                     a.user-link href="/admin" aria-current=[current(Nav::Admin)] { "Admin" }
                                 }

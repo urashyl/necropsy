@@ -3717,3 +3717,34 @@ fn no_server_timezone_is_used() {
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
     assert!(!cargo.contains(&["chr", "ono"].concat()));
 }
+
+#[tokio::test]
+async fn guessing_instance_labels_is_throttled() {
+    let s = live_site().await;
+    let (_, label) = spin_up(&s, "scanner", "kit-left-open").await;
+    // A real instance answers.
+    assert_eq!(
+        live_send(&s, &label, "GET", "/robots.txt", &[], "")
+            .await
+            .status,
+        StatusCode::OK
+    );
+    // A client that keeps asking for labels that do not exist is cut off...
+    let mut limited = false;
+    for i in 0..40 {
+        let r = live_send(&s, &format!("guess-{i}-word"), "GET", "/", &[], "").await;
+        if r.status == StatusCode::TOO_MANY_REQUESTS {
+            limited = true;
+            break;
+        }
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
+    }
+    assert!(limited, "guessing was never throttled");
+    // ...and while it lasts, so is a lookup that would have been right.
+    assert_eq!(
+        live_send(&s, &label, "GET", "/robots.txt", &[], "")
+            .await
+            .status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}

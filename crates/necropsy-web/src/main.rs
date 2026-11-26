@@ -476,11 +476,9 @@ async fn security_headers(req: Request, next: Next) -> Response {
 /// $remote_addr;`). A header holding a list, like `X-Forwarded-For`, uses its
 /// last entry, the one your proxy appended. A value that is not an IP address
 /// is ignored, so a client cannot make up arbitrary keys.
-async fn client_ip_layer(
-    State(state): State<Arc<AppState>>,
-    mut req: Request,
-    next: Next,
-) -> Response {
+/// The client's address as the rate limits see it: the proxy's header when the peer
+/// is a trusted proxy, otherwise the peer itself.
+pub(crate) fn client_ip_for(state: &AppState, req: &Request) -> String {
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -498,10 +496,18 @@ async fn client_ip_layer(
                 .and_then(|v| v.rsplit(',').next())
                 .and_then(|s| s.trim().parse::<std::net::IpAddr>().ok())
         });
-    let ip = from_header
+    from_header
         .or(peer)
         .map(|ip| ip.to_canonical().to_string())
-        .unwrap_or_else(|| "unknown".into());
+        .unwrap_or_else(|| "unknown".into())
+}
+
+async fn client_ip_layer(
+    State(state): State<Arc<AppState>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let ip = client_ip_for(&state, &req);
     req.extensions_mut().insert(ClientIp(ip));
     next.run(req).await
 }
