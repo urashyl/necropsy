@@ -2579,8 +2579,8 @@ async fn live_site_on(today: &str) -> Site {
 }
 
 #[tokio::test]
-async fn live_puzzles_appear_on_their_day_and_on_the_live_page() {
-    // c2-gate is dated 2026-11-27, kit-left-open 2026-11-29.
+async fn live_dailies_are_dailies_and_the_library_holds_the_rest() {
+    // c2-gate is a live daily dated 2026-11-27, kit-left-open one dated 2026-11-29.
     let s = live_site_on("2026-11-27").await;
     assert_eq!(s.get("/p/c2-gate", None).await.status, StatusCode::OK);
     assert_eq!(
@@ -2588,42 +2588,53 @@ async fn live_puzzles_appear_on_their_day_and_on_the_live_page() {
         StatusCode::NOT_FOUND,
         "not released yet"
     );
-
     let page = s.get("/p/c2-gate", None).await.body;
     assert!(page.contains("Daily #4"), "it is a daily: {page}");
 
-    let list = s.get("/live", None).await;
-    assert_eq!(list.status, StatusCode::OK);
-    assert!(list.body.contains("Answer the door"));
-    assert!(
-        !list.body.contains("Kit left open"),
-        "unreleased puzzles are not listed"
-    );
-    assert!(list.body.contains("href=\"/login\""), "it says to log in");
-    // Static dailies are not on the live page, and live ones are in the archive.
-    assert!(!list.body.contains("ILOVEYOU: the source"));
-    assert!(s.get("/learn", None).await.body.contains("href=\"/live\""));
+    // There is no Live tab: the nav has the library, and a live daily is in the
+    // archive like any other.
+    let learn = s.get("/learn", None).await.body;
+    assert!(!learn.contains("href=\"/live\""), "no Live tab");
+    assert!(learn.contains("href=\"/library\""));
+    assert!(s
+        .get("/archive", None)
+        .await
+        .body
+        .contains("Answer the door"));
 
-    let later = live_site_on("2026-11-29").await;
-    assert!(later
-        .get("/live", None)
-        .await
-        .body
-        .contains("Kit left open"));
+    // The library holds the puzzles that are not part of the daily rotation, and
+    // none of the dailies, live or not.
+    let list = s.get("/library", None).await;
+    assert_eq!(list.status, StatusCode::OK);
+    assert!(list.body.contains("Guestbook guest") && list.body.contains("Quiet implant"));
+    assert!(
+        !list.body.contains("Answer the door"),
+        "dailies are not in the library"
+    );
+    assert!(!list.body.contains("ILOVEYOU: the source"));
+    assert!(list.body.contains("href=\"/login\""), "it says to log in");
+    let lib = s.get("/p/cookie-logger", None).await.body;
+    assert!(lib.contains("Library 1 of"), "{lib}");
+    assert!(!lib.contains("Daily #"));
+
+    // The old address leads to the library.
+    let old = s.get("/live", None).await;
+    assert!(old.status.is_redirection(), "{:?}", old.status);
+
     // Labs need the range, so with none configured they are not loaded.
-    assert!(!later
-        .get("/live", None)
-        .await
-        .body
-        .contains("Back inside the shell"));
+    assert!(!list.body.contains("Back inside the shell"));
 }
 
 #[tokio::test]
-async fn without_live_puzzles_there_is_no_live_page_or_link() {
+async fn without_live_puzzles_the_library_has_no_link() {
     let s = site().await;
-    assert!(!s.get("/learn", None).await.body.contains("href=\"/live\""));
-    let list = s.get("/live", None).await;
-    assert!(!list.body.contains("Answer the door"));
+    assert!(!s
+        .get("/learn", None)
+        .await
+        .body
+        .contains("href=\"/library\""));
+    let list = s.get("/library", None).await;
+    assert!(!list.body.contains("Guestbook guest"));
     assert_eq!(
         s.get("/p/c2-gate", None).await.status,
         StatusCode::NOT_FOUND

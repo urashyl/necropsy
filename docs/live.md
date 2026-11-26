@@ -107,7 +107,7 @@ Real samples are fine. A `file` response is sent as is, so give an executable th
 
 ## The malware analysis library
 
-The always-available `live` track is a library that grows by adding a directory. Each puzzle in it is built the same way: the instance serves a **sample** (the thing to analyse), and also plays the **operator's server** the sample talks to. The player has to read the sample, learn how it hides its server's address and how it authenticates, and then do what the sample would do against their own instance.
+The Library (the always-available `library` track) is where these live. It grows by adding a directory, and holds any kind of puzzle; the ones below are live. Each puzzle in it is built the same way: the instance serves a **sample** (the thing to analyse), and also plays the **operator's server** the sample talks to. The player has to read the sample, learn how it hides its server's address and how it authenticates, and then do what the sample would do against their own instance.
 
 | # | Puzzle | The sample | What it teaches |
 | --- | --- | --- | --- |

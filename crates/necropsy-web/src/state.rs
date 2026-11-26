@@ -55,7 +55,7 @@ impl RenderedPack {
         match m.track {
             Track::Intro => format!("Intro #{}", m.number),
             Track::Daily => format!("Daily #{}", m.number),
-            Track::Live => format!("Live #{}", m.number),
+            Track::Library => format!("Library #{}", m.number),
         }
     }
 }
@@ -170,7 +170,7 @@ impl AppState {
     /// be read by its page, its files, its answer check or its explainer.
     fn is_visible(&self, p: &RenderedPack) -> bool {
         match p.pack.meta.track {
-            Track::Intro | Track::Live => true,
+            Track::Intro | Track::Library => true,
             Track::Daily => p
                 .pack
                 .meta
@@ -198,12 +198,12 @@ impl AppState {
         self.all.iter().filter(|p| p.pack.is_live()).collect()
     }
 
-    /// Every live-mode puzzle a player can start now: the always-available live
-    /// track, plus dailies that are live once they are released.
-    pub fn lives(&self) -> Vec<&RenderedPack> {
+    /// The library, in order: puzzles that are not part of the daily rotation.
+    /// Always available.
+    pub fn library(&self) -> Vec<&RenderedPack> {
         self.all
             .iter()
-            .filter(|p| p.pack.is_live() && self.is_visible(p))
+            .filter(|p| p.pack.meta.track == Track::Library)
             .collect()
     }
 
@@ -256,11 +256,7 @@ impl AppState {
         let list = match p.pack.meta.track {
             Track::Intro => self.intros(),
             Track::Daily => self.released_dailies(),
-            Track::Live => self
-                .all
-                .iter()
-                .filter(|q| q.pack.meta.track == Track::Live)
-                .collect(),
+            Track::Library => self.library(),
         };
         let Some(pos) = list.iter().position(|q| q.pack.meta.id == p.pack.meta.id) else {
             return (None, None);
