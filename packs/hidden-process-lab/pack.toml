@@ -1,0 +1,13 @@
+id = "hidden-process-lab"
+track = "daily"
+date = "2026-12-03"
+number = 10
+title = "Not in the list, live"
+difficulty = 4
+modes = ["web", "live"]
+tags = ["linux", "rootkit", "persistence", "live"]
+hints = [
+  "The admin's support console runs commands for anyone who sends the right header. Read the notes for the header, then try `ps` and `ls /proc`.",
+  "Something is changing what every normal program sees. Look up `/etc/ld.so.preload`. Hidden is not the same as gone: `/proc/<pid>/` still works if you know the pid, and `cat` can open files without listing them.",
+  "The process is running with a secret in its environment. Try the pids in a loop (`for i in $(seq 1 400); do ...; done`) and read `/proc/$i/environ` where `cmdline` looks wrong.",
+]

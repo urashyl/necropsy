@@ -1,7 +1,7 @@
 id = "kerberoast"
 track = "daily"
-date = "2026-12-03"
-number = 10
+date = "2026-12-04"
+number = 11
 title = "Roasting"
 difficulty = 3
 modes = ["web"]

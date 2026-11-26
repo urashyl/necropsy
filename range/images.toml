@@ -14,3 +14,11 @@ cpus = 0.5
 pids = 64
 tmpfs_mb = 16
 uid = 10001
+
+[images.hidden-process-lab]
+image = "necropsy-range/hidden-process-lab:1"
+memory_mb = 128
+cpus = 0.5
+pids = 64
+tmpfs_mb = 16
+uid = 10001

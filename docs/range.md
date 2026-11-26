@@ -127,7 +127,7 @@ For reference (the web server and the deploy program are its only clients). Ever
 | | |
 | --- | --- |
 | `GET /healthz` | `ok`, no token needed |
-| `POST /v1/instances` | start a lab: `{"id", "image", "ttl_secs", "env": {"NECROPSY_FLAG", "NECROPSY_INSTANCE"}}` |
+| `POST /v1/instances` | start a lab: `{"id", "image", "ttl_secs", "env": {"NECROPSY_FLAG", "NECROPSY_INSTANCE"}}` (the flag is handed to the lab as a file, see below) |
 | `GET /v1/instances` | this tenant's labs |
 | `POST /v1/instances/{id}/touch` | extend: `{"ttl_secs"}` |
 | `DELETE /v1/instances/{id}` | stop |
@@ -142,7 +142,7 @@ For reference (the web server and the deploy program are its only clients). Ever
 1. `range/<name>/` with a `Dockerfile` and whatever it needs. The contract with the spawner:
    - it **listens on a unix socket at `/run/sock/app.sock`** (a directory the spawner mounts from the range VM, writable by the image's user, so nothing is exposed on any network);
    - it runs as the user named in `images.toml` (`uid`);
-   - it reads its flag from `$NECROPSY_FLAG` and puts it wherever the puzzle hides it (in the writable `/tmp`, since the root is read-only);
+   - it reads its flag from the file `/run/sock/flag` (the spawner writes it there, readable once by the lab's user; delete it after reading) and puts it wherever the puzzle hides it (in the writable `/tmp`, since the root is read-only);
    - HTTP/1.1 over that socket. WebSockets and non-HTTP services are not supported.
 
    Most servers listen on TCP. The `socat` line at the end of `range/webshell-lab/entrypoint.sh` bridges loopback TCP to the socket, which is all it takes.
@@ -192,3 +192,5 @@ docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'
 ```
 
 Start with the written limits, watch real use for a week, and raise them if the memory you see is nearer "Typical" than "Safe".
+
+The flag is a file, not an environment variable, on purpose: environment variables of PID 1 are readable from `/proc/1/environ` by anyone with a shell in the lab. Read the file once in the entrypoint, delete it, and give the value only to the process that should hold it (as `hidden-process-lab` does).

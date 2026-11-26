@@ -1,0 +1,10 @@
+# Illustrative: the host and the incident are made up.
+
+Ironbridge Fitness web box, ticket 4417
+
+- Firewall: the box opens a TLS connection to a stranger every few minutes.
+- ps, top, ls /proc: nothing unusual.
+- Support console is at /console.php. It wants the header
+      X-Console: support-7f3a
+  and a form field named q holding the command, e.g.
+      curl -H 'X-Console: support-7f3a' -d 'q=id' http://<your-instance>/console.php

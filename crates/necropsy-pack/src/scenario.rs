@@ -32,7 +32,8 @@
 //! bodies may use templates, which are filled in per instance:
 //! `{{flag}}`, `{{instance}}`, `{{host}}` and `{{d:name}}`, a value derived
 //! from the instance's secret seed, different for every player (credentials,
-//! tokens and the like).
+//! tokens and the like). Any of them can be wrapped in an encoding, for a value
+//! hidden in obfuscated code: `{{b64:host}}`, `{{hex:flag}}`, `{{rev:d:token}}`.
 
 use std::collections::BTreeMap;
 

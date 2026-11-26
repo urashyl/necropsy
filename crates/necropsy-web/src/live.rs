@@ -203,14 +203,46 @@ pub fn flag_of(scenario: &Scenario, pack_id: &str, seed: &str) -> String {
     )
 }
 
-struct Ctx<'a> {
+pub struct Ctx<'a> {
     flag: String,
     seed: &'a str,
     label: &'a str,
     host: &'a str,
 }
 
-/// Fills in `{{flag}}`, `{{instance}}`, `{{host}}` and `{{d:name}}`.
+/// The plain value of a template name: `flag`, `instance`, `host`, or `d:<name>`.
+fn plain_value(name: &str, ctx: &Ctx) -> Option<String> {
+    match name {
+        "flag" => Some(ctx.flag.clone()),
+        "instance" => Some(ctx.label.to_owned()),
+        "host" => Some(ctx.host.to_owned()),
+        _ => name
+            .strip_prefix("d:")
+            .map(|d| derive(ctx.seed, &format!("d:{d}"))[..12].to_owned()),
+    }
+}
+
+/// A template name, possibly wrapped in an encoding: `b64:host`, `hex:flag`,
+/// `rev:d:key`. For puzzles that hide a per-player value in obfuscated code, where
+/// the encoded form cannot be written out ahead of time.
+fn value_of(name: &str, ctx: &Ctx) -> Option<String> {
+    if let Some(inner) = name.strip_prefix("b64:") {
+        let v = plain_value(inner, ctx)?;
+        return Some(base64::engine::general_purpose::STANDARD.encode(v));
+    }
+    if let Some(inner) = name.strip_prefix("hex:") {
+        let v = plain_value(inner, ctx)?;
+        return Some(v.bytes().map(|b| format!("{b:02x}")).collect());
+    }
+    if let Some(inner) = name.strip_prefix("rev:") {
+        let v = plain_value(inner, ctx)?;
+        return Some(v.chars().rev().collect());
+    }
+    plain_value(name, ctx)
+}
+
+/// Fills in `{{flag}}`, `{{instance}}`, `{{host}}` and `{{d:name}}`, and the
+/// encoded forms `{{b64:X}}`, `{{hex:X}}` and `{{rev:X}}` of any of those.
 fn render(t: &str, ctx: &Ctx) -> String {
     let mut out = String::with_capacity(t.len());
     let mut rest = t;
@@ -222,23 +254,38 @@ fn render(t: &str, ctx: &Ctx) -> String {
             return out;
         };
         let name = &after[..j];
-        match name {
-            "flag" => out.push_str(&ctx.flag),
-            "instance" => out.push_str(ctx.label),
-            "host" => out.push_str(ctx.host),
-            _ => match name.strip_prefix("d:") {
-                Some(d) => out.push_str(&derive(ctx.seed, &format!("d:{d}"))[..12]),
-                None => {
-                    out.push_str("{{");
-                    out.push_str(name);
-                    out.push_str("}}");
-                }
-            },
+        match value_of(name, ctx) {
+            Some(v) => out.push_str(&v),
+            None => {
+                out.push_str("{{");
+                out.push_str(name);
+                out.push_str("}}");
+            }
         }
         rest = &after[j + 2..];
     }
     out.push_str(rest);
     out
+}
+
+#[cfg(test)]
+pub fn template_context_for_tests<'a>(
+    seed: &'a str,
+    label: &'a str,
+    host: &'a str,
+    flag: &str,
+) -> Ctx<'a> {
+    Ctx {
+        flag: flag.to_owned(),
+        seed,
+        label,
+        host,
+    }
+}
+
+#[cfg(test)]
+pub fn render_for_tests(t: &str, ctx: &Ctx) -> String {
+    render(t, ctx)
 }
 
 // ------------------------------------------------------------------ requests
