@@ -1,6 +1,7 @@
 id = "c2-gate"
-track = "live"
-number = 1
+track = "daily"
+date = "2026-11-27"
+number = 4
 title = "Answer the door"
 difficulty = 3
 modes = ["web", "live"]

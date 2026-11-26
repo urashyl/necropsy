@@ -46,12 +46,26 @@ ok "the shell is hidden without its header"
 
 run() { lab_curl -f -H 'X-Auth: 4c1f9ab2' --data-urlencode "q=$1" "${shell[@]}"; }
 
+# A command that never returns (someone's `grep -R x /`) must not freeze the lab for
+# the next request.
+( run 'sleep 25' >/dev/null 2>&1 & ) 
+sleep 1
+[ "$(run 'echo alive' | tr -d '[:space:]')" = alive ] || die "a hung command blocked the lab"
+ok "a hung command does not block the lab"
+
 out="$(run 'ls -a /tmp')"
 grep -q '\.stage' <<<"$out" || die "the stash directory is not where the puzzle says (ls -a /tmp: $out)"
 out="$(run 'cat /tmp/.stage/archive-0412.txt')"
 grep -qF "$flag" <<<"$out" || die "the flag is not in the stash"
 grep -q 'exfil_key' <<<"$out" || die "the stash does not look like one"
 ok "the flag is in the stash"
+
+# The flag must not be readable from the environment of PID 1 or any process: it is
+# delivered as a file the lab reads once, so only the stash holds it.
+leak="$(run 'for p in $(ls /proc | grep -E "^[0-9]+$"); do tr "\\0" "\\n" < /proc/$p/environ 2>/dev/null; done')"
+grep -qF "$flag" <<<"$leak" && die "the flag is in a process's environment, where a shell can read it"
+grep -q 'NECROPSY_FLAG' <<<"$leak" && die "NECROPSY_FLAG is in a process's environment"
+ok "the flag is in no process's environment"
 
 [ "$(tr -d '[:space:]' <<<"$(run 'id -u')")" = 10001 ] || die "the shell is not running as the unprivileged user"
 out="$(run 'touch /usr/x 2>&1; echo rc=$?')"

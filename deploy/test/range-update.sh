@@ -34,7 +34,7 @@ git -C "$src" config user.email t@t; git -C "$src" config user.name t
 mkdir -p "$src/crates/necropsy-spawner" "$src/deploy/range" "$src/docs"
 printf 'ARG RUST_VERSION=1.100\nFROM scratch\n' > "$src/Dockerfile"
 echo '[workspace]' > "$src/Cargo.toml"; echo '# lock' > "$src/Cargo.lock"
-echo v1 > "$src/crates/necropsy-spawner/marker.txt"
+echo v1 > "$src/crates/necropsy-spawner/marker.txt"; echo "[package]" > "$src/crates/necropsy-spawner/Cargo.toml"
 echo unit-v1 > "$src/deploy/range/necropsy-spawner.service"
 echo updater-v1 > "$src/deploy/range/update.sh"
 echo docs-v1 > "$src/docs/readme.txt"
@@ -179,6 +179,21 @@ check "a rewritten history is refused"               test $? -ne 0
 check "...with the reason"                           out_has "history was rewritten"
 check "...and nothing is built or restarted"         equals "$(since "$m" | grep -c 'docker run\|systemctl restart')" 0
 check "...and the program is untouched"              equals "$(cat "$work/bin/necropsy-spawner")" v6
+
+# A branch with no spawner in it yet (main, before the change that adds it) is not a failure.
+git -C "$src" checkout -q --orphan bare; git -C "$src" rm -rq --cached . >/dev/null; rm -rf "$src/crates"
+echo hello > "$src/README"; git -C "$src" add README; git -C "$src" commit -q -m "no spawner here"; git -C "$src" push -q origin bare
+git -C "$src" checkout -q -f main
+rm -f "$work/state/failed"   # left by the rewritten-history case above
+before="$(installed)"; keep="$(cat "$work/bin/necropsy-spawner")"
+cp "$conf" "$work/update.env.bak"; sed -i 's/^BRANCH=.*/BRANCH=bare/' "$conf"
+m="$(mark)"; update
+check "a branch with no spawner is not an error"      test $? -eq 0
+check "...it says so"                                 out_has "has no spawner in it"
+check "...builds and restarts nothing"                equals "$(since "$m" | grep -c 'docker run\|systemctl restart')" 0
+check "...leaves the installed spawner alone"         equals "$(cat "$work/bin/necropsy-spawner")" "$keep"
+check "...records nothing, so it looks again later"   bash -c "[ \"\$(cat '$work/state/installed')\" = '$before' ] && [ ! -e '$work/state/failed' ]"
+cp "$work/update.env.bak" "$conf"
 
 # ---- settings are checked ------------------------------------------------------------
 

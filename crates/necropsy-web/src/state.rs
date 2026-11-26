@@ -198,11 +198,12 @@ impl AppState {
         self.all.iter().filter(|p| p.pack.is_live()).collect()
     }
 
-    /// The live track, in order. Always available.
+    /// Every live-mode puzzle a player can start now: the always-available live
+    /// track, plus dailies that are live once they are released.
     pub fn lives(&self) -> Vec<&RenderedPack> {
         self.all
             .iter()
-            .filter(|p| p.pack.meta.track == Track::Live)
+            .filter(|p| p.pack.is_live() && self.is_visible(p))
             .collect()
     }
 
@@ -255,7 +256,11 @@ impl AppState {
         let list = match p.pack.meta.track {
             Track::Intro => self.intros(),
             Track::Daily => self.released_dailies(),
-            Track::Live => self.lives(),
+            Track::Live => self
+                .all
+                .iter()
+                .filter(|q| q.pack.meta.track == Track::Live)
+                .collect(),
         };
         let Some(pos) = list.iter().position(|q| q.pack.meta.id == p.pack.meta.id) else {
             return (None, None);

@@ -89,9 +89,12 @@ fn now() -> i64 {
 /// A lab id: what the site uses as the lab's subdomain.
 pub fn valid_id(id: &str) -> bool {
     (1..=40).contains(&id.len())
+        && !id.starts_with('-')
+        && !id.ends_with('-')
+        && !id.contains("--")
         && id
             .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn valid_env_value(v: &str) -> bool {
@@ -267,6 +270,22 @@ impl App {
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| e.to_string())?;
 
+        // The flag goes to the lab as a file, never in its environment: with a process
+        // supervisor at PID 1 an environment variable is readable from /proc/1/environ
+        // by anyone with a shell in the lab, which would skip every puzzle. The lab
+        // reads the file once, as it starts, and deletes it (see docs/range.md).
+        let mut env = req.env.clone();
+        if let Some(flag) = env.remove("NECROPSY_FLAG") {
+            let path = dir.join("flag");
+            tokio::fs::write(&path, flag)
+                .await
+                .map_err(|e| e.to_string())?;
+            std::os::unix::fs::chown(&path, Some(img.uid), Some(img.uid))
+                .map_err(|e| format!("chown: {e}"))?;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400))
+                .map_err(|e| e.to_string())?;
+        }
+
         let expires = self
             .lock()
             .get(&(tenant.to_owned(), req.id.clone()))
@@ -279,7 +298,7 @@ impl App {
             img,
             &dir,
             expires,
-            &req.env,
+            &env,
         );
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
         self.docker.run(&refs).await?;

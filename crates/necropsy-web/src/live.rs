@@ -28,7 +28,7 @@ use necropsy_pack::Pack;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::auth::{new_token, random_string, MaybeUser};
+use crate::auth::{new_token, random_index, MaybeUser};
 use crate::db::{now, Instance};
 use crate::state::AppState;
 
@@ -203,14 +203,46 @@ pub fn flag_of(scenario: &Scenario, pack_id: &str, seed: &str) -> String {
     )
 }
 
-struct Ctx<'a> {
+pub struct Ctx<'a> {
     flag: String,
     seed: &'a str,
     label: &'a str,
     host: &'a str,
 }
 
-/// Fills in `{{flag}}`, `{{instance}}`, `{{host}}` and `{{d:name}}`.
+/// The plain value of a template name: `flag`, `instance`, `host`, or `d:<name>`.
+fn plain_value(name: &str, ctx: &Ctx) -> Option<String> {
+    match name {
+        "flag" => Some(ctx.flag.clone()),
+        "instance" => Some(ctx.label.to_owned()),
+        "host" => Some(ctx.host.to_owned()),
+        _ => name
+            .strip_prefix("d:")
+            .map(|d| derive(ctx.seed, &format!("d:{d}"))[..12].to_owned()),
+    }
+}
+
+/// A template name, possibly wrapped in an encoding: `b64:host`, `hex:flag`,
+/// `rev:d:key`. For puzzles that hide a per-player value in obfuscated code, where
+/// the encoded form cannot be written out ahead of time.
+fn value_of(name: &str, ctx: &Ctx) -> Option<String> {
+    if let Some(inner) = name.strip_prefix("b64:") {
+        let v = plain_value(inner, ctx)?;
+        return Some(base64::engine::general_purpose::STANDARD.encode(v));
+    }
+    if let Some(inner) = name.strip_prefix("hex:") {
+        let v = plain_value(inner, ctx)?;
+        return Some(v.bytes().map(|b| format!("{b:02x}")).collect());
+    }
+    if let Some(inner) = name.strip_prefix("rev:") {
+        let v = plain_value(inner, ctx)?;
+        return Some(v.chars().rev().collect());
+    }
+    plain_value(name, ctx)
+}
+
+/// Fills in `{{flag}}`, `{{instance}}`, `{{host}}` and `{{d:name}}`, and the
+/// encoded forms `{{b64:X}}`, `{{hex:X}}` and `{{rev:X}}` of any of those.
 fn render(t: &str, ctx: &Ctx) -> String {
     let mut out = String::with_capacity(t.len());
     let mut rest = t;
@@ -222,23 +254,38 @@ fn render(t: &str, ctx: &Ctx) -> String {
             return out;
         };
         let name = &after[..j];
-        match name {
-            "flag" => out.push_str(&ctx.flag),
-            "instance" => out.push_str(ctx.label),
-            "host" => out.push_str(ctx.host),
-            _ => match name.strip_prefix("d:") {
-                Some(d) => out.push_str(&derive(ctx.seed, &format!("d:{d}"))[..12]),
-                None => {
-                    out.push_str("{{");
-                    out.push_str(name);
-                    out.push_str("}}");
-                }
-            },
+        match value_of(name, ctx) {
+            Some(v) => out.push_str(&v),
+            None => {
+                out.push_str("{{");
+                out.push_str(name);
+                out.push_str("}}");
+            }
         }
         rest = &after[j + 2..];
     }
     out.push_str(rest);
     out
+}
+
+#[cfg(test)]
+pub fn template_context_for_tests<'a>(
+    seed: &'a str,
+    label: &'a str,
+    host: &'a str,
+    flag: &str,
+) -> Ctx<'a> {
+    Ctx {
+        flag: flag.to_owned(),
+        seed,
+        label,
+        host,
+    }
+}
+
+#[cfg(test)]
+pub fn render_for_tests(t: &str, ctx: &Ctx) -> String {
+    render(t, ctx)
 }
 
 // ------------------------------------------------------------------ requests
@@ -445,12 +492,7 @@ pub fn live_label(state: &AppState, req: &Request) -> Option<String> {
         .to_ascii_lowercase();
     let host = host.trim_end_matches('.');
     let prefix = host.strip_suffix(&cfg.domain)?.strip_suffix('.')?;
-    let valid = !prefix.is_empty()
-        && prefix.len() <= 40
-        && prefix
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit());
-    Some(if valid {
+    Some(if valid_label(prefix) {
         prefix.to_owned()
     } else {
         String::new()
@@ -952,6 +994,32 @@ pub async fn instance_post(
     }
 }
 
+/// The EFF large diceware word list (CC BY 3.0, https://www.eff.org/dice), without
+/// the few hyphenated words: 7772 words.
+const WORDS: &str = include_str!("wordlist.txt");
+
+/// An instance label: four random diceware words joined with hyphens, such as
+/// `plank-orbit-velvet-cargo`. About 51 bits, easy to read out and to type.
+pub fn random_label() -> String {
+    let words: Vec<&str> = WORDS.lines().collect();
+    (0..4)
+        .map(|_| words[random_index(words.len())])
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// Whether `s` is a possible instance label: lowercase letters, digits and
+/// single hyphens inside, so it is also a valid DNS label.
+pub fn valid_label(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 40
+        && !s.starts_with('-')
+        && !s.ends_with('-')
+        && !s.contains("--")
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
 /// Starts an instance of a live pack for a user: a row, and for a container pack
 /// the container. The caller has already decided the user may have one (the
 /// player's captcha and cap, or the admin, who has neither).
@@ -965,7 +1033,7 @@ pub async fn create_instance(
     };
     let t = now();
     let inst = Instance {
-        label: random_string(b"abcdefghjkmnpqrstuvwxyz23456789", 10),
+        label: random_label(),
         user_id,
         pack_id: pack.meta.id.clone(),
         seed: new_token(),
@@ -1031,6 +1099,44 @@ pub async fn flag_matches(state: &AppState, user_id: i64, pack: &Pack, guess: &s
         Err(e) => {
             tracing::error!("live flag check failed: {e}");
             false
+        }
+    }
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+
+    #[test]
+    fn labels_are_four_diceware_words() {
+        let words: std::collections::HashSet<&str> = WORDS.lines().collect();
+        assert!(words.len() > 7000);
+        for _ in 0..200 {
+            let l = random_label();
+            assert!(valid_label(&l), "{l}");
+            let parts: Vec<&str> = l.split('-').collect();
+            assert_eq!(parts.len(), 4, "{l}");
+            assert!(parts.iter().all(|p| words.contains(p)), "{l}");
+        }
+        assert_ne!(random_label(), random_label());
+    }
+
+    #[test]
+    fn label_validation_is_a_dns_label() {
+        assert!(valid_label("plank-orbit-velvet-cargo"));
+        assert!(valid_label("w5pbqgyhxv"));
+        for bad in [
+            "",
+            "-a",
+            "a-",
+            "a--b",
+            "A-b",
+            "a.b",
+            "a_b",
+            "a b",
+            &"a".repeat(41),
+        ] {
+            assert!(!valid_label(bad), "{bad:?}");
         }
     }
 }

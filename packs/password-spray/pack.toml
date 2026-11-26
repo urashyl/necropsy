@@ -1,7 +1,7 @@
 id = "password-spray"
 track = "daily"
-date = "2026-12-05"
-number = 12
+date = "2026-12-06"
+number = 13
 title = "One password, everyone"
 difficulty = 3
 modes = ["web"]

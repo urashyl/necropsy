@@ -778,7 +778,7 @@ async fn progress_lists_only_what_can_be_answered_today() {
         for id in ["intro-log", "iloveyou-dropped", "iloveyou-attachment"] {
             assert!(ids.contains(&id), "{id} in {ids:?}");
         }
-        for id in ["iloveyou-payload", "peanuts", "second-stage", "phone-home"] {
+        for id in ["iloveyou-payload", "peanuts", "kit-left-open", "phone-home"] {
             assert!(!ids.contains(&id), "{id} in {ids:?}");
         }
     }
@@ -1428,7 +1428,7 @@ async fn unreleased_dailies_are_hidden_everywhere() {
         "its answer cannot be checked early"
     );
     assert!(!r.body.contains("explainer_html"));
-    for later in ["peanuts", "second-stage"] {
+    for later in ["peanuts", "kit-left-open"] {
         assert_eq!(
             s.get(&format!("/p/{later}"), None).await.status,
             StatusCode::NOT_FOUND,
@@ -1523,7 +1523,7 @@ async fn archive_lists_released_dailies_newest_first_with_dates() {
     let newest = body.find("One password, everyone").unwrap();
     let oldest = body.find("ILOVEYOU: the source").unwrap();
     assert!(newest < oldest);
-    assert!(body.contains("2026-11-24") && body.contains("2026-12-05"));
+    assert!(body.contains("2026-11-24") && body.contains("2026-12-06"));
     assert!(
         !body.contains("Who got in?"),
         "intro stages are not in the archive"
@@ -1560,7 +1560,7 @@ async fn only_dailies_solved_on_their_release_day_count_for_streaks() {
     let s = site().await;
     s.register_verified("alice", SECRET_EMAIL).await;
     let cookie = s.login_cookie("alice").await;
-    let day = necropsy_pack::parse_date("2026-11-27").unwrap(); // peanuts
+    let day = necropsy_pack::parse_date("2026-11-28").unwrap(); // peanuts
 
     s.post_json(
         "/api/p/peanuts/answer",
@@ -1591,13 +1591,13 @@ async fn only_dailies_solved_on_their_release_day_count_for_streaks() {
     set_day(day).await;
     let p = s.get("/api/me/progress", Some(&cookie)).await.body;
     assert!(
-        p.contains(r#""id":"peanuts","day":20784,"ontime":true"#),
+        p.contains(r#""id":"peanuts","day":20785,"ontime":true"#),
         "{p}"
     );
     set_day(day + 3).await;
     let p = s.get("/api/me/progress", Some(&cookie)).await.body;
     assert!(
-        p.contains(r#""id":"peanuts","day":20787,"ontime":false"#),
+        p.contains(r#""id":"peanuts","day":20788,"ontime":false"#),
         "a late solve does not count: {p}"
     );
     assert!(
@@ -2579,49 +2579,43 @@ async fn live_site_on(today: &str) -> Site {
 }
 
 #[tokio::test]
-async fn live_puzzles_are_always_available_and_not_part_of_the_dailies() {
-    // Before the first daily, and so before any date a live puzzle used to carry.
-    let s = live_site_on("2020-01-01").await;
+async fn live_puzzles_appear_on_their_day_and_on_the_live_page() {
+    // c2-gate is dated 2026-11-27, kit-left-open 2026-11-29.
+    let s = live_site_on("2026-11-27").await;
     assert_eq!(s.get("/p/c2-gate", None).await.status, StatusCode::OK);
-    assert_eq!(s.get("/p/kit-left-open", None).await.status, StatusCode::OK);
-    // Dailies are still hidden then.
     assert_eq!(
-        s.get("/p/peanuts", None).await.status,
-        StatusCode::NOT_FOUND
+        s.get("/p/kit-left-open", None).await.status,
+        StatusCode::NOT_FOUND,
+        "not released yet"
     );
 
     let page = s.get("/p/c2-gate", None).await.body;
-    assert!(page.contains("Live 1 of 2"), "{page}");
-    assert!(
-        page.contains("Kit left open"),
-        "the pager leads to the next live puzzle"
-    );
-    assert!(
-        !page.contains("Daily #") && !page.contains("Intro 1 of"),
-        "it is not a daily or an intro stage"
-    );
+    assert!(page.contains("Daily #4"), "it is a daily: {page}");
 
     let list = s.get("/live", None).await;
     assert_eq!(list.status, StatusCode::OK);
-    assert!(list.body.contains("Answer the door") && list.body.contains("Kit left open"));
-    assert!(list.body.contains("href=\"/login\""), "it says to log in");
+    assert!(list.body.contains("Answer the door"));
     assert!(
-        !list.body.contains("Back inside the shell"),
-        "a lab needs the range, so it is not loaded"
+        !list.body.contains("Kit left open"),
+        "unreleased puzzles are not listed"
     );
-    // They are not in the archive or the daily rotation, and the nav links to them.
-    assert!(!s
-        .get("/archive", None)
-        .await
-        .body
-        .contains("Answer the door"));
+    assert!(list.body.contains("href=\"/login\""), "it says to log in");
+    // Static dailies are not on the live page, and live ones are in the archive.
+    assert!(!list.body.contains("ILOVEYOU: the source"));
     assert!(s.get("/learn", None).await.body.contains("href=\"/live\""));
-    // The progress API lists them as playable.
-    assert!(s
-        .get("/api/me/progress", None)
+
+    let later = live_site_on("2026-11-29").await;
+    assert!(later
+        .get("/live", None)
         .await
         .body
-        .contains("c2-gate"));
+        .contains("Kit left open"));
+    // Labs need the range, so with none configured they are not loaded.
+    assert!(!later
+        .get("/live", None)
+        .await
+        .body
+        .contains("Back inside the shell"));
 }
 
 #[tokio::test]
@@ -2637,26 +2631,26 @@ async fn without_live_puzzles_there_is_no_live_page_or_link() {
 }
 
 #[tokio::test]
-async fn the_live_track_is_ordered_after_the_dailies() {
+async fn live_puzzles_are_mixed_into_the_daily_schedule() {
     let packs = necropsy_pack::load_all(std::path::Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../packs"
     )))
     .unwrap();
-    let tracks: Vec<_> = packs.iter().map(|p| p.meta.track).collect();
-    let last_daily = tracks
+    let dailies: Vec<_> = packs
         .iter()
-        .rposition(|t| *t == necropsy_pack::Track::Daily)
-        .unwrap();
-    let first_live = tracks
-        .iter()
-        .position(|t| *t == necropsy_pack::Track::Live)
-        .unwrap();
-    assert!(first_live > last_daily, "live puzzles come last");
-    assert!(packs
-        .iter()
-        .filter(|p| p.meta.track == necropsy_pack::Track::Live)
-        .all(|p| p.meta.date.is_none()));
+        .filter(|p| p.meta.track == necropsy_pack::Track::Daily)
+        .collect();
+    let live = dailies.iter().filter(|p| p.is_live()).count();
+    assert!(live >= 3, "several dailies are live");
+    assert!(live < dailies.len(), "and they are mixed with static ones");
+    // Never two live ones back to back more than the schedule intends: at least
+    // one static puzzle sits between any run of three.
+    let flags: Vec<bool> = dailies.iter().map(|p| p.is_live()).collect();
+    assert!(
+        !flags.windows(3).any(|w| w.iter().all(|x| *x)),
+        "no three live puzzles in a row"
+    );
 }
 
 // ------------------------------------------------------- admin: start any live puzzle
@@ -3118,5 +3112,94 @@ async fn a_lab_that_was_never_shipped_says_so() {
         r.body.contains("not been set up on the range"),
         "{}",
         r.body
+    );
+}
+
+#[tokio::test]
+async fn the_admin_page_says_whether_the_captcha_is_on() {
+    let s = site().await;
+    let admin = s.admin_cookie().await;
+    assert!(
+        s.get("/admin", Some(&admin)).await.body.contains("Captcha"),
+        "shown even when off"
+    );
+    assert!(s
+        .get("/admin", Some(&admin))
+        .await
+        .body
+        .contains("Off. Set NECROPSY_TURNSTILE_SITE_KEY"));
+    let s = captcha_site().await;
+    let admin = s.admin_cookie().await;
+    let page = s.get("/admin", Some(&admin)).await.body;
+    assert!(page.contains("Cloudflare Turnstile, site key"), "{page}");
+    assert!(
+        page.contains("test-site-"),
+        "the start of the key is shown, never the secret"
+    );
+}
+
+#[test]
+fn the_live_domain_forgives_a_url_but_not_nonsense() {
+    use crate::parse_live_domain as parse;
+    for (typed, want) in [
+        ("necropsy.urashyl.dev", "necropsy.urashyl.dev"),
+        ("  Necropsy.Urashyl.Dev. ", "necropsy.urashyl.dev"),
+        ("https://necropsy.urashyl.dev", "necropsy.urashyl.dev"),
+        ("https://necropsy.urashyl.dev/", "necropsy.urashyl.dev"),
+        (
+            "http://necropsy.urashyl.dev/some/path?x=1",
+            "necropsy.urashyl.dev",
+        ),
+        ("necropsy.localhost:8080", "necropsy.localhost:8080"),
+        ("http://necropsy.localhost:8080/", "necropsy.localhost:8080"),
+    ] {
+        assert_eq!(parse(typed).as_deref(), Ok(want), "{typed}");
+    }
+    for bad in [
+        "",
+        "https://",
+        "/",
+        "necropsy",
+        "a b.example",
+        "user@necropsy.dev",
+        "https:///x",
+    ] {
+        let e = parse(bad).unwrap_err();
+        assert!(e.contains("like necropsy.urashyl.dev"), "{bad:?}: {e}");
+    }
+}
+
+#[test]
+fn templates_can_encode_per_player_values() {
+    let ctx = crate::live::template_context_for_tests(
+        "seed-one",
+        "label1",
+        "label1.live.test",
+        "pebble{abc}",
+    );
+    let r = |t: &str| crate::live::render_for_tests(t, &ctx);
+    assert_eq!(r("{{flag}}"), "pebble{abc}");
+    assert_eq!(r("{{b64:host}}"), "bGFiZWwxLmxpdmUudGVzdA==");
+    assert_eq!(r("{{hex:instance}}"), "6c6162656c31");
+    assert_eq!(r("{{rev:instance}}"), "1lebal");
+    // The encoding of a derived value is of that value, and it is stable.
+    let d = r("{{d:tok}}");
+    assert_eq!(d.len(), 12);
+    assert_eq!(
+        r("{{hex:d:tok}}"),
+        d.bytes().map(|b| format!("{b:02x}")).collect::<String>()
+    );
+    assert_eq!(r("{{d:tok}}"), d);
+    // Another seed gives another value, and an unknown name is left as it was written.
+    let other = crate::live::template_context_for_tests(
+        "seed-two",
+        "label1",
+        "label1.live.test",
+        "pebble{abc}",
+    );
+    assert_ne!(crate::live::render_for_tests("{{d:tok}}", &other), d);
+    assert_eq!(
+        r("{{nope}} {{b64:nope}} {{b64"),
+        "{{nope}} {{b64:nope}} {{b64"
     );
 }

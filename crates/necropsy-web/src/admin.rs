@@ -61,6 +61,16 @@ async fn admin_page(
             h2.admin-h { "Email" }
             dl.facts.admin-facts {
                 div { dt { "Sending" } dd { (state.mailer.describe()) } }
+                div {
+                    dt { "Captcha" }
+                    dd {
+                        @if let Some(key) = state.captcha.site_key() {
+                            "Cloudflare Turnstile, site key " code { (key.chars().take(10).collect::<String>()) "…" }
+                        } @else {
+                            "Off. Set NECROPSY_TURNSTILE_SITE_KEY and NECROPSY_TURNSTILE_SECRET, then deploy."
+                        }
+                    }
+                }
             }
             @if state.mailer.enabled() {
                 form.inline-form method="post" action="/admin/test-email" {

@@ -148,6 +148,31 @@ async fn main() {
     .expect("server error");
 }
 
+/// The live domain from what was typed: a bare name, with a port when there is
+/// one (`necropsy.urashyl.dev`, `necropsy.localhost:8080`). A scheme and anything
+/// after the host are a common slip (`https://necropsy.urashyl.dev/`), so they are
+/// removed rather than being a reason not to start.
+pub(crate) fn parse_live_domain(raw: &str) -> Result<String, String> {
+    let mut d = raw.trim();
+    for scheme in ["https://", "http://"] {
+        if let Some(rest) = d.strip_prefix(scheme) {
+            d = rest;
+        }
+    }
+    let d = d.split(['/', '?', '#']).next().unwrap_or("");
+    let d = d.trim().trim_matches('.').to_ascii_lowercase();
+    if d.is_empty()
+        || d.contains(char::is_whitespace)
+        || d.contains('@')
+        || (!d.contains('.') && !d.contains(':'))
+    {
+        return Err(format!(
+            "NECROPSY_LIVE_DOMAIN {raw:?} is not a domain: use just the name, like necropsy.urashyl.dev"
+        ));
+    }
+    Ok(d)
+}
+
 /// Both Turnstile keys, or neither.
 fn captcha_from_env() -> Result<captcha::Captcha, String> {
     let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
@@ -169,18 +194,18 @@ fn captcha_from_env() -> Result<captcha::Captcha, String> {
 /// `NECROPSY_LIVE_DOMAIN` turns live puzzles on; `NECROPSY_LIVE_HOST_HEADER`
 /// optionally names a header that carries the original host.
 fn live_from_env() -> Result<Option<live::LiveConfig>, String> {
-    let Some(domain) = std::env::var("NECROPSY_LIVE_DOMAIN")
+    let Some(raw) = std::env::var("NECROPSY_LIVE_DOMAIN")
         .ok()
-        .map(|d| d.trim().trim_matches('.').to_ascii_lowercase())
-        .filter(|d| !d.is_empty())
+        .filter(|d| !d.trim().is_empty())
     else {
         return Ok(None);
     };
-    if domain.contains('/')
-        || domain.contains(' ')
-        || !domain.contains('.') && !domain.contains(':')
-    {
-        return Err(format!("NECROPSY_LIVE_DOMAIN {domain:?} is not a domain"));
+    let domain = parse_live_domain(&raw)?;
+    if domain != raw.trim() {
+        tracing::warn!(
+            "NECROPSY_LIVE_DOMAIN {raw:?} is a URL, not a name: using {domain:?}. \
+             Set it to just the name."
+        );
     }
     let host_header = match std::env::var("NECROPSY_LIVE_HOST_HEADER") {
         Ok(h) if !h.trim().is_empty() => Some(

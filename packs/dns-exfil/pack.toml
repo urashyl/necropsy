@@ -1,7 +1,7 @@
 id = "dns-exfil"
 track = "daily"
-date = "2026-12-01"
-number = 8
+date = "2026-11-30"
+number = 7
 title = "Small packets"
 difficulty = 3
 modes = ["web"]

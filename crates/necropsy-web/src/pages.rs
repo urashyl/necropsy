@@ -282,8 +282,8 @@ fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Mar
                 p.notice { a href="/login" { "Sign in" } " to start an instance." }
             } @else {
                 div #live-idle {
-                    button #live-start.button type="button" { "Spin up instance" }
                     div #live-captcha.live-captcha {}
+                    button #live-start.button type="button" { "Spin up instance" }
                 }
                 div #live-active.hidden {
                     p.live-url {

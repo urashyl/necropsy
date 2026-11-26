@@ -1,0 +1,6 @@
+ttl_minutes = 45
+flag_prefix = "hidden"
+
+# A real, sandboxed server for each player: range/hidden-process-lab.
+[container]
+image = "hidden-process-lab"

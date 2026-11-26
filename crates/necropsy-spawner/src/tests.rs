@@ -379,7 +379,6 @@ async fn a_lab_is_started_locked_down_and_stopped() {
         "--pids-limit=64",
         "--name=nr-prod-abcde12345",
         "--label=necropsy.tenant=prod",
-        "--env=NECROPSY_FLAG=kit{abc}",
         "noexec",
     ] {
         assert!(log.contains(must), "missing {must}: {log}");
@@ -389,6 +388,23 @@ async fn a_lab_is_started_locked_down_and_stopped() {
         "the image comes last: {log}"
     );
     assert!(!log.contains("--privileged") && !log.contains("docker.sock"));
+    // The flag is a file the lab reads once, never an environment variable: with a
+    // supervisor at PID 1, the environment would hand it to anyone with a shell.
+    assert!(
+        !log.contains("NECROPSY_FLAG") && !log.contains("kit{abc}"),
+        "{log}"
+    );
+    let flag = r.dir.join("range/prod/abcde12345/flag");
+    assert_eq!(std::fs::read_to_string(&flag).unwrap(), "kit{abc}");
+    use std::os::unix::fs::PermissionsExt as _;
+    assert_eq!(
+        std::fs::metadata(&flag).unwrap().permissions().mode() & 0o777,
+        0o400
+    );
+    assert!(
+        log.contains("--env=NECROPSY_INSTANCE") || !log.contains("NECROPSY_INSTANCE"),
+        "{log}"
+    );
 
     assert_eq!(
         r.make(PROD_TOKEN, "abcde12345").await.0,
