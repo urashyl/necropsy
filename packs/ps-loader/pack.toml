@@ -1,0 +1,12 @@
+id = "ps-loader"
+track = "live"
+number = 3
+title = "Invoice, attached"
+difficulty = 2
+modes = ["web", "live"]
+tags = ["powershell", "loader", "multi-stage", "live"]
+hints = [
+  "`-enc` is not encryption. It is base64 of UTF-16LE text. Decode it the way PowerShell would.",
+  "The downloader sends a custom User-Agent, and the server answers differently without it. Copy it exactly.",
+  "Stage one builds the next path from a base64 string, and stage two only answers someone who already fetched stage one.",
+]

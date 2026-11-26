@@ -1,0 +1,12 @@
+id = "macro-stager"
+track = "live"
+number = 5
+title = "Purchase order"
+difficulty = 3
+modes = ["web", "live"]
+tags = ["office", "vba", "macro", "fingerprinting", "live"]
+hints = [
+  "`hxxp` is how analysts defang a link. The macro puts it back. Follow what happens to `u`.",
+  "The path is hex in a string. Two characters make one byte, and `CLng(\"&H\" & ...)` is VBA's way to read hex.",
+  "The server checks the User-Agent and a build header. The build number is arithmetic on constants, so compute it, do not guess.",
+]

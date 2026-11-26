@@ -95,6 +95,7 @@ Templates, available in paths, condition values and inline bodies:
 | `{{instance}}` | The instance label. |
 | `{{host}}` | The host the request arrived on. |
 | `{{d:name}}` | 12 hex digits derived from the instance's seed and `name`. Different for each player, stable within an instance. Use for passwords, tokens and paths a player must discover. |
+| `{{b64:X}}` `{{hex:X}}` `{{rev:X}}` | Any of the above, base64-encoded, as hex, or reversed. They nest, innermost first: `{{rev:b64:d:key}}`. For a sample that hides a per-player value, such as a C2 path the player has to decode. |
 
 State flags (`needs` and `sets`) let a scenario have steps: one route sets `checked_in`, and another only answers once it is set. State is stored with the instance.
 
@@ -103,3 +104,25 @@ State flags (`needs` and `sets`) let a scenario have steps: one route sets `chec
 ### Samples in a live pack
 
 Real samples are fine. A `file` response is sent as is, so give an executable the right `content_type` and a `content-disposition = "attachment"` header, and a harmless name, so a browser offers to save it rather than running it. Scripts that would run in a page (a cookie logger, say) work in the player's browser as they would anywhere, scoped to that instance's own origin.
+
+## The malware analysis library
+
+The always-available `live` track is a library that grows by adding a directory. Each puzzle in it is built the same way: the instance serves a **sample** (the thing to analyse), and also plays the **operator's server** the sample talks to. The player has to read the sample, learn how it hides its server's address and how it authenticates, and then do what the sample would do against their own instance.
+
+| # | Puzzle | The sample | What it teaches |
+| --- | --- | --- | --- |
+| 1 | `cookie-logger` | Stored-XSS cookie stealer, JavaScript | Reading a planted script; `atob`; an exposed collector index |
+| 2 | `skimmer` | Magecart-style card skimmer, obfuscated JavaScript | String arrays, reversed base64, hex; the leftover debug function |
+| 3 | `ps-loader` | `.bat` with `powershell -enc`, then two PowerShell stages | `-enc` is UTF-16LE base64; User-Agent gating; staged delivery |
+| 4 | `vbs-dropper` | VBScript with character-shifted strings | Caesar-shift decoding; `StrReverse` tokens; `Execute` of the server's reply |
+| 5 | `macro-stager` | Extracted VBA macro | Defanged URLs, hex paths, sandbox checks, header fingerprinting |
+| 6 | `xor-implant` | Python implant with XOR'd strings | Single-byte XOR; being the other side of a C2 protocol |
+| 7 | `dga-sinkhole` | Domain generation algorithm | Running a DGA for a chosen date; sinkholes |
+| 8 | `ransom-recovery` | Ransomware encryptor, Python | Key derivation flaws; repeating-key XOR; what recovery needs |
+
+Conventions for new ones:
+
+- Samples are served as `.txt` attachments (`content-disposition: attachment`, a name like `invoice.bat.txt`), so a click cannot run one. The text is real; the player decides what to run and where.
+- A sample's server is a name under `.invalid`, which cannot resolve. The brief says so and tells the player to send the sample's requests to their instance link instead.
+- Put what the player must decode in the sample, per player, with the encoding templates (`{{rev:b64:d:gate}}`). Put what the server checks in `when` conditions and `needs`/`sets` state, so skipping a step is a 404, not a shortcut.
+- Give every puzzle a negative test (wrong header, wrong order, wrong key) as well as a walkthrough: see the `library` module in `crates/necropsy-web/src/tests.rs`.

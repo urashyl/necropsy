@@ -1,0 +1,12 @@
+id = "cookie-logger"
+track = "live"
+number = 1
+title = "Guestbook guest"
+difficulty = 1
+modes = ["web", "live"]
+tags = ["javascript", "xss", "cookie stealer", "live"]
+hints = [
+  "The bakery's page source shows a script nobody on the team wrote. Read it, and follow where it sends what it collects.",
+  "The thief's collector is a folder of scripts. Look at what the folder itself lists.",
+  "The viewer wants the token the script sends with every request.",
+]

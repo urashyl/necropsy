@@ -1,0 +1,12 @@
+id = "xor-implant"
+track = "live"
+number = 6
+title = "Quiet implant"
+difficulty = 3
+modes = ["web", "live"]
+tags = ["python", "implant", "c2 protocol", "xor", "live"]
+hints = [
+  "The strings in `P` are base64 and then XOR with a single byte. The byte is defined at the top.",
+  "Follow `main()` as a conversation: it registers first, and everything after that carries what registering returned.",
+  "A task of type `exfil` makes the implant send something back. What does the server reply with?",
+]

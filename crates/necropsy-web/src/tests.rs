@@ -3190,6 +3190,12 @@ fn templates_can_encode_per_player_values() {
         d.bytes().map(|b| format!("{b:02x}")).collect::<String>()
     );
     assert_eq!(r("{{d:tok}}"), d);
+    // They nest, innermost first.
+    {
+        use base64::Engine;
+        let b = base64::engine::general_purpose::STANDARD.encode(&d);
+        assert_eq!(r("{{rev:b64:d:tok}}"), b.chars().rev().collect::<String>());
+    }
     // Another seed gives another value, and an unknown name is left as it was written.
     let other = crate::live::template_context_for_tests(
         "seed-two",
@@ -3202,4 +3208,330 @@ fn templates_can_encode_per_player_values() {
         r("{{nope}} {{b64:nope}} {{b64"),
         "{{nope}} {{b64:nope}} {{b64"
     );
+}
+
+// ------------------------------------------- the malware analysis library (live track)
+//
+// Each test plays one puzzle as a player would: reads the sample the instance serves,
+// decodes what it hides, sends what the sample would send, and submits the flag the
+// server then returns.
+
+mod library {
+    use super::*;
+    use base64::Engine;
+
+    fn b64d(s: &str) -> Vec<u8> {
+        base64::engine::general_purpose::STANDARD
+            .decode(s)
+            .unwrap_or_else(|e| panic!("base64 {s:?}: {e}"))
+    }
+
+    /// The text between the first `from` and the next `to` after it.
+    fn between<'a>(s: &'a str, from: &str, to: &str) -> &'a str {
+        let a = s.find(from).unwrap_or_else(|| panic!("no {from:?} in {s}")) + from.len();
+        let b = a + s[a..]
+            .find(to)
+            .unwrap_or_else(|| panic!("no {to:?} after {from:?}"));
+        &s[a..b]
+    }
+
+    fn flag_in(body: &str, prefix: &str) -> String {
+        let a = body
+            .find(&format!("{prefix}{{"))
+            .unwrap_or_else(|| panic!("no {prefix}{{ in {body}"));
+        let b = a + body[a..].find('}').unwrap() + 1;
+        body[a..b].to_owned()
+    }
+
+    fn hexd(s: &str) -> String {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap() as char)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn cookie_logger() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib1", "cookie-logger").await;
+        let page = live_send(&s, &l, "GET", "/", &[], "").await.body;
+        let w = between(&page, "s.src='/static/", ".js'");
+        let js = live_send(&s, &l, "GET", &format!("/static/{w}.js"), &[], "")
+            .await
+            .body;
+        let gif = String::from_utf8(b64d(between(&js, "atob(\"", "\")"))).unwrap();
+        assert_eq!(gif, "/collect/gif.php");
+        let tok = between(&js, "var t = \"", "\"");
+        let idx = live_send(&s, &l, "GET", "/collect/", &[], "").await.body;
+        assert!(idx.contains("view.php"));
+        let denied = live_send(&s, &l, "GET", "/collect/view.php", &[], "").await;
+        assert_eq!(denied.status, StatusCode::FORBIDDEN);
+        let view = live_send(
+            &s,
+            &l,
+            "GET",
+            &format!("/collect/view.php?t={tok}"),
+            &[],
+            "",
+        )
+        .await
+        .body;
+        assert!(submit(&s, &cookie, "cookie-logger", &flag_in(&view, "crumb")).await);
+    }
+
+    #[tokio::test]
+    async fn skimmer() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib2", "skimmer").await;
+        let shop = live_send(&s, &l, "GET", "/checkout", &[], "").await.body;
+        assert!(shop.contains("/static/analytics-v3.min.js"));
+        let js = live_send(&s, &l, "GET", "/static/analytics-v3.min.js", &[], "")
+            .await
+            .body;
+        let arr = between(&js, "var a=[\"", "\"]");
+        let mut it = arr.split("\",\"");
+        let gate_rev: String = it.next().unwrap().chars().rev().collect();
+        let gate = String::from_utf8(b64d(&gate_rev)).unwrap();
+        let key = hexd(it.next().unwrap());
+        let bad = live_send(&s, &l, "GET", &format!("/{gate}?k=nope&dump=1"), &[], "").await;
+        assert_eq!(bad.status, StatusCode::NOT_FOUND);
+        let ok = live_send(&s, &l, "GET", &format!("/{gate}?k={key}&d=e30="), &[], "").await;
+        assert_eq!(ok.status, StatusCode::OK);
+        assert!(!ok.body.contains("skim{"));
+        let dump = live_send(&s, &l, "GET", &format!("/{gate}?k={key}&dump=1"), &[], "")
+            .await
+            .body;
+        assert!(submit(&s, &cookie, "skimmer", &flag_in(&dump, "skim")).await);
+    }
+
+    #[tokio::test]
+    async fn ps_loader() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib3", "ps-loader").await;
+        let bat = live_send(&s, &l, "GET", "/dl/invoice-2026-1137.bat.txt", &[], "")
+            .await
+            .body;
+        let blob = b64d(bat.split("-enc ").nth(1).unwrap().trim());
+        let units: Vec<u16> = blob
+            .chunks(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        let ps = String::from_utf16(&units).unwrap();
+        assert!(ps.contains("/a/stage1.ps1"));
+        let ua = between(&ps, "Add('User-Agent','", "'");
+        // Stage two does not answer before stage one was fetched, and stage one
+        // does not answer without the sample's User-Agent.
+        let none = live_send(&s, &l, "GET", "/a/stage1.ps1", &[], "").await;
+        assert_eq!(none.status, StatusCode::NOT_FOUND);
+        let st1 = live_send(&s, &l, "GET", "/a/stage1.ps1", &[("user-agent", ua)], "")
+            .await
+            .body;
+        let s2 = String::from_utf8(b64d(between(&st1, "FromBase64String('", "'"))).unwrap();
+        let st2 = live_send(&s, &l, "GET", &format!("/b/{s2}"), &[("x-stage", "1")], "").await;
+        assert_eq!(st2.status, StatusCode::OK);
+        assert!(submit(&s, &cookie, "ps-loader", &flag_in(&st2.body, "invoice")).await);
+    }
+
+    #[tokio::test]
+    async fn ps_loader_stage_two_needs_stage_one() {
+        let s = live_site().await;
+        let (_, l) = spin_up(&s, "lib3b", "ps-loader").await;
+        // Even a correct path and header, in the wrong order, is a 404.
+        let page = live_send(&s, &l, "GET", "/b/0123456789ab", &[("x-stage", "1")], "").await;
+        assert_eq!(page.status, StatusCode::NOT_FOUND);
+    }
+
+    fn shift(s: &str, n: i32) -> String {
+        s.chars()
+            .map(|c| char::from_u32((c as i32 + n) as u32).unwrap())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn vbs_dropper() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib4", "vbs-dropper").await;
+        let vbs = live_send(&s, &l, "GET", "/dl/Shipment_Notice.vbs.txt", &[], "")
+            .await
+            .body;
+        let rev: String = between(&vbs, "StrReverse(\"", "\")")
+            .chars()
+            .rev()
+            .collect();
+        let mut dec = Vec::new();
+        let mut rest = vbs.as_str();
+        while let Some(i) = rest.find("D(\"") {
+            let after = &rest[i + 3..];
+            let j = after.find('"').unwrap();
+            dec.push(shift(&after[..j], -3));
+            rest = &after[j..];
+        }
+        assert_eq!(dec[0], "MSXML2.XMLHTTP.6.0");
+        let url = format!("{}{}{}", dec[1], rev, dec[2]);
+        let path = url.strip_prefix("http://cdn.shipnotice.invalid").unwrap();
+        let none = live_send(&s, &l, "GET", path, &[], "").await;
+        assert_eq!(none.status, StatusCode::NOT_FOUND);
+        let r = live_send(
+            &s,
+            &l,
+            "GET",
+            path,
+            &[(dec[3].as_str(), dec[4].as_str())],
+            "",
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert!(submit(&s, &cookie, "vbs-dropper", &flag_in(&r.body, "notice")).await);
+    }
+
+    #[tokio::test]
+    async fn macro_stager() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib5", "macro-stager").await;
+        let vba = live_send(&s, &l, "GET", "/dl/PO-88231_macro.bas.txt", &[], "")
+            .await
+            .body;
+        let tok = hexd(between(&vba, "HexDecode(\"", "\")"));
+        let ua = between(&vba, "\"User-Agent\", \"", "\"");
+        let path = format!("/upd/{tok}/po.bin");
+        let build = format!("B{}", 1337 ^ 42);
+        let no_build = live_send(&s, &l, "GET", &path, &[("user-agent", ua)], "").await;
+        assert_eq!(no_build.status, StatusCode::NOT_FOUND);
+        let no_ua = live_send(&s, &l, "GET", &path, &[("x-build", &build)], "").await;
+        assert_eq!(no_ua.status, StatusCode::NOT_FOUND);
+        let r = live_send(
+            &s,
+            &l,
+            "GET",
+            &path,
+            &[("user-agent", ua), ("x-build", &build)],
+            "",
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert!(submit(&s, &cookie, "macro-stager", &flag_in(&r.body, "order")).await);
+    }
+
+    #[tokio::test]
+    async fn xor_implant() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib6", "xor-implant").await;
+        let py = live_send(&s, &l, "GET", "/dl/implant.py.txt", &[], "")
+            .await
+            .body;
+        let bot = between(&py, "BOT = \"", "\"");
+        let un = |name: &str| -> String {
+            let enc = between(&py, &format!("\"{name}\": u(\""), "\"");
+            b64d(enc).iter().map(|b| (b ^ 0x5a) as char).collect()
+        };
+        let (ci, tk, rs, ua) = (un("checkin"), un("tasks"), un("result"), un("ua"));
+        let h = [("user-agent", ua.as_str())];
+        // The tasking is refused before the implant has registered.
+        let early = live_send(&s, &l, "GET", &format!("{tk}?s=x"), &h, "").await;
+        assert_eq!(early.status, StatusCode::FORBIDDEN);
+        let body = format!(r#"{{"id": "{bot}", "os": "win10", "pid": 4120}}"#);
+        let wrong = live_send(&s, &l, "POST", &ci, &h, r#"{"id":"someone-else"}"#).await;
+        assert_eq!(wrong.status, StatusCode::FORBIDDEN);
+        let reg = live_send(&s, &l, "POST", &ci, &h, &body).await;
+        assert_eq!(reg.status, StatusCode::OK);
+        let sess = between(&reg.body, "\"session\":\"", "\"");
+        let tasks = live_send(&s, &l, "GET", &format!("{tk}?s={sess}"), &h, "").await;
+        assert!(tasks.body.contains("\"op\":\"exfil\""));
+        let res = live_send(
+            &s,
+            &l,
+            "POST",
+            &format!("{rs}?s={sess}"),
+            &h,
+            &format!(r#"{{"id": "{bot}", "task": 7, "data": "AAAA"}}"#),
+        )
+        .await;
+        assert!(submit(&s, &cookie, "xor-implant", &flag_in(&res.body, "bot")).await);
+    }
+
+    /// The sample's generator, as written in `netcheck.py`.
+    fn dga(y: i64, m: i64, d: i64) -> String {
+        let mut s: i64 = 0x2F1C9 ^ (y * 10000 + m * 100 + d);
+        let mut out = String::new();
+        for _ in 0..12 {
+            s = (s * 1103515245 + 12345) & 0x7FFFFFFF;
+            out.push((97 + (s >> 16) % 26) as u8 as char);
+        }
+        out + [".top", ".xyz", ".info", ".biz"][(s % 4) as usize]
+    }
+
+    #[tokio::test]
+    async fn dga_sinkhole() {
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib7", "dga-sinkhole").await;
+        let py = live_send(&s, &l, "GET", "/dl/netcheck.py.txt", &[], "")
+            .await
+            .body;
+        assert!(py.contains("1103515245"));
+        let miss = live_send(
+            &s,
+            &l,
+            "GET",
+            &format!("/lookup?domain={}", dga(2026, 12, 23)),
+            &[],
+            "",
+        )
+        .await;
+        assert!(miss.body.contains("NXDOMAIN"));
+        let hit = live_send(
+            &s,
+            &l,
+            "GET",
+            &format!("/lookup?domain={}", dga(2026, 12, 24)),
+            &[],
+            "",
+        )
+        .await;
+        assert!(submit(&s, &cookie, "dga-sinkhole", &flag_in(&hit.body, "sink")).await);
+    }
+
+    #[tokio::test]
+    async fn ransom_recovery() {
+        use sha2::{Digest, Sha256};
+        let s = live_site().await;
+        let (cookie, l) = spin_up(&s, "lib8", "ransom-recovery").await;
+        let note = live_send(&s, &l, "GET", "/README_RESTORE.txt", &[], "")
+            .await
+            .body;
+        let vid = between(&note, "Victim ID: ", "\n");
+        let py = live_send(&s, &l, "GET", "/dl/locker.py.txt", &[], "")
+            .await
+            .body;
+        let salt = between(&py, "SALT = \"", "\"");
+        let key: String = Sha256::digest(format!("{vid}|{salt}").as_bytes())[..16]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let form = |k: &str, p: &str| format!("key={k}&phrase={p}");
+        let post = |body: String| {
+            let s = &s;
+            let l = &l;
+            async move {
+                live_send(
+                    s,
+                    l,
+                    "POST",
+                    "/recover",
+                    &[("content-type", "application/x-www-form-urlencoded")],
+                    &body,
+                )
+                .await
+            }
+        };
+        assert_eq!(
+            post(form(&key, "wrong")).await.status,
+            StatusCode::FORBIDDEN
+        );
+        // Decrypt the locked file, as the sample would in reverse.
+        let locked = live_send(&s, &l, "GET", "/files/finance-q3.xlsx.locked", &[], "").await;
+        assert_eq!(locked.status, StatusCode::OK);
+        let r = post(form(&key, "quiet+harbour+lantern")).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        assert!(submit(&s, &cookie, "ransom-recovery", &flag_in(&r.body, "locked")).await);
+    }
 }

@@ -1,0 +1,3 @@
+A purchasing clerk opened a Word "purchase order" and enabled macros, and the endpoint tooling flagged Word starting a web request. We extracted the macro's source as `PO-88231_macro.bas.txt` (text only, it cannot run) and rebuilt the server it talks to on your instance. Start it below.
+
+The macro contacts `po-portal.invalid`. That name does not exist anywhere, so send the request the macro would send to your instance's link instead, with every header it sets. The server only answers a client that looks like the macro. What it returns is written to disk by the macro, and holds a key. Submit it as the flag.

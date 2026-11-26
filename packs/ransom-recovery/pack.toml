@@ -1,0 +1,12 @@
+id = "ransom-recovery"
+track = "live"
+number = 8
+title = "Locked out"
+difficulty = 4
+modes = ["web", "live"]
+tags = ["ransomware", "python", "cryptography", "live"]
+hints = [
+  "Find where the key comes from in the sample. It is built from things you can read in the ransom note.",
+  "The cipher is XOR with a repeating key. The key is 16 bytes, and the file you decrypt tells you whether you got it right.",
+  "The recovery page wants proof you can decrypt, not only the key. What did the decrypted file contain?",
+]

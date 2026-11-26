@@ -226,16 +226,18 @@ fn plain_value(name: &str, ctx: &Ctx) -> Option<String> {
 /// `rev:d:key`. For puzzles that hide a per-player value in obfuscated code, where
 /// the encoded form cannot be written out ahead of time.
 fn value_of(name: &str, ctx: &Ctx) -> Option<String> {
+    // Encodings nest, innermost first: `rev:b64:d:key` is the reverse of the
+    // base64 of the instance's `key`.
     if let Some(inner) = name.strip_prefix("b64:") {
-        let v = plain_value(inner, ctx)?;
+        let v = value_of(inner, ctx)?;
         return Some(base64::engine::general_purpose::STANDARD.encode(v));
     }
     if let Some(inner) = name.strip_prefix("hex:") {
-        let v = plain_value(inner, ctx)?;
+        let v = value_of(inner, ctx)?;
         return Some(v.bytes().map(|b| format!("{b:02x}")).collect());
     }
     if let Some(inner) = name.strip_prefix("rev:") {
-        let v = plain_value(inner, ctx)?;
+        let v = value_of(inner, ctx)?;
         return Some(v.chars().rev().collect());
     }
     plain_value(name, ctx)
