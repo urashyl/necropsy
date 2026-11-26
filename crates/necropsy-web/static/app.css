@@ -1001,6 +1001,7 @@ pre {
   background: var(--surface);
 }
 .live-panel h2 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.live-captcha:not(:empty) { margin: 0.8rem 0 1rem; }
 .live-url { font-family: var(--mono); font-size: 0.95rem; word-break: break-all; }
 .live-log-box summary { cursor: pointer; color: var(--muted); }
 .live-log {
