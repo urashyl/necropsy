@@ -2202,7 +2202,13 @@ async fn stub_range() -> Range {
             .push(format!("{} {path} {body}", parts.method));
         if parts.method == axum::http::Method::POST && path == "/v1/instances" {
             if let Some(code) = *st.refuse.lock().unwrap() {
-                return (code, "no").into_response();
+                // What the real range says when a lab has not been shipped to it.
+                let why = if code == StatusCode::BAD_REQUEST {
+                    "that lab is not on the allowlist"
+                } else {
+                    "no"
+                };
+                return (code, why).into_response();
             }
             let v: serde_json::Value = serde_json::from_str(&body).unwrap();
             st.labs
@@ -3094,5 +3100,23 @@ fn a_failed_start_logs_why_the_range_could_not_be_reached() {
     assert!(
         log.contains("Connection") || log.contains("connect"),
         "{log}"
+    );
+}
+
+#[tokio::test]
+async fn a_lab_that_was_never_shipped_says_so() {
+    let range = stub_range().await;
+    // The range is reached and the token is good, but it has no such lab.
+    *range.refuse.lock().unwrap() = Some(StatusCode::BAD_REQUEST);
+    let s = container_site(&range).await;
+    let admin = s.admin_cookie().await;
+    let r = s
+        .send(admin_post("/admin/live/webshell-lab/start", Some(&admin)))
+        .await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        r.body.contains("not been set up on the range"),
+        "{}",
+        r.body
     );
 }
