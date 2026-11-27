@@ -406,12 +406,14 @@ mod tests {
     #[test]
     fn rate_limiter_blocks_then_recovers() {
         let rl = RateLimiter::default();
-        let w = Duration::from_millis(50);
+        // Wide enough that the first three calls always land inside it, even on
+        // a loaded machine; 50 ms was not, and the test failed under load.
+        let w = Duration::from_millis(500);
         assert!(rl.allow("k", 2, w));
         assert!(rl.allow("k", 2, w));
         assert!(!rl.allow("k", 2, w));
         assert!(rl.allow("other", 2, w));
-        std::thread::sleep(Duration::from_millis(60));
+        std::thread::sleep(Duration::from_millis(550));
         assert!(rl.allow("k", 2, w));
     }
 

@@ -85,23 +85,30 @@ fn generator_dirs(packs: &Path, ids: &[&str]) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
-/// The `cargo build` for a generator. Variables a surrounding `cargo run` sets
-/// are removed: `RUSTUP_TOOLCHAIN` above all, which would make the build use
-/// the caller's toolchain instead of the one `packs/rust-toolchain.toml` pins.
-fn cargo_command(gen_dir: &Path, target: &Path, rustflags: &str) -> Command {
+/// Generators are built through this path, a symlink to the checkout, so the
+/// paths the compiler sees are the same on every machine. Cargo hashes a crate's
+/// absolute path into its symbol names, and after LTO those hashes decide the
+/// order of functions in the module: built from two different checkouts, the
+/// same source gave the same bytes in another order.
+const BUILD_ROOT: &str = "/tmp/necropsy-gen-src";
+
+/// The toolchain `packs/rust-toolchain.toml` pins, such as `1.97.0`.
+fn pinned_toolchain(packs: &Path) -> Result<String, String> {
+    let path = packs.join("rust-toolchain.toml");
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("channel = \""))
+        .and_then(|l| l.strip_suffix('"'))
+        .map(str::to_owned)
+        .ok_or_else(|| format!("{} has no channel", path.display()))
+}
+
+/// The `cargo build` for a generator: through [`BUILD_ROOT`], with the pinned
+/// toolchain set explicitly, and without the variables a surrounding `cargo run`
+/// sets (its own RUSTUP_TOOLCHAIN above all, which would replace the pinned one).
+fn cargo_command(manifest: &Path, target: &Path, rustflags: &str, toolchain: &str) -> Command {
     let mut c = Command::new("cargo");
-    c.current_dir(gen_dir)
-        .args([
-            "build",
-            "--release",
-            "--locked",
-            "--target",
-            "wasm32-unknown-unknown",
-        ])
-        .env("CARGO_TARGET_DIR", target)
-        .env("RUSTFLAGS", rustflags);
     for var in [
-        "RUSTUP_TOOLCHAIN",
         "RUSTC",
         "RUSTC_WRAPPER",
         "RUSTC_WORKSPACE_WRAPPER",
@@ -111,31 +118,66 @@ fn cargo_command(gen_dir: &Path, target: &Path, rustflags: &str) -> Command {
     ] {
         c.env_remove(var);
     }
+    c.arg("build")
+        .arg("--manifest-path")
+        .arg(manifest)
+        .args([
+            "--release",
+            "--locked",
+            "--target",
+            "wasm32-unknown-unknown",
+        ])
+        .env("RUSTUP_TOOLCHAIN", toolchain)
+        .env("CARGO_TARGET_DIR", target)
+        .env("RUSTFLAGS", rustflags);
     c
 }
 
-/// Builds one generator to WebAssembly and returns the module's bytes. The
-/// toolchain is the one `packs/rust-toolchain.toml` pins (cargo runs in the
-/// generator's directory), and paths are remapped, so the same source builds
-/// the same bytes anywhere.
+/// Points [`BUILD_ROOT`] at the checkout in `root`.
+#[cfg(unix)]
+fn link_build_root(root: &Path) -> Result<(), String> {
+    let link = Path::new(BUILD_ROOT);
+    if std::fs::read_link(link).ok().as_deref() == Some(root) {
+        return Ok(());
+    }
+    if link.symlink_metadata().is_ok() {
+        std::fs::remove_file(link).map_err(|e| format!("{BUILD_ROOT}: {e}"))?;
+    }
+    std::os::unix::fs::symlink(root, link).map_err(|e| format!("{BUILD_ROOT}: {e}"))
+}
+
+#[cfg(not(unix))]
+fn link_build_root(_root: &Path) -> Result<(), String> {
+    Err("generators are built on Linux or macOS (see docs/generators.md)".into())
+}
+
+/// Builds one generator to WebAssembly and returns the module's bytes. The same
+/// source builds the same bytes anywhere: the toolchain is pinned, and every
+/// path the compiler sees is under [`BUILD_ROOT`], remapped to `/necropsy`.
 fn build(dir: &Path) -> Result<Vec<u8>, String> {
-    let gen_dir = dir.join("generator");
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
-    let target = root.join("target/generators");
-    let cargo_home = std::env::var("CARGO_HOME")
-        .unwrap_or_else(|_| format!("{}/.cargo", std::env::var("HOME").unwrap_or_default()));
-    let repo = root.to_string_lossy();
-    let rustflags =
-        format!("--remap-path-prefix={repo}=/necropsy --remap-path-prefix={cargo_home}=/cargo");
-    let status = cargo_command(&gen_dir, &target, &rustflags)
+    let id = dir
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let packs = dir.parent().unwrap_or(Path::new("packs"));
+    let packs_rel = packs.strip_prefix(&root).unwrap_or(packs);
+    let toolchain = pinned_toolchain(packs)?;
+    link_build_root(&root)?;
+    let base = Path::new(BUILD_ROOT);
+    let manifest = base.join(packs_rel).join(&id).join("generator/Cargo.toml");
+    let target = base.join("target/generators");
+    let rustflags = format!("--remap-path-prefix={BUILD_ROOT}=/necropsy");
+    let status = cargo_command(&manifest, &target, &rustflags, &toolchain)
         .status()
         .map_err(|e| format!("cannot run cargo: {e}"))?;
     if !status.success() {
-        return Err(format!("building {} failed", gen_dir.display()));
+        return Err(format!("building {} failed", manifest.display()));
     }
-    let manifest =
-        std::fs::read_to_string(gen_dir.join("Cargo.toml")).map_err(|e| e.to_string())?;
-    let name = manifest
+    let text =
+        std::fs::read_to_string(dir.join("generator/Cargo.toml")).map_err(|e| e.to_string())?;
+    let name = text
         .lines()
         .find_map(|l| l.trim().strip_prefix("name = \""))
         .and_then(|l| l.strip_suffix('"'))
@@ -172,6 +214,7 @@ fn gen_build(packs: &str, ids: &[&str], check: bool) -> ExitCode {
                             "error: {id}: generator.wasm does not match a build of generator/ \
                              (run `pack-tool gen-build packs {id}` and commit the result)"
                         );
+                        eprintln!("{}", describe_difference(&committed, &bytes));
                         ok = false;
                     }
                 } else if let Err(e) = std::fs::write(&path, &bytes) {
@@ -192,6 +235,45 @@ fn gen_build(packs: &str, ids: &[&str], check: bool) -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Where two builds differ, to find what made a build not reproducible: the
+/// sizes, the first differing offset with the bytes around it, and the readable
+/// strings only one of them has (paths and names are the usual cause).
+fn describe_difference(committed: &[u8], built: &[u8]) -> String {
+    let first = committed
+        .iter()
+        .zip(built)
+        .position(|(a, b)| a != b)
+        .unwrap_or(committed.len().min(built.len()));
+    let hex = |b: &[u8]| {
+        let from = first.saturating_sub(16);
+        let to = (first + 32).min(b.len());
+        b.get(from..to)
+            .unwrap_or_default()
+            .iter()
+            .map(|x| format!("{x:02x}"))
+            .collect::<String>()
+    };
+    let strings = |b: &[u8]| -> std::collections::BTreeSet<String> {
+        b.split(|c| !(0x20..0x7f).contains(c))
+            .filter(|s| s.len() >= 8)
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect()
+    };
+    let (a, b) = (strings(committed), strings(built));
+    let only = |x: &std::collections::BTreeSet<String>, y: &std::collections::BTreeSet<String>| {
+        x.difference(y).take(20).cloned().collect::<Vec<_>>()
+    };
+    format!(
+        "  committed {} bytes, built {} bytes, first difference at {first:#x}\n  committed: {}\n  built:     {}\n  strings only in the committed one: {:?}\n  strings only in the build: {:?}",
+        committed.len(),
+        built.len(),
+        hex(committed),
+        hex(built),
+        only(&a, &b),
+        only(&b, &a)
+    )
 }
 
 fn find(packs: &str, id: &str) -> Result<Pack, String> {
@@ -395,7 +477,7 @@ mod tests {
     /// and used the caller's toolchain, not the pinned one.
     #[test]
     fn the_build_uses_the_pinned_toolchain_whoever_runs_it() {
-        let c = cargo_command(Path::new("g"), Path::new("t"), "f");
+        let c = cargo_command(Path::new("g/Cargo.toml"), Path::new("t"), "f", "1.97.0");
         let envs: Vec<(String, Option<String>)> = c
             .get_envs()
             .map(|(k, v)| {
@@ -405,12 +487,43 @@ mod tests {
                 )
             })
             .collect();
-        for var in ["RUSTUP_TOOLCHAIN", "RUSTC", "CARGO"] {
+        for var in ["RUSTC", "CARGO"] {
             assert!(
                 envs.contains(&(var.to_owned(), None)),
                 "{var} is not removed"
             );
         }
-        assert_eq!(c.get_current_dir(), Some(Path::new("g")));
+        // Set, not inherited: whoever runs pack-tool, the pinned toolchain builds.
+        assert!(envs.contains(&("RUSTUP_TOOLCHAIN".to_owned(), Some("1.97.0".to_owned()))));
+        let args: Vec<String> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--manifest-path", "g/Cargo.toml"]));
+    }
+
+    #[test]
+    fn the_pinned_toolchain_is_read_from_packs() {
+        let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs");
+        let t = pinned_toolchain(&packs).unwrap();
+        assert!(t.chars().next().unwrap().is_ascii_digit(), "{t}");
+    }
+
+    #[test]
+    fn a_difference_is_described() {
+        let d = describe_difference(
+            b"same start /a/path/one end",
+            b"same start /b/path/one end!",
+        );
+        assert!(
+            d.contains("committed 26 bytes, built 27 bytes, first difference at 0xc"),
+            "{d}"
+        );
+        assert!(
+            d.contains("/a/path/one end") && d.contains("/b/path/one end!"),
+            "{d}"
+        );
     }
 }
