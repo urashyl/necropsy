@@ -25,6 +25,7 @@ mod mfa;
 mod pages;
 mod progress;
 mod sealed;
+use necropsy_pack::seal;
 mod state;
 mod toolkit;
 mod workspace;
@@ -161,22 +162,50 @@ async fn main() {
         .unwrap_or_else(|e| fail(&format!("cannot find this program's own path: {e}")));
     let generator = generated::Generator::new(secret, generated::Runner::Process(exe));
     // Sealed packs (docs/sealing.md): opened with the master key, checked, and
-    // served like any other daily. Without a master key none are opened.
-    let master = necropsy_pack::seal::MasterKeys::from_env().unwrap_or_else(|e| fail(&e));
+    // served like any other daily. The master key is made, next to the server
+    // secret, if there is none.
+    let master_default = secret_path.with_file_name("master-key");
+    let (master, made) = sealed::load_master(
+        std::env::var("NECROPSY_MASTER_KEY_FILE").ok(),
+        std::env::var("NECROPSY_MASTER_KEY").ok(),
+        &master_default,
+    )
+    .unwrap_or_else(|e| fail(&e));
     let sealed_dir = PathBuf::from(env_or("NECROPSY_SEALED", "packs-sealed"));
+    if made {
+        tracing::warn!(
+            "created a new master key in {}: back it up, since no pack sealed to it opens without it",
+            master_default.display()
+        );
+    }
+    let wrap = master.current_wrap_key();
+    match seal::committed_wrap_keys(&sealed_dir)
+        .ok()
+        .and_then(|mut keys| keys.remove(&wrap.version))
+    {
+        Some(c) if c.public != wrap.public => tracing::warn!(
+            "wrap key v{} ({}) is not the committed one ({}): packs sealed for this repository will not open here",
+            wrap.version,
+            wrap.fingerprint_hex(),
+            c.fingerprint_hex()
+        ),
+        Some(_) => {}
+        None => tracing::warn!(
+            "wrap key v{} ({}) is not committed: run `pack-tool fetch-wrap-key` against this site and commit it",
+            wrap.version,
+            wrap.fingerprint_hex()
+        ),
+    }
     let (sealed_packs, sealed_state) =
-        sealed::load(&sealed_dir, master.as_ref(), &packs, &mut |wasm, seed| {
+        sealed::load(&sealed_dir, Some(&master), &packs, &mut |wasm, seed| {
             generator.run_blocking(wasm, seed)
         });
-    match &master {
-        Some(m) => tracing::info!(
-            "sealed packs: {} opened from {}, wrap key v{}",
-            sealed_packs.len(),
-            sealed_dir.display(),
-            m.current_version()
-        ),
-        None => tracing::info!("sealed packs: no master key, none opened"),
-    }
+    tracing::info!(
+        "sealed packs: {} opened from {}, wrap key v{}",
+        sealed_packs.len(),
+        sealed_dir.display(),
+        master.current_version()
+    );
     for s in sealed_state.status.iter().filter(|s| !s.ok) {
         tracing::warn!("sealed pack {}: {}", s.id, s.outcome);
     }

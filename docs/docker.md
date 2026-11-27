@@ -124,7 +124,8 @@ These are fixed by the container and cannot be overridden in `necropsy.env`:
 | `NECROPSY_TRUSTED_PROXIES` | the containers' private subnet, so only the proxy container can set it |
 | `NECROPSY_PACKS`, `NECROPSY_DB` | the packs baked into the image, and `/data/necropsy.db` |
 | `NECROPSY_LEARN`, `NECROPSY_TOOLKIT` | `/app/learn` and `/app/toolkit`, baked into the image |
-| `NECROPSY_SEALED` | `/app/packs-sealed`, baked into the image. The master key goes in `necropsy.env` as `NECROPSY_MASTER_KEY` (see [sealing.md](sealing.md)) |
+| `NECROPSY_SEALED` | `/app/packs-sealed`, baked into the image |
+| master key | `/data/master-key` in the data volume, made on first start (see [sealing.md](sealing.md)); `NECROPSY_MASTER_KEY_FILE` moves it |
 | server secret | `/data/server-secret` in the data volume, made on first start (see [generators.md](generators.md#the-server-secret)); `NECROPSY_SERVER_SECRET_FILE` moves it |
 
 Deploy options (bind address, port, subnet, drain time, repository, branch) go in `/etc/necropsy/deploy.env`, see `deploy/bluegreen/deploy.env.example`. Quote a value in `necropsy.env` that contains `$` with single quotes, since Compose expands `$` in environment files.

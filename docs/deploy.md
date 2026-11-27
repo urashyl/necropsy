@@ -17,7 +17,7 @@ Nothing is hardcoded. Paths come from the XDG variables, falling back to their d
 | Binary | `$XDG_BIN_HOME` or `~/.local/bin/necropsy-web` |
 | Packs | `$XDG_DATA_HOME` or `~/.local/share`, then `necropsy/packs` |
 | Learn modules | the same, then `necropsy/learn` |
-| Sealed packs | the same, then `necropsy/packs-sealed`; the master key goes in the settings file (see [sealing.md](sealing.md)) |
+| Sealed packs | the same, then `necropsy/packs-sealed`; the master key beside the database, `necropsy/master-key`, made on first start (see [sealing.md](sealing.md)) |
 | Toolkit | the same, then `necropsy/toolkit`: downloaded by `toolkit/fetch.sh` (needs `curl`, `unzip`, `gzip` and network). If it fails, the installer warns and carries on; run it again by hand. See [toolkit.md](toolkit.md). |
 | Database | `$XDG_STATE_HOME` or `~/.local/state`, then `necropsy/necropsy.db` |
 | Server secret | beside the database, `necropsy/server-secret`, made on first start (see [generators.md](generators.md#the-server-secret)) |

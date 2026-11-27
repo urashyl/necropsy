@@ -14,7 +14,7 @@ cargo run -p necropsy-web
 | `NECROPSY_PACKS` | `packs` | Directory containing one subdirectory per pack. |
 | `NECROPSY_BASE_URL` | `https://necropsy.urashyl.dev` | Origin used in links, emails and canonical URLs. Change it when the domain changes. Cookies are `Secure` when it starts with `https://`. |
 | `NECROPSY_DB` | `necropsy.db` | SQLite file for accounts and solves. |
-| `NECROPSY_SEALED`, `NECROPSY_MASTER_KEY_FILE`, `NECROPSY_MASTER_KEY` | `packs-sealed`, unset, unset | Sealed packs and the master key that opens them. See [sealing.md](sealing.md#on-the-site). |
+| `NECROPSY_SEALED`, `NECROPSY_MASTER_KEY_FILE`, `NECROPSY_MASTER_KEY` | `packs-sealed`, `master-key` next to the server secret, unset | Sealed packs and the master key that opens them. The key file is made if missing. See [sealing.md](sealing.md#on-the-site). |
 | `NECROPSY_SERVER_SECRET_FILE` | `server-secret` next to `NECROPSY_DB` | The secret that keys generated packs' seeds and live flags. Made if missing. See [generators.md](generators.md#the-server-secret). |
 | `NECROPSY_LEARN` | `learn` | The [Learn](learn.md) modules. The server exits if one is invalid. |
 | `NECROPSY_TOOLKIT` | `toolkit/dist` | The workspace's third-party tools, from `toolkit/fetch.sh` (see [toolkit.md](toolkit.md)). Missing tools are reported in the log and on their tab. |

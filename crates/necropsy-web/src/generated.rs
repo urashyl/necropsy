@@ -262,6 +262,24 @@ pub fn child_main() -> std::process::ExitCode {
     }
 }
 
+/// Writes a new file only its owner can read (mode 0600), refusing to replace
+/// one that exists.
+pub fn create_private(path: &Path, text: &str) -> Result<(), String> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts
+        .open(path)
+        .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+    use std::io::Write;
+    f.write_all(text.as_bytes())
+        .map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
 /// The server secret from its file, made (random, mode 0600) if it does not exist.
 pub fn load_secret(path: &Path) -> Result<Vec<u8>, String> {
     match std::fs::read_to_string(path) {
@@ -277,19 +295,7 @@ pub fn load_secret(path: &Path) -> Result<Vec<u8>, String> {
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let secret = crate::auth::new_token();
-            let mut opts = std::fs::OpenOptions::new();
-            opts.write(true).create_new(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                opts.mode(0o600);
-            }
-            let mut f = opts
-                .open(path)
-                .map_err(|e| format!("cannot create the server secret {}: {e}", path.display()))?;
-            use std::io::Write;
-            f.write_all(format!("{secret}\n").as_bytes())
-                .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+            create_private(path, &format!("{secret}\n"))?;
             tracing::warn!(
                 "created a new server secret in {}: keep it, since every player's generated files and answers depend on it",
                 path.display()

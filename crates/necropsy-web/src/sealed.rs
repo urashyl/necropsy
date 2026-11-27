@@ -271,6 +271,37 @@ fn open_entry(
     Ok((files, k, pack))
 }
 
+/// Where the master key comes from (docs/sealing.md): `NECROPSY_MASTER_KEY_FILE`
+/// if set; else `NECROPSY_MASTER_KEY`; else `default_file`. A key file that does
+/// not exist is made, with a new random key, mode 0600. Returns the keys and
+/// whether they were just made.
+pub fn load_master(
+    file_var: Option<String>,
+    env_var: Option<String>,
+    default_file: &Path,
+) -> Result<(MasterKeys, bool), String> {
+    let nonempty = |v: Option<String>| v.filter(|v| !v.trim().is_empty());
+    let path = match (nonempty(file_var), nonempty(env_var)) {
+        (Some(f), _) => std::path::PathBuf::from(f.trim()),
+        (None, Some(v)) => return MasterKeys::parse(&v).map(|m| (m, false)),
+        (None, None) => default_file.to_path_buf(),
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(text) => MasterKeys::parse(&text)
+            .map(|m| (m, false))
+            .map_err(|e| format!("{}: {e}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let text = MasterKeys::generate_text();
+            crate::generated::create_private(&path, &format!("{text}\n"))?;
+            MasterKeys::parse(&text).map(|m| (m, true))
+        }
+        Err(e) => Err(format!(
+            "cannot read the master key {}: {e}",
+            path.display()
+        )),
+    }
+}
+
 /// `2026-12-05 05:00 UTC`.
 pub fn utc_time(secs: i64) -> String {
     let (y, m, d) = necropsy_pack::civil_from_days(secs.div_euclid(86_400));

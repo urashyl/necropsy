@@ -372,3 +372,52 @@ fn pull_request_workflows_never_see_a_secret() {
     }
     assert!(seen >= 1, "ci.yml runs on pull requests");
 }
+
+#[test]
+fn the_master_key_is_made_when_there_is_none_and_kept() {
+    let dir = std::env::temp_dir().join(format!("necropsy-master-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let _f = Fixture { dir: dir.clone() };
+    let default = dir.join("master-key");
+
+    // Nothing set: made at the default path, 0600, and the same key next time.
+    let (a, made) = crate::sealed::load_master(None, None, &default).unwrap();
+    assert!(made);
+    let text = std::fs::read_to_string(&default).unwrap();
+    assert!(
+        text.starts_with("1:") && text.trim().len() == 66,
+        "{text:?}"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&default).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let (b, made) = crate::sealed::load_master(Some(" ".into()), None, &default).unwrap();
+    assert!(!made, "an existing key is kept");
+    assert_eq!(a.current_wrap_key(), b.current_wrap_key());
+
+    // The variable is used, and nothing is made, when no file is named.
+    let given = format!("1:{}", "5a".repeat(32));
+    let other = dir.join("unused");
+    let (c, made) = crate::sealed::load_master(None, Some(given.clone()), &other).unwrap();
+    assert!(!made && !other.exists());
+    assert_eq!(c.current_wrap_key(), master().current_wrap_key());
+
+    // A named file wins over the variable, and is made if missing.
+    let named = dir.join("named.key");
+    let (d, made) =
+        crate::sealed::load_master(Some(named.display().to_string()), Some(given), &other).unwrap();
+    assert!(made && named.exists());
+    assert_ne!(d.current_wrap_key(), master().current_wrap_key());
+
+    // A malformed key is refused, never replaced.
+    std::fs::write(&default, "1:abc\n").unwrap();
+    let e = crate::sealed::load_master(None, None, &default).unwrap_err();
+    assert!(e.contains("not 64 hex digits"), "{e}");
+    assert_eq!(std::fs::read_to_string(&default).unwrap(), "1:abc\n");
+}
