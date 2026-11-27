@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["crates/necropsy-pack", "crates/necropsy-web", "crates/necropsy-spawner"]
+members = ["crates/necropsy-pack", "crates/necropsy-web", "crates/necropsy-spawner", "crates/necropsy-gen-sdk"]
+# Pack generators are crates of their own, built to WebAssembly by pack-tool.
+exclude = ["packs"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,4 +17,7 @@ unsafe_code = "forbid"
 [profile.dev.package.argon2]
 opt-level = 3
 [profile.dev.package.blake2]
+opt-level = 3
+# Generators run in an interpreter; unoptimized, a test generator takes seconds.
+[profile.dev.package.wasmi]
 opt-level = 3

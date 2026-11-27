@@ -1,6 +1,6 @@
-The answer is `@typescript_eslint/parser`.
+The answer is the parser line's package, whose scope is not `@typescript-eslint`. Each player's diff misspells it differently.
 
-Look at the `devDependencies` in `package.json`. The ESLint plugin is still `@typescript-eslint/eslint-plugin`, but the parser line now says `@typescript_eslint/parser`, with an underscore. npm scopes are just names, and anyone can register `@typescript_eslint`, so it isn't the typescript-eslint project.
+Look at the `devDependencies` in `package.json`. The ESLint plugin is still `@typescript-eslint/eslint-plugin`, but the parser line now names a scope a character or two away from it: a dropped, doubled or swapped letter, or another separator. npm scopes are just names, and anyone can register a lookalike, so it isn't the typescript-eslint project.
 
 The lockfile confirms it. The new package has `"hasInstallScript": true`, so it runs code on every `npm install`, on every developer machine and CI runner. Its only dependency is the real `@typescript-eslint/parser`. That's why lint still works and CI is green: the impostor installs the real parser and runs its own script on the way.
 

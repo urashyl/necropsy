@@ -91,6 +91,7 @@ Details that matter:
 ## Sessions and tokens
 
 - Passwords: Argon2id with the crate defaults, run off the async runtime.
+- `necropsy_anon`: a signed-out browser's random id, set when it first opens a [generated pack](generators.md), so its files stay the same. `HttpOnly`, `SameSite=Lax`, one year. It identifies the browser to nothing else.
 - Session cookie `necropsy_session`: 256 random bits, `HttpOnly`, `SameSite=Lax`, `Secure` when `NECROPSY_BASE_URL` is https, 30 days.
 - Sessions and email tokens are stored as SHA-256 hashes, so a database leak does not yield live sessions or reset links.
 - Email tokens are 256 random bits, single use, and replace any earlier token of the same kind for that user.

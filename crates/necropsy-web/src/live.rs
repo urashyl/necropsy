@@ -224,13 +224,24 @@ fn derive(seed: &str, tag: &str) -> String {
     })
 }
 
-/// The flag of an instance: `prefix{20 hex digits}`.
-pub fn flag_of(scenario: &Scenario, pack_id: &str, seed: &str) -> String {
-    format!(
-        "{}{{{}}}",
-        scenario.flag_prefix,
-        &derive(seed, &format!("flag:{pack_id}"))[..20]
-    )
+/// The flag of an instance: `prefix{20 hex digits}`. For an instance made
+/// since flags were keyed, an HMAC with the server secret, so the seeds in the
+/// database alone do not give anyone's flag; for an older one, as it was made.
+pub fn flag_of(scenario: &Scenario, pack_id: &str, inst: &Instance, secret: &[u8]) -> String {
+    let digits = if inst.keyed {
+        use hmac::{Hmac, Mac};
+        let mut mac =
+            <Hmac<Sha256> as Mac>::new_from_slice(secret).expect("HMAC takes any key length");
+        mac.update(format!("necropsy:flag:v1:{pack_id}:{}", inst.seed).as_bytes());
+        mac.finalize()
+            .into_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    } else {
+        derive(&inst.seed, &format!("flag:{pack_id}"))
+    };
+    format!("{}{{{}}}", scenario.flag_prefix, &digits[..20])
 }
 
 pub struct Ctx<'a> {
@@ -604,7 +615,7 @@ pub async fn handle(state: Arc<AppState>, label: String, req: Request) -> Respon
         headers: parts.headers,
     };
     let ctx = Ctx {
-        flag: flag_of(scenario, &inst.pack_id, &inst.seed),
+        flag: flag_of(scenario, &inst.pack_id, &inst, state.generator.secret()),
         seed: &inst.seed,
         label: &label,
         host: &host,
@@ -761,7 +772,7 @@ async fn start_container(
         "image": image,
         "ttl_secs": inst.expires_at - inst.created_at,
         "env": {
-            "NECROPSY_FLAG": flag_of(scenario, &inst.pack_id, &inst.seed),
+            "NECROPSY_FLAG": flag_of(scenario, &inst.pack_id, inst, state.generator.secret()),
             "NECROPSY_INSTANCE": inst.label,
         },
     });
@@ -1086,6 +1097,7 @@ pub async fn create_instance(
         created_at: t,
         expires_at: t + i64::from(scenario.ttl_minutes) * 60,
         flags: Vec::new(),
+        keyed: true,
     };
     if let Err(e) = state.db.live_create(inst.clone()).await {
         tracing::error!("live instance failed: {e}");
@@ -1140,7 +1152,12 @@ pub async fn flag_matches(state: &AppState, user_id: i64, pack: &Pack, guess: &s
     let want = necropsy_pack::normalize_answer(guess);
     match state.db.live_of(user_id, pack.meta.id.clone()).await {
         Ok(list) => list.iter().any(|i| {
-            necropsy_pack::normalize_answer(&flag_of(scenario, &pack.meta.id, &i.seed)) == want
+            necropsy_pack::normalize_answer(&flag_of(
+                scenario,
+                &pack.meta.id,
+                i,
+                state.generator.secret(),
+            )) == want
         }),
         Err(e) => {
             tracing::error!("live flag check failed: {e}");

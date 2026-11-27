@@ -14,6 +14,7 @@ cargo run -p necropsy-web
 | `NECROPSY_PACKS` | `packs` | Directory containing one subdirectory per pack. |
 | `NECROPSY_BASE_URL` | `https://necropsy.urashyl.dev` | Origin used in links, emails and canonical URLs. Change it when the domain changes. Cookies are `Secure` when it starts with `https://`. |
 | `NECROPSY_DB` | `necropsy.db` | SQLite file for accounts and solves. |
+| `NECROPSY_SERVER_SECRET_FILE` | `server-secret` next to `NECROPSY_DB` | The secret that keys generated packs' seeds and live flags. Made if missing. See [generators.md](generators.md#the-server-secret). |
 | `NECROPSY_LEARN` | `learn` | The [Learn](learn.md) modules. The server exits if one is invalid. |
 | `NECROPSY_TOOLKIT` | `toolkit/dist` | The workspace's third-party tools, from `toolkit/fetch.sh` (see [toolkit.md](toolkit.md)). Missing tools are reported in the log and on their tab. |
 | `NECROPSY_LIVE_DOMAIN` | unset | Turns on [live puzzles](live.md) at `<label>.<domain>`. |
@@ -44,13 +45,13 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/static/toolkit/{file}` | The workspace's own scripts, revalidated by ETag. |
 | `GET /api/live/{label}/ws` | The request console's WebSocket to the player's own live instance. See [toolkit.md](toolkit.md#transport). |
 | `/p/{id}` | A puzzle by id. Unreleased dailies are "not found". |
-| `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. |
+| `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. For a [generated pack](generators.md), the asker's own file, `no-store`. |
 | `/archive` | Released dailies, newest first. |
 | `/library` | Puzzles outside the daily rotation. |
 | `/card/{token}`, `/card/{token}.svg` | A shared solve card: the page, and the image (SVG, 1200 by 630). Public, no login, `noindex`. See [Solve cards](#solve-cards). |
 | `/search` | `?q=words` and `?tag=name`. Puzzles whose title, tags, id or brief contain every word, best match first (title, then tags and id, then brief). With no query it lists every tag with its puzzle count. Only puzzles the player can open are searched, and explainers and hints never are, since they hold the answer. A puzzle's tags link here. |
 | `/format` | Renders `docs/pack-format.md`. |
-| `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string, "seconds"?: n, "hints"?: n}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the server's own time and hints, and those two come back. The `seconds` and `hints` in the request are used only for a solve the server never timed (see [Time and hints](#time-and-hints)). |
+| `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string, "seconds"?: n, "hints"?: n}`. The explainer is only included for a correct answer. A generated pack's answer is checked against the asker's own (see [generators.md](generators.md)). At most 10 answers per 2 seconds per account (or address, signed out); more get `429`. For a signed-in user a correct answer is also saved, with the server's own time and hints, and those two come back. The `seconds` and `hints` in the request are used only for a solve the server never timed (see [Time and hints](#time-and-hints)). |
 | `POST /api/p/{id}/beat` | `{"have": n, "peek"?: bool}`. The page is open: starts the clock on the first call and returns `{"user": bool, "seconds"?: n, "hints": n, "texts": [...], "solved": bool, "running": bool}`. |
 | `POST /api/p/{id}/share` | Signed in. Turns sharing on for the player's solve of the puzzle and returns `{"url": ".../card/<token>", "text": "..."}`, the same address each time, and the text to send (see [Solve cards](#solve-cards)). `409` if the solve has no server-kept time, or there is no solve. `DELETE` turns it off (`204`). |
 | `POST /api/p/{id}/hint` | `{"have": n}`. Reveals the next hint and returns the same shape. |

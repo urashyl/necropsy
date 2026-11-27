@@ -109,6 +109,10 @@ pub struct AppState {
     pub learn: Vec<crate::learn::LearnModule>,
     /// Discord: the invite link and the discussion threads of closed dailies.
     pub community: crate::community::Community,
+    /// Runs generated packs, with the server secret. See `generated.rs`.
+    pub generator: crate::generated::Generator,
+    /// Highlights code files: at startup for packs, per player for generated ones.
+    hl: Highlighter,
 }
 
 impl AppState {
@@ -122,18 +126,7 @@ impl AppState {
             .filter(|p| live_on || !p.is_live())
             .filter(|p| range_on || p.container().is_none())
             .map(|pack| {
-                let files = pack
-                    .files
-                    .iter()
-                    .map(|f| RenderedFile {
-                        path: f.path.clone(),
-                        size: f.data.len(),
-                        inline: f
-                            .text()
-                            .filter(|_| f.data.len() <= MAX_INLINE_BYTES)
-                            .map(|t| (hl.highlight(&f.path, t), line_count(t))),
-                    })
-                    .collect();
+                let files = render_files(&hl, &pack.files);
                 RenderedPack {
                     brief_html: render_markdown(&pack.brief_md),
                     explainer_html: render_markdown(&pack.explainer_md),
@@ -172,7 +165,14 @@ impl AppState {
             toolkit: crate::toolkit::Toolkit::default(),
             learn: Vec::new(),
             community: crate::community::Community::default(),
+            generator: crate::generated::Generator::default(),
+            hl,
         }
+    }
+
+    /// Files as the puzzle page shows them: text highlighted, with line numbers.
+    pub fn render_files(&self, files: &[necropsy_pack::PackFile]) -> Vec<RenderedFile> {
+        render_files(&self.hl, files)
     }
 
     /// Sets the Learn modules, rendering their markdown.
@@ -360,6 +360,20 @@ impl AppState {
         };
         (prev, next)
     }
+}
+
+fn render_files(hl: &Highlighter, files: &[necropsy_pack::PackFile]) -> Vec<RenderedFile> {
+    files
+        .iter()
+        .map(|f| RenderedFile {
+            path: f.path.clone(),
+            size: f.data.len(),
+            inline: f
+                .text()
+                .filter(|_| f.data.len() <= MAX_INLINE_BYTES)
+                .map(|t| (hl.highlight(&f.path, t), line_count(t))),
+        })
+        .collect()
 }
 
 pub fn short_hash(s: &str) -> String {

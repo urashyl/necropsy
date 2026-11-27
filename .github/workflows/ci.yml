@@ -41,6 +41,17 @@ jobs:
       - name: Pack validation
         run: cargo run --locked -q -p necropsy-pack --bin pack-tool -- validate packs
 
+      # Generated packs (docs/generators.md). The generators' own tests, then
+      # every generator over many seeds, then a rebuild of each generator.wasm
+      # from its source with the pinned toolchain (packs/rust-toolchain.toml,
+      # installed by rustup on first use), which must match the committed one.
+      - name: Generators
+        run: |
+          (cd packs && rustup toolchain install)
+          for d in packs/*/generator; do (cd "$d" && cargo test --locked -q); done
+          cargo run --locked -q -p necropsy-pack --bin pack-tool -- check-gen packs
+          cargo run --locked -q -p necropsy-pack --bin pack-tool -- gen-build --check packs
+
       - name: Toolkit scripts (node)
         run: |
           node --version

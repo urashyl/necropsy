@@ -1,0 +1,24 @@
+[package]
+name = "dns-exfil-gen"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+necropsy-gen-sdk = { path = "../../../crates/necropsy-gen-sdk" }
+
+# Small and reproducible: see docs/generators.md.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+
+# A crate of its own, outside the repository's workspace.
+[workspace]

@@ -23,6 +23,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 pub mod curl;
+pub mod gen;
 pub mod learn;
 pub mod scenario;
 
@@ -115,6 +116,11 @@ pub struct Meta {
     /// closed. See docs/learn.md.
     #[serde(default)]
     pub learn: Vec<String>,
+    /// For a generated pack: the answer is meant to be found as it is in the
+    /// files (a user name in a log, say), so `pack-tool check-gen` does not
+    /// refuse files that contain it. See docs/generators.md.
+    #[serde(default)]
+    pub answer_in_files: bool,
 }
 
 fn default_modes() -> Vec<Mode> {
@@ -159,7 +165,7 @@ pub fn parse_date(s: &str) -> Option<i64> {
 
 /// A file under `files/`, addressed by its path relative to `files/`
 /// using `/` separators.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackFile {
     pub path: String,
     pub data: Vec<u8>,
@@ -186,13 +192,21 @@ pub struct Pack {
     pub live_files: Vec<PackFile>,
     /// SHA-256 over every file in the pack, see [`hash_files`].
     pub pack_hash: String,
+    /// `generator.wasm`, for a generated pack: each player's files and answer
+    /// come from it (see [`gen`]), and `files` holds only what every player shares.
+    pub generator: Option<Vec<u8>>,
 }
 
 impl Pack {
     /// Whether `guess` is the answer. The guess is normalized first.
     pub fn check(&self, guess: &str) -> bool {
-        // A live pack has no fixed answer: its flag differs per instance.
+        // A live or generated pack has no fixed answer: it differs per player.
         !self.answer_hash.is_empty() && hash_answer(&self.meta.id, guess) == self.answer_hash
+    }
+
+    /// Whether each player's files and answer come from a generator.
+    pub fn is_generated(&self) -> bool {
+        self.generator.is_some()
     }
 
     pub fn is_live(&self) -> bool {
@@ -361,12 +375,48 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
         None
     };
 
-    // A live pack's flag is made per instance, so it has no answer file.
-    let answer_hash = if is_live {
+    let generator = raw
+        .iter()
+        .find(|(p, _)| p == "generator.wasm")
+        .map(|(_, d)| d.clone());
+    let has_source = raw.iter().any(|(p, _)| p.starts_with("generator/"));
+    match (&generator, has_source) {
+        (Some(_), false) => {
+            return Err(invalid(
+                &dir.join("generator"),
+                "generator.wasm needs its source in generator/, for review",
+            ))
+        }
+        (None, true) => {
+            return Err(invalid(
+                &dir.join("generator.wasm"),
+                "missing: build it with `pack-tool gen-build`",
+            ))
+        }
+        _ => {}
+    }
+    if let Some(wasm) = &generator {
+        if is_live {
+            return Err(invalid(
+                &dir.join("generator.wasm"),
+                "a live pack has no generator: its flag is already made per instance",
+            ));
+        }
+        gen::check_module(wasm).map_err(|e| invalid(&dir.join("generator.wasm"), e))?;
+    } else if meta.answer_in_files {
+        return Err(invalid(
+            &dir.join("pack.toml"),
+            "answer_in_files is only for generated packs",
+        ));
+    }
+
+    // A live pack's flag is made per instance, and a generated pack's answer per
+    // player, so neither has an answer file.
+    let answer_hash = if is_live || generator.is_some() {
         if has_raw("answer") {
             return Err(invalid(
                 &dir.join("answer"),
-                "live packs have no answer file: their flag is generated per instance",
+                "live and generated packs have no answer file: theirs differs per player",
             ));
         }
         String::new()
@@ -397,7 +447,7 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
             .collect()
     };
     let files = files_under("files/");
-    if files.is_empty() && !is_live {
+    if files.is_empty() && !is_live && generator.is_none() {
         return Err(invalid(&dir.join("files"), "needs at least one file"));
     }
     let live_files = files_under("live/");
@@ -411,6 +461,7 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
         files,
         live,
         live_files,
+        generator,
     })
 }
 
@@ -528,6 +579,13 @@ fn walk(
             return Err(invalid(&path, "symlinks are not allowed in packs"));
         }
         if ty.is_dir() {
+            // A generator's own build output, from `cargo test` in its directory.
+            if path
+                .strip_prefix(root)
+                .is_ok_and(|r| r == Path::new("generator/target"))
+            {
+                continue;
+            }
             walk(root, &path, depth + 1, out, total)?;
         } else if ty.is_file() {
             let len = entry.metadata().map_err(io_err(&path))?.len();

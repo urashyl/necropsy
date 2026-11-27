@@ -24,6 +24,8 @@ Run `toolkit/fetch.sh` once first for the workspace's tools (see [docs/toolkit.m
 | `docs/toolkit.md` | The workspace: pcap viewer, decoder, request console, notebook, hex viewer. |
 | `toolkit/` | `fetch.sh` and the pinned versions of the toolkit's third-party builds. |
 | `docs/learn.md` | The Learn track: modules, tool paths, checkpoints, and writing a module. |
+| `docs/generators.md` | Generated packs: per-player files and answers, the sandbox, the server secret. |
+| `crates/necropsy-gen-sdk` | The library pack generators are written with. |
 | `docs/community.md` | Discord: the link, and discussion threads for closed dailies. |
 | `learn/` | The Learn modules. |
 | `tools/learn/` | Builds the files of the Learn practice puzzles. |
@@ -47,7 +49,7 @@ The packs contain answer hashes and explainers, so spoilers are in this reposito
 ## Adding a puzzle
 
 1. Create `packs/<id>/` with `pack.toml`, `brief.md`, `files/` and `explainer.md`. Set `track` to `intro` (a Learn practice puzzle, see [docs/learn.md](docs/learn.md)), `library`, or `daily` with a release `date` after the last daily. A daily can name the Learn modules it is a worked example for (`learn = [...]`).
-2. Generate the answer file: `cargo run -q -p necropsy-pack --bin pack-tool -- hash <id> '<answer>' > packs/<id>/answer`
+2. For a generated pack (each player gets their own files and answer), write `generator/` instead of `files/` and the answer file: see [docs/generators.md](docs/generators.md). Otherwise, generate the answer file: `cargo run -q -p necropsy-pack --bin pack-tool -- hash <id> '<answer>' > packs/<id>/answer`
 3. Check it loads: `cargo run -q -p necropsy-pack --bin pack-tool -- validate packs` (this also checks the Learn modules)
 4. At difficulty 1 to 3, solve it in the workspace (`/w/<id>`) with nothing installed.
 

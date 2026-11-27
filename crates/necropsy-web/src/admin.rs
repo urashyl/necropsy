@@ -195,7 +195,7 @@ fn live_row(state: &AppState, p: &crate::state::RenderedPack, inst: Option<&Inst
             td {
                 @if let Some(i) = inst {
                     @let url = live::instance_url(state, &i.label).unwrap_or_default();
-                    @let flag = p.pack.live.as_ref().map(|s| live::flag_of(s, &m.id, &i.seed)).unwrap_or_default();
+                    @let flag = p.pack.live.as_ref().map(|s| live::flag_of(s, &m.id, i, state.generator.secret())).unwrap_or_default();
                     a href=(url) target="_blank" rel="noopener noreferrer" { (url) }
                     br;
                     span.muted { ((i.expires_at - crate::db::now()).max(0) / 60) " min left · flag " }

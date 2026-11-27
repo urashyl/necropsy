@@ -45,6 +45,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 node --test crates/necropsy-web/tests-js/*.test.mjs
 cargo run -q --bin pack-tool -- validate packs
+cargo run -q --bin pack-tool -- check-gen packs && cargo run -q --bin pack-tool -- gen-build --check packs
 deploy/test/common.sh && deploy/test/install-site.sh && deploy/test/install-range.sh && deploy/test/range-update.sh
 deploy/bluegreen/test/run.sh && range/local-test.sh
 ```

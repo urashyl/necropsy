@@ -19,9 +19,9 @@ use maud::{html, Markup, PreEscaped};
 use crate::auth::MaybeUser;
 use crate::pages::{
     answer_block, crumb, layout, live_panel, not_found_page, puzzle_url, release_day, side_facts,
-    Nav,
+    viewer_files, with_cookie, Nav, ViewerFiles,
 };
-use crate::state::{short_hash, AppState, RenderedPack};
+use crate::state::{short_hash, AppState};
 
 /// The toolkit's scripts, by file name.
 pub const FILES: [(&str, &str); 10] = [
@@ -108,10 +108,8 @@ fn file_kind(path: &str, text: bool) -> &'static str {
 }
 
 /// The files, for the page's script: path, size and kind.
-fn files_json(rp: &RenderedPack) -> String {
-    let list: Vec<serde_json::Value> = rp
-        .pack
-        .files
+fn files_json(files: &[necropsy_pack::PackFile]) -> String {
+    let list: Vec<serde_json::Value> = files
         .iter()
         .map(|f| {
             serde_json::json!({
@@ -128,10 +126,17 @@ fn files_json(rp: &RenderedPack) -> String {
 pub async fn page(
     State(state): State<Arc<AppState>>,
     MaybeUser(viewer): MaybeUser,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
     let Some(rp) = state.get(&id) else {
         return not_found_page(&state, viewer.as_ref()).into_response();
+    };
+    let (files, cookie) = viewer_files(&state, viewer.as_ref(), &headers, rp).await;
+    let raw_files: &[necropsy_pack::PackFile] = match &files {
+        ViewerFiles::Pack(_) => &rp.pack.files,
+        ViewerFiles::Generated(g) => &g.output.files,
+        ViewerFiles::Failed => &[],
     };
     let stats = state.stats().await;
     let m = &rp.pack.meta;
@@ -154,7 +159,7 @@ pub async fn page(
         div #puzzle.workspace data-id=(m.id) data-number=(m.number) data-title=(m.title)
             data-hints=(m.hints.len()) data-url=(puzzle_url(&state, rp))
             data-label=(rp.label().to_lowercase()) data-day=(release_day(rp))
-            data-files=(files_json(rp)) data-live=(live)
+            data-files=(files_json(raw_files)) data-live=(live)
             data-signed-in=(viewer.is_some())
             data-wiregasm=[tk.base("wiregasm")] data-pyodide=[tk.base("pyodide")]
             data-cyberchef=[tk.base("cyberchef")] {
@@ -184,7 +189,7 @@ pub async fn page(
                 }
                 aside.ws-side {
                     (answer_block(rp))
-                    (side_facts(rp, &stats))
+                    (side_facts(rp, &stats, raw_files.len()))
                 }
             }
         }
@@ -204,7 +209,7 @@ pub async fn page(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(PAGE_CSP),
     );
-    res
+    with_cookie(res, cookie)
 }
 
 /// One "Terminal:" line, filled in by the tool's script.
