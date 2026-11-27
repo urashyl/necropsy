@@ -110,6 +110,26 @@ async fn admin_page(
                 }
             }
 
+            h2.admin-h { "Sealed packs" }
+            @if let Some(k) = &state.sealed.wrap_key {
+                p.muted { "Sealing to wrap key v" (k.version) ", fingerprint " code { (k.fingerprint_hex()) } ". Keys are published when a pack's date is over in New York." }
+            } @else {
+                p.muted { "No master key: sealed packs are not opened. Set NECROPSY_MASTER_KEY_FILE, see docs/sealing.md." }
+            }
+            @if state.sealed.status.is_empty() {
+                p.muted { "None in the manifest." }
+            } @else {
+                ul.admin-list {
+                    @for st in &state.sealed.status {
+                        li.(if st.ok { "" } else { "form-error" }) {
+                            code { (st.id) } " "
+                            @if let Some(d) = &st.date { (d) " · " }
+                            (st.outcome)
+                        }
+                    }
+                }
+            }
+
             h2.admin-h { "Users" }
             @if rows.len() <= 1 {
                 p.muted { "No other accounts yet." }

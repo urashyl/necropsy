@@ -33,6 +33,10 @@ phone-home/
 
 Unknown keys are rejected.
 
+### Sealed packs
+
+An unreleased daily is not committed as a directory: it is sealed into `packs-sealed/<id>.sealed` with `pack-tool seal`, and the site opens it with its master key. Inside it is an ordinary pack directory. See [sealing.md](sealing.md).
+
 ### Tracks
 
 There are three tracks of puzzles: `intro`, `daily` and `library`.

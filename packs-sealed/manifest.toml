@@ -1,0 +1,2 @@
+# Sealed packs: one entry per packs-sealed/<id>.sealed. Written by `pack-tool seal`.
+# See docs/sealing.md.

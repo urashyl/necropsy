@@ -16,6 +16,7 @@ WorkingDirectory=@STATE_DIR@
 # file take precedence, so either can be overridden there.
 Environment=NECROPSY_PACKS=@PACKS@
 Environment=NECROPSY_LEARN=@LEARN@
+Environment=NECROPSY_SEALED=@SEALED@
 Environment=NECROPSY_TOOLKIT=@TOOLKIT@
 Environment=NECROPSY_DB=@DB@
 EnvironmentFile=-@ENV_FILE@

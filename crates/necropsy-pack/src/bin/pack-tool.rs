@@ -10,20 +10,34 @@
 //! pack-tool gen-build --check <packs-dir> [id...]  build, and fail if a generator.wasm differs
 //! pack-tool gen <packs-dir> <id> <seed> [dir]    write one player's files, print their answer
 //! pack-tool check-gen <packs-dir> [id...]        check generators over many seeds
+//!
+//! pack-tool seal <id> [--site URL] [--fallback] [--src DIR] [--sealed DIR]
+//!                                                seal packs-src/<id> into packs-sealed/
+//! pack-tool open <id> [--site URL] [--sealed DIR] [--out DIR]
+//!                                                open a sealed pack: with the master key if
+//!                                                set, else with its released key from the site
+//! pack-tool fetch-wrap-key [--site URL] [--sealed DIR]
+//!                                                save the site's wrap key in wrap-keys/
+//! pack-tool check-sealed <packs-dir> [sealed-dir]  what CI checks, no secrets needed
+//! pack-tool new-master-key <file>                write a new random master key (mode 0600)
+//! pack-tool wrap-key                             print the master key's public wrap keys
+//! pack-tool rewrap [--sealed DIR]                rotation: reseal every pack to the newest key
 //! ```
 //!
-//! See docs/generators.md.
+//! The site: `--site`, else `NECROPSY_BASE_URL` (environment, then `.env`), else
+//! https://necropsy.dev. The master key: `NECROPSY_MASTER_KEY_FILE` or
+//! `NECROPSY_MASTER_KEY`, never an argument. See docs/generators.md and
+//! docs/sealing.md.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use necropsy_pack::{gen, load_all, Pack};
+use necropsy_pack::seal::{self, Manifest, MasterKeys};
+use necropsy_pack::{gen, load_all, site, Pack};
 
 /// The key `pack-tool gen` and `check-gen` derive seeds with. The site uses its
 /// own secret, so these files are never a player's.
 const TOOL_SECRET: &[u8] = b"necropsy pack-tool";
-/// Seeds `check-gen` tries per pack.
-const CHECK_SEEDS: usize = 24;
 
 fn validate(dir: &str, learn: Option<&str>) -> ExitCode {
     let packs = match load_all(Path::new(dir)) {
@@ -315,93 +329,14 @@ fn gen_one(packs: &str, id: &str, seed: &str, out: Option<&str>) -> ExitCode {
     }
 }
 
-/// The checks a generator must pass, over [`CHECK_SEEDS`] seeds:
-/// - it runs within its limits and is deterministic (two runs, same output);
-/// - different seeds give different answers;
-/// - no answer is in the pack's own text (brief, explainer, pack.toml, files,
-///   templates; generator/src is exempt, since lists of candidate values live there);
-/// - unless `answer_in_files`, no answer is in the generated files as it is.
-pub fn check_pack(p: &Pack, plaintext: &[(String, Vec<u8>)]) -> Result<String, String> {
-    let wasm = p.generator.as_deref().ok_or("no generator")?;
-    let id = &p.meta.id;
-    let mut answers = std::collections::HashSet::new();
-    let started = std::time::Instant::now();
-    for i in 0..CHECK_SEEDS {
-        let seed = gen::seed_for(TOOL_SECRET, id, &format!("check-{i}"));
-        let a = gen::run(wasm, seed)?;
-        let b = gen::run(wasm, seed)?;
-        if a != b {
-            return Err(format!(
-                "seed {i}: two runs gave different output: it is not deterministic"
-            ));
-        }
-        let answer = necropsy_pack::normalize_answer(&a.answer);
-        for (path, data) in plaintext {
-            let text = String::from_utf8_lossy(data).to_lowercase();
-            if text.contains(&answer) {
-                return Err(format!("seed {i}: the answer {:?} is in {path}", a.answer));
-            }
-        }
-        if !p.meta.answer_in_files {
-            for f in &a.files {
-                if String::from_utf8_lossy(&f.data)
-                    .to_lowercase()
-                    .contains(&answer)
-                {
-                    return Err(format!(
-                        "seed {i}: the answer {:?} is in the generated {} as it is \
-                         (set answer_in_files = true if it is meant to be found there)",
-                        a.answer, f.path
-                    ));
-                }
-            }
-        }
-        answers.insert(answer);
-    }
-    // Allow a rare collision; a generator with a handful of answers fails.
-    if answers.len() + 1 < CHECK_SEEDS {
-        return Err(format!(
-            "{CHECK_SEEDS} seeds gave only {} different answers: an answer shared by friends would work for too many players",
-            answers.len()
-        ));
-    }
-    Ok(format!(
-        "{CHECK_SEEDS} seeds, {} answers, {:.1} ms a run",
-        answers.len(),
-        started.elapsed().as_secs_f64() * 1000.0 / (2 * CHECK_SEEDS) as f64
-    ))
+/// The key `check-gen` derives its seeds with.
+fn check_pack(p: &Pack, plaintext: &[(String, Vec<u8>)]) -> Result<String, String> {
+    gen::check(p, plaintext, TOOL_SECRET)
 }
 
 /// The pack's own text that must not hold an answer.
 fn plaintext_of(dir: &Path) -> Vec<(String, Vec<u8>)> {
-    fn walk(root: &Path, d: &Path, out: &mut Vec<(String, Vec<u8>)>) {
-        let Ok(entries) = std::fs::read_dir(d) else {
-            return;
-        };
-        for e in entries.flatten() {
-            let p = e.path();
-            let rel = p
-                .strip_prefix(root)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            if rel == "generator.wasm"
-                || rel.starts_with("generator/src")
-                || rel.starts_with("generator/target")
-                || rel.starts_with("generator/Cargo.")
-            {
-                continue;
-            }
-            if p.is_dir() {
-                walk(root, &p, out);
-            } else if let Ok(data) = std::fs::read(&p) {
-                out.push((rel, data));
-            }
-        }
-    }
-    let mut out = Vec::new();
-    walk(dir, dir, &mut out);
-    out
+    gen::plaintext(&necropsy_pack::read_pack_files(dir).unwrap_or_default())
 }
 
 fn check_gen(packs: &str, ids: &[&str]) -> ExitCode {
@@ -439,13 +374,291 @@ fn check_gen(packs: &str, ids: &[&str]) -> ExitCode {
     }
 }
 
+// ---------------------------------------------------------------- sealing
+
+/// `--name value` options, and the arguments that are not options.
+struct Args {
+    positional: Vec<String>,
+    options: Vec<(String, Option<String>)>,
+}
+
+impl Args {
+    /// Splits `args`; `flags` are the options that take no value.
+    fn parse(args: &[&str], flags: &[&str]) -> Result<Self, String> {
+        let mut positional = Vec::new();
+        let mut options = Vec::new();
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            if let Some(name) = a.strip_prefix("--") {
+                if flags.contains(&name) {
+                    options.push((name.to_owned(), None));
+                } else {
+                    let v = it.next().ok_or_else(|| format!("--{name} needs a value"))?;
+                    options.push((name.to_owned(), Some((*v).to_owned())));
+                }
+            } else {
+                positional.push((*a).to_owned());
+            }
+        }
+        Ok(Self {
+            positional,
+            options,
+        })
+    }
+
+    fn get(&self, name: &str) -> Option<&str> {
+        self.options
+            .iter()
+            .find(|(n, _)| n == name)
+            .and_then(|(_, v)| v.as_deref())
+    }
+
+    fn flag(&self, name: &str) -> bool {
+        self.options.iter().any(|(n, _)| n == name)
+    }
+
+    fn dir(&self, name: &str, default: &str) -> PathBuf {
+        PathBuf::from(self.get(name).unwrap_or(default))
+    }
+}
+
+fn the_site(args: &Args) -> String {
+    let (site, from) = site::resolve(
+        args.get("site"),
+        std::env::var("NECROPSY_BASE_URL").ok(),
+        Some(Path::new(".env")),
+    );
+    eprintln!("site: {site} (from {from})");
+    site
+}
+
+fn write_manifest(dir: &Path, m: &Manifest) -> Result<(), String> {
+    std::fs::write(dir.join("manifest.toml"), m.to_toml()).map_err(|e| e.to_string())
+}
+
+fn seal_cmd(args: &Args) -> Result<(), String> {
+    let [id] = args.positional.as_slice() else {
+        return Err("usage: pack-tool seal <id> [--site URL] [--fallback]".into());
+    };
+    let src = args.dir("src", "packs-src").join(id);
+    let out = args.dir("sealed", "packs-sealed");
+    let fallback = args.flag("fallback");
+    let raw = necropsy_pack::read_pack_files(&src).map_err(|e| e.to_string())?;
+    // A fallback has no date of its own; any date checks that the rest loads.
+    let pack = necropsy_pack::load_pack_files(&src, raw.clone(), fallback.then_some("2000-01-01"))
+        .map_err(|e| e.to_string())?;
+    if pack.meta.id != *id {
+        return Err(format!("{} says its id is {}", src.display(), pack.meta.id));
+    }
+    if pack.meta.track != necropsy_pack::Track::Daily {
+        return Err("only dailies are sealed: intro and library packs are public".into());
+    }
+    if pack.is_generated() {
+        let report = check_pack(&pack, &gen::plaintext(&raw))?;
+        eprintln!("{id}: generator ok, {report}");
+    }
+    let site = the_site(args);
+    let key = site::fetch_wrap_key(&site)?;
+    let committed = seal::committed_wrap_keys(&out)?;
+    match committed.get(&key.version) {
+        Some(c) if *c != key => {
+            return Err(format!(
+                "{site} serves a v{} wrap key that is not the one in {}/wrap-keys: \
+                 a pack sealed to it could not be opened by the site the repository deploys to. \
+                 Use --site for the right site.",
+                key.version,
+                out.display()
+            ))
+        }
+        Some(_) => {}
+        None => {
+            return Err(format!(
+                "{site}'s wrap key v{} is not committed in {}/wrap-keys: an admin adds it with \
+                 `pack-tool fetch-wrap-key` (see docs/sealing.md)",
+                key.version,
+                out.display()
+            ))
+        }
+    }
+    if committed.keys().next_back() != Some(&key.version) {
+        return Err(format!(
+            "v{} is not the newest committed wrap key",
+            key.version
+        ));
+    }
+    // The generator's local build output never goes in a sealed pack.
+    let (bytes, _) = seal::seal(id, &raw, &key)?;
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    std::fs::write(out.join(format!("{id}.sealed")), &bytes).map_err(|e| e.to_string())?;
+    let mut manifest = Manifest::load(&out)?;
+    manifest.upsert(seal::Entry {
+        id: id.clone(),
+        number: pack.meta.number,
+        difficulty: pack.meta.difficulty,
+        date: if fallback {
+            None
+        } else {
+            pack.meta.date.clone()
+        },
+        fallback,
+        key_version: key.version,
+        sha256: seal::sha256_hex(&bytes),
+    });
+    write_manifest(&out, &manifest)?;
+    println!(
+        "sealed {id} to v{} ({} bytes): commit {}/{id}.sealed and {}/manifest.toml, never {}",
+        key.version,
+        bytes.len(),
+        out.display(),
+        out.display(),
+        src.display()
+    );
+    Ok(())
+}
+
+fn open_cmd(args: &Args) -> Result<(), String> {
+    let [id] = args.positional.as_slice() else {
+        return Err("usage: pack-tool open <id> [--site URL] [--out DIR]".into());
+    };
+    let sealed_dir = args.dir("sealed", "packs-sealed");
+    let out = args.dir("out", "packs-src").join(id);
+    let bytes =
+        std::fs::read(sealed_dir.join(format!("{id}.sealed"))).map_err(|e| e.to_string())?;
+    let s = seal::parse(&bytes)?;
+    let k = match MasterKeys::from_env()? {
+        Some(m) => seal::unwrap_key(&s, &m)?,
+        None => site::fetch_released_key(&the_site(args), id)?,
+    };
+    let files = seal::open(&s, &k)?;
+    if out.exists() {
+        return Err(format!("{} exists: move it first", out.display()));
+    }
+    for (p, d) in &files {
+        let path = out.join(p);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, d).map_err(|e| e.to_string())?;
+    }
+    println!("opened {id} into {} ({} files)", out.display(), files.len());
+    Ok(())
+}
+
+fn fetch_wrap_key_cmd(args: &Args) -> Result<(), String> {
+    let out = args.dir("sealed", "packs-sealed").join("wrap-keys");
+    let key = site::fetch_wrap_key(&the_site(args))?;
+    let path = out.join(format!("v{}.pub", key.version));
+    if let Ok(old) = std::fs::read_to_string(&path) {
+        if seal::WrapKey::parse_file(&old)? != key {
+            return Err(format!(
+                "{} holds another v{} key: a version's key never changes; rotate to a new version instead",
+                path.display(),
+                key.version
+            ));
+        }
+        println!("{} already holds this key", path.display());
+        return Ok(());
+    }
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    std::fs::write(&path, key.to_file()).map_err(|e| e.to_string())?;
+    println!("wrote {}: commit it", path.display());
+    Ok(())
+}
+
+fn master_from_env() -> Result<MasterKeys, String> {
+    MasterKeys::from_env()?.ok_or_else(|| {
+        "set NECROPSY_MASTER_KEY_FILE (or NECROPSY_MASTER_KEY) to the master key".to_owned()
+    })
+}
+
+fn rewrap_cmd(args: &Args) -> Result<(), String> {
+    let dir = args.dir("sealed", "packs-sealed");
+    let master = master_from_env()?;
+    let to = master.current_wrap_key();
+    let mut manifest = Manifest::load(&dir)?;
+    let mut n = 0;
+    for e in manifest.pack.iter_mut() {
+        if e.key_version == to.version {
+            continue;
+        }
+        let path = dir.join(format!("{}.sealed", e.id));
+        let bytes = std::fs::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+        let re = seal::rewrap(&bytes, &master, &to)?;
+        std::fs::write(&path, &re).map_err(|err| err.to_string())?;
+        e.key_version = to.version;
+        e.sha256 = seal::sha256_hex(&re);
+        n += 1;
+    }
+    write_manifest(&dir, &manifest)?;
+    let keys = dir.join("wrap-keys");
+    std::fs::create_dir_all(&keys).map_err(|e| e.to_string())?;
+    std::fs::write(keys.join(format!("v{}.pub", to.version)), to.to_file())
+        .map_err(|e| e.to_string())?;
+    println!(
+        "resealed {n} packs to v{}; commit packs-sealed/",
+        to.version
+    );
+    Ok(())
+}
+
+fn new_master_key(path: &str) -> Result<(), String> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts
+        .open(path)
+        .map_err(|e| format!("{path}: {e} (it is never overwritten)"))?;
+    use std::io::Write;
+    f.write_all(format!("{}\n", MasterKeys::generate_text()).as_bytes())
+        .map_err(|e| e.to_string())?;
+    println!("wrote a new master key to {path}. Keep it out of the repository and of CI.");
+    Ok(())
+}
+
+fn check_sealed(packs: &str, sealed: Option<&str>) -> Result<(), String> {
+    let plain = load_all(Path::new(packs)).map_err(|e| e.to_string())?;
+    let dir = match sealed {
+        Some(d) => PathBuf::from(d),
+        None => Path::new(packs)
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("packs-sealed"),
+    };
+    for line in seal::check_dir(&dir, &plain)? {
+        println!("{line}");
+    }
+    println!("{}: ok", dir.display());
+    Ok(())
+}
+
+fn done(r: Result<(), String>) -> ExitCode {
+    match r {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn usage() -> ExitCode {
     eprintln!(
         "usage: pack-tool hash <pack-id> <answer>
        pack-tool validate <packs-dir> [learn-dir]
        pack-tool gen-build [--check] <packs-dir> [id...]
        pack-tool gen <packs-dir> <id> <seed> [out-dir]
-       pack-tool check-gen <packs-dir> [id...]"
+       pack-tool check-gen <packs-dir> [id...]
+       pack-tool seal <id> [--site URL] [--fallback] [--src DIR] [--sealed DIR]
+       pack-tool open <id> [--site URL] [--sealed DIR] [--out DIR]
+       pack-tool fetch-wrap-key [--site URL] [--sealed DIR]
+       pack-tool check-sealed <packs-dir> [sealed-dir]
+       pack-tool new-master-key <file>
+       pack-tool wrap-key
+       pack-tool rewrap [--sealed DIR]"
     );
     ExitCode::from(2)
 }
@@ -465,6 +678,20 @@ fn main() -> ExitCode {
         ["gen", dir, id, seed] => gen_one(dir, id, seed, None),
         ["gen", dir, id, seed, out] => gen_one(dir, id, seed, Some(out)),
         ["check-gen", dir, ids @ ..] => check_gen(dir, ids),
+        ["seal", rest @ ..] => done(Args::parse(rest, &["fallback"]).and_then(|a| seal_cmd(&a))),
+        ["open", rest @ ..] => done(Args::parse(rest, &[]).and_then(|a| open_cmd(&a))),
+        ["fetch-wrap-key", rest @ ..] => {
+            done(Args::parse(rest, &[]).and_then(|a| fetch_wrap_key_cmd(&a)))
+        }
+        ["check-sealed", packs] => done(check_sealed(packs, None)),
+        ["check-sealed", packs, sealed] => done(check_sealed(packs, Some(sealed))),
+        ["new-master-key", path] => done(new_master_key(path)),
+        ["wrap-key"] => done(master_from_env().map(|m| {
+            for v in m.versions() {
+                print!("{}", m.wrap_key(v).expect("exists").to_file());
+            }
+        })),
+        ["rewrap", rest @ ..] => done(Args::parse(rest, &[]).and_then(|a| rewrap_cmd(&a))),
         _ => usage(),
     }
 }

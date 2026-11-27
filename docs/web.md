@@ -14,6 +14,7 @@ cargo run -p necropsy-web
 | `NECROPSY_PACKS` | `packs` | Directory containing one subdirectory per pack. |
 | `NECROPSY_BASE_URL` | `https://necropsy.urashyl.dev` | Origin used in links, emails and canonical URLs. Change it when the domain changes. Cookies are `Secure` when it starts with `https://`. |
 | `NECROPSY_DB` | `necropsy.db` | SQLite file for accounts and solves. |
+| `NECROPSY_SEALED`, `NECROPSY_MASTER_KEY_FILE`, `NECROPSY_MASTER_KEY` | `packs-sealed`, `master-key` next to the server secret, unset | Sealed packs and the master key that opens them. The key file is made if missing. See [sealing.md](sealing.md#on-the-site). |
 | `NECROPSY_SERVER_SECRET_FILE` | `server-secret` next to `NECROPSY_DB` | The secret that keys generated packs' seeds and live flags. Made if missing. See [generators.md](generators.md#the-server-secret). |
 | `NECROPSY_LEARN` | `learn` | The [Learn](learn.md) modules. The server exits if one is invalid. |
 | `NECROPSY_TOOLKIT` | `toolkit/dist` | The workspace's third-party tools, from `toolkit/fetch.sh` (see [toolkit.md](toolkit.md)). Missing tools are reported in the log and on their tab. |
@@ -43,6 +44,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/w/{id}` | The puzzle's [workspace](toolkit.md): its files and the in-browser tools, with the answer form, hints and clock. Unreleased dailies are "not found". |
 | `/toolkit/{path}` | The toolkit's third-party files (Wiregasm, Pyodide, CyberChef), cached for good. See [toolkit.md](toolkit.md#how-the-files-are-served). |
 | `/static/toolkit/{file}` | The workspace's own scripts, revalidated by ETag. |
+| `GET /api/packs/wrap-key`, `GET /api/packs/keys`, `GET /api/packs/{id}/key` | The public key packs are sealed to, and released packs' keys. See [sealing.md](sealing.md#endpoints). |
 | `GET /api/live/{label}/ws` | The request console's WebSocket to the player's own live instance. See [toolkit.md](toolkit.md#transport). |
 | `/p/{id}` | A puzzle by id. Unreleased dailies are "not found". |
 | `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. For a [generated pack](generators.md), the asker's own file, `no-store`. |
