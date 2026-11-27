@@ -24,6 +24,7 @@ cargo run -p necropsy-web
 | `NECROPSY_CLIENT_IP_HEADER` | unset | Header your reverse proxy sets to the client address, such as `X-Real-IP`. Used for rate limiting. |
 | `NECROPSY_TRUSTED_PROXIES` | unset | IPs or CIDR ranges allowed to supply that header, comma-separated. The header from any other connection is ignored. |
 | `NECROPSY_SMTP_*`, `NECROPSY_DEV_MAIL_LOG` | unset | Email, see [accounts.md](accounts.md). |
+| `NECROPSY_DISCORD_URL`, `NECROPSY_DISCORD_WEBHOOK`, `NECROPSY_DISCORD_GUILD_ID` | unset | Discord link and discussion threads for closed dailies, see [community.md](community.md). |
 
 On first run the server prints generated admin credentials to the log, see [accounts.md](accounts.md).
 
@@ -51,7 +52,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/format` | Renders `docs/pack-format.md`. |
 | `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string, "seconds"?: n, "hints"?: n}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the server's own time and hints, and those two come back. The `seconds` and `hints` in the request are used only for a solve the server never timed (see [Time and hints](#time-and-hints)). |
 | `POST /api/p/{id}/beat` | `{"have": n, "peek"?: bool}`. The page is open: starts the clock on the first call and returns `{"user": bool, "seconds"?: n, "hints": n, "texts": [...], "solved": bool, "running": bool}`. |
-| `POST /api/p/{id}/share` | Signed in. Turns sharing on for the player's solve of the puzzle and returns `{"url": ".../card/<token>"}`, the same one each time. `409` if the solve has no server-kept time, or there is no solve. `DELETE` turns it off (`204`). |
+| `POST /api/p/{id}/share` | Signed in. Turns sharing on for the player's solve of the puzzle and returns `{"url": ".../card/<token>", "text": "..."}`, the same address each time, and the text to send (see [Solve cards](#solve-cards)). `409` if the solve has no server-kept time, or there is no solve. `DELETE` turns it off (`204`). |
 | `POST /api/p/{id}/hint` | `{"have": n}`. Reveals the next hint and returns the same shape. |
 | `/register`, `/verify`, `/login`, `/login/verify`, `/logout`, `/forgot`, `/reset`, `/account`, `/account/mfa/*`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |
 | `/admin` | Admin only. |
@@ -81,10 +82,24 @@ Progress records are deleted 30 days after they were started.
 
 ## Solve cards
 
-A solved puzzle can be shared as a card: a page and an image that say the puzzle, the time, the number of hints and the date, for the player to send to friends. After solving, the puzzle page offers **Share card** (the system share sheet where there is one, otherwise it copies the link), **Save image** (a PNG drawn in the browser from the card's SVG) and **Stop sharing**.
+A solved puzzle can be shared with one button. After solving, the puzzle page (and the workspace) shows the text that will be sent, and **Share**: the system share sheet where there is one, otherwise it copies the text. Once a solve the server timed has been shared, it also offers **Save image** (a PNG drawn in the browser from the card's SVG) and **Stop sharing**.
 
-- **Only server-timed solves.** A card needs a solve whose time and hints the server kept (see [Time and hints](#time-and-hints)), so a card cannot show numbers the player made up. A signed-out solve, an imported one or an answer posted without opening the page has no card. The existing **Copy result** text still works for those.
-- **What it shows.** The puzzle's title and number, the time, the hints, the difficulty, the date (in the solver's own calendar) and the site's host. With at least four other timed solves of the puzzle, also "Faster than N% of solvers". It never shows the player's name or email, or the answer or explainer.
+The text says which puzzle, a row of squares, the time, the hints and the streak, and the link:
+
+```text
+necropsy Daily #4 · Answer the door
+🟨🟩 3:12 · 1 of 2 hints · 5-day streak
+https://necropsy.urashyl.dev/card/abcd2345efgh6789
+```
+
+- **Squares.** One per hint the puzzle has: 🟨 for each hint used, 🟩 for each one not needed. A puzzle without hints is one 🟩. They say how it went without saying anything about the answer, so the text is safe to post where others have not solved it yet.
+- **Streak.** Days in a row, ending on the day of this solve, with a daily solved on its own release day (in the solver's calendar). Shown only for a daily solved on its day, and only from 2 days.
+- **The link.** A server-timed solve shares its card (below), and the server makes the text, so its numbers are the server's. Any other solve (signed out, imported, or answered without opening the page) shares the same text with the puzzle's link, made by the browser from its own record; its streak is the browser's current one.
+
+A card is a page and an image of the same facts, for the people the text is sent to:
+
+- **Only server-timed solves.** A card needs a solve whose time and hints the server kept (see [Time and hints](#time-and-hints)), so a card cannot show numbers the player made up.
+- **What it shows.** The puzzle's title and number, the time, the hints used of the total with their squares, the difficulty, the date (in the solver's own calendar), the streak and the site's host. With at least four other timed solves of the puzzle, also "Faster than N% of solvers". It never shows the player's name or email, or the answer or explainer. The page has **Play it**, and **New to this? Learn** for someone who has never played.
 - **Who can open it.** Anyone with the link, no login. The link holds a random 16-character token, made when the player first shares that solve. Pages and images are sent with `X-Robots-Tag: noindex, nofollow`, and the page's title and description carry the summary, so a pasted link previews as text ("Who got in? solved in 3:12", "Solved in 3:12 with 1 hint.").
 - **Turning it off.** **Stop sharing** removes the token: the page and image return 404 at once. Sharing again makes a new token, so the old link stays dead. Deleting the account deletes the solves and their cards.
 - **Not an image preview.** Link previews on chat sites use a PNG, and the card is an SVG, so previews show text, not the card. The card is shown on its page and saved as a PNG by the player.

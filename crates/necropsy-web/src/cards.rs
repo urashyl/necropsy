@@ -6,8 +6,11 @@
 //! card cannot show numbers the player made up. The player turns sharing on for a solve,
 //! which gives it a random token; the card is at `/card/<token>` (a page) and
 //! `/card/<token>.svg` (the image), with no login needed. It shows the puzzle, the
-//! time, the hints and the date, and never the player's name, email or the answer.
+//! time, the hints and the date, the streak for a daily solved on its day, and a row
+//! of squares for the hints, and never the player's name, email or the answer.
 //! Turning sharing off removes the token.
+//!
+//! The same facts go in the share text the player sends (see [`Card::share_text`]).
 
 use std::sync::Arc;
 
@@ -33,6 +36,11 @@ pub struct Card {
     pub difficulty: u8,
     pub seconds: i64,
     pub hints: i64,
+    /// How many hints the puzzle has.
+    pub hint_total: i64,
+    /// Days in a row, ending on this solve's day, with a daily solved on its own
+    /// day. `None` unless this solve is one of them.
+    pub streak: Option<i64>,
     /// `2026-11-28`, in the solver's own calendar.
     pub date: String,
     /// The site's host, shown at the foot of the image.
@@ -67,7 +75,57 @@ fn hints_text(n: i64) -> String {
     }
 }
 
+/// Days in a row ending on `day` that are in `days`: a streak as of that day.
+pub fn streak_ending(days: &std::collections::HashSet<i64>, day: i64) -> i64 {
+    let mut n = 0;
+    while days.contains(&(day - n)) {
+        n += 1;
+    }
+    n
+}
+
+/// One square per hint the puzzle has: yellow for each one used, green for each
+/// one not needed. A puzzle without hints is one green square.
+pub fn hint_grid(used: i64, total: i64) -> String {
+    let total = total.max(0);
+    let used = used.clamp(0, total);
+    if total == 0 {
+        return "🟩".to_owned();
+    }
+    "🟨".repeat(used as usize) + &"🟩".repeat((total - used) as usize)
+}
+
 impl Card {
+    /// "1 of 3 hints", or "no hints" for a puzzle without any.
+    fn hints_of(&self) -> String {
+        if self.hint_total == 0 {
+            "no hints".to_owned()
+        } else {
+            format!("{} of {} hints", self.hints, self.hint_total)
+        }
+    }
+
+    /// What the player sends: which puzzle, the squares, the time, the hints, the
+    /// streak and the link. No answer and nothing about how.
+    ///
+    /// ```text
+    /// necropsy Daily #4 · Answer the door
+    /// 🟨🟩 3:12 · 1 of 2 hints · 5-day streak
+    /// https://necropsy.urashyl.dev/card/abcd...
+    /// ```
+    pub fn share_text(&self, url: &str) -> String {
+        let mut line = format!(
+            "{} {} · {}",
+            hint_grid(self.hints, self.hint_total),
+            clock(self.seconds as f64),
+            self.hints_of()
+        );
+        if let Some(n) = self.streak.filter(|n| *n > 1) {
+            line.push_str(&format!(" · {n}-day streak"));
+        }
+        format!("necropsy {} · {}\n{line}\n{url}", self.label, self.title)
+    }
+
     /// "Solved in 3:12 with 1 hint."
     pub fn summary(&self) -> String {
         let mut s = format!(
@@ -75,6 +133,9 @@ impl Card {
             clock(self.seconds as f64),
             hints_text(self.hints)
         );
+        if let Some(n) = self.streak.filter(|n| *n > 1) {
+            s.push_str(&format!(" {n}-day streak."));
+        }
         if let Some(p) = self.faster_than {
             s.push_str(&format!(" Faster than {p}% of solvers."));
         }
@@ -103,9 +164,32 @@ impl Card {
                 )
             })
             .collect();
+        // The hint squares, under the hint count.
+        let squares: String = if self.hint_total == 0 {
+            String::new()
+        } else {
+            (0..self.hint_total.min(8))
+                .map(|i| {
+                    format!(
+                        r##"<rect x="{}" y="520" width="28" height="28" rx="5" fill="{}"/>"##,
+                        480 + i * 38,
+                        if i < self.hints { "#e0b35a" } else { BRIGHT }
+                    )
+                })
+                .collect()
+        };
+        let streak = self
+            .streak
+            .filter(|n| *n > 1)
+            .map_or_else(String::new, |n| format!(" · {n}-day streak"));
+        let hints_big = if self.hint_total == 0 {
+            "0".to_owned()
+        } else {
+            format!("{}/{}", self.hints, self.hint_total)
+        };
         let rank = self.faster_than.map_or_else(String::new, |p| {
             format!(
-                r##"<text x="1136" y="578" text-anchor="end" font-size="26" fill="{BRIGHT}">Faster than {p}% of solvers</text>"##
+                r##"<text x="1136" y="590" text-anchor="end" font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="26" fill="{BRIGHT}">Faster than {p}% of solvers</text>"##
             )
         });
         format!(
@@ -131,15 +215,16 @@ impl Card {
 <text x="64" y="500">{time}</text>
 <text x="480" y="500">{hints}</text>
 </g>
+{squares}
 {dots}
-<text x="64" y="578" font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="26" fill="{MUTED}">{host} · solved {date}</text>
+<text x="64" y="590" font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="26" fill="{MUTED}">{host} · solved {date}{streak}</text>
 {rank}
 </svg>"##,
             aria = esc(&format!("{title}. {}", self.summary())),
             label = esc(&self.label),
             title = esc(&title),
             time = esc(&clock(self.seconds as f64)),
-            hints = self.hints,
+            hints = esc(&hints_big),
             host = esc(&self.host),
             date = esc(&self.date),
         )
@@ -149,6 +234,8 @@ impl Card {
 #[derive(Serialize)]
 struct ShareRes {
     url: String,
+    /// The text to send with it, see [`Card::share_text`].
+    text: String,
 }
 
 /// Turns sharing on for the signed-in player's solve of a puzzle, and returns the card's
@@ -170,10 +257,17 @@ pub async fn share_post(
     }
     let candidate = random_string(TOKEN_ALPHABET, TOKEN_LEN);
     match state.db.share_enable(user.id, id, candidate).await {
-        Ok(Some(token)) => Json(ShareRes {
-            url: format!("{}/card/{token}", state.base_url),
-        })
-        .into_response(),
+        Ok(Some(token)) => {
+            let url = format!("{}/card/{token}", state.base_url);
+            match card_for(&state, &token).await {
+                Some((_, card)) => Json(ShareRes {
+                    text: card.share_text(&url),
+                    url,
+                })
+                .into_response(),
+                None => StatusCode::NOT_FOUND.into_response(),
+            }
+        }
         // No solve, or one the server did not time: there is nothing a card could vouch for.
         Ok(None) => (
             StatusCode::CONFLICT,
@@ -229,6 +323,29 @@ async fn card_for(state: &AppState, token: &str) -> Option<(String, Card)> {
     let others = timed - 1;
     let faster_than =
         (others >= MIN_OTHERS_FOR_RANK).then(|| (slower * 100 / others).clamp(0, 100) as u8);
+    // The streak as of the solve's own day: dailies solved on their release day,
+    // in the solver's calendar at the time.
+    let day_of = |at: i64, tz: i64| (at + tz * 60).div_euclid(86_400);
+    let solve_day = day_of(s.solved_at, s.tz);
+    let streak = if rp.pack.meta.release_day() == Some(solve_day) {
+        let days: std::collections::HashSet<i64> = state
+            .db
+            .solves_of(s.user_id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|x| {
+                let d = day_of(x.solved_at, x.tz);
+                state
+                    .get_any(&x.pack_id)
+                    .and_then(|p| p.pack.meta.release_day())
+                    .filter(|r| *r == d)
+            })
+            .collect();
+        Some(streak_ending(&days, solve_day))
+    } else {
+        None
+    };
     let host = state
         .base_url
         .split_once("://")
@@ -242,6 +359,8 @@ async fn card_for(state: &AppState, token: &str) -> Option<(String, Card)> {
             difficulty: rp.pack.meta.difficulty,
             seconds: s.seconds,
             hints: s.hints,
+            hint_total: rp.pack.meta.hints.len() as i64,
+            streak,
             date: crate::accounts::format_date(s.solved_at + s.tz * 60),
             host,
             faster_than,
@@ -297,6 +416,8 @@ pub async fn card_get(
             p.card-actions {
                 a.button href={"/p/" (pack_id)} { "Play it" }
                 " "
+                a.button.button-quiet href="/learn" { "New to this? Learn" }
+                " "
                 button.button.button-quiet #card-save type="button" data-src={"/card/" (token) ".svg"} data-name=(pack_id) {
                     "Save image"
                 }
@@ -330,6 +451,8 @@ mod unit {
             difficulty: 2,
             seconds: 192,
             hints: 1,
+            hint_total: 3,
+            streak: Some(5),
             date: "2026-11-28".into(),
             host: "necropsy.example".into(),
             faster_than: Some(72),
@@ -341,16 +464,19 @@ mod unit {
         let c = card();
         assert_eq!(
             c.summary(),
-            "Solved in 3:12 with 1 hint. Faster than 72% of solvers."
+            "Solved in 3:12 with 1 hint. 5-day streak. Faster than 72% of solvers."
         );
         let svg = c.svg();
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains(">3:12<") && svg.contains("Who got in?"));
         assert!(svg.contains("Faster than 72% of solvers"));
         assert!(svg.contains("necropsy.example · solved 2026-11-28"));
+        assert!(svg.contains(">1/3<") && svg.contains("5-day streak"));
+        assert_eq!(svg.matches("rx=\"5\"").count(), 3, "one square per hint");
         let none = Card {
             hints: 0,
             faster_than: None,
+            streak: None,
             ..card()
         };
         assert_eq!(none.summary(), "Solved in 3:12 with no hints.");
@@ -376,6 +502,38 @@ mod unit {
         };
         let svg = long.svg();
         assert!(svg.contains('…') && !svg.contains(&"a".repeat(60)));
+    }
+
+    #[test]
+    fn the_share_text_has_the_numbers_and_no_answer() {
+        let c = card();
+        assert_eq!(
+            c.share_text("https://x.test/card/t"),
+            "necropsy Intro #1 · Who got in?\n🟨🟩🟩 3:12 · 1 of 3 hints · 5-day streak\nhttps://x.test/card/t"
+        );
+        // A streak of one day is no streak; a puzzle without hints has one square.
+        let c = Card {
+            streak: Some(1),
+            hints: 0,
+            hint_total: 0,
+            ..card()
+        };
+        assert_eq!(
+            c.share_text("u"),
+            "necropsy Intro #1 · Who got in?\n🟩 3:12 · no hints\nu"
+        );
+    }
+
+    #[test]
+    fn grids_and_streaks() {
+        assert_eq!(hint_grid(0, 2), "🟩🟩");
+        assert_eq!(hint_grid(2, 2), "🟨🟨");
+        assert_eq!(hint_grid(5, 2), "🟨🟨", "never more than the puzzle has");
+        assert_eq!(hint_grid(0, 0), "🟩");
+        let days: std::collections::HashSet<i64> = [10, 11, 12, 14].into_iter().collect();
+        assert_eq!(streak_ending(&days, 12), 3);
+        assert_eq!(streak_ending(&days, 14), 1);
+        assert_eq!(streak_ending(&days, 13), 0);
     }
 
     #[test]

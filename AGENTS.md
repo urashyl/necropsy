@@ -14,6 +14,7 @@ Rules for AI agents and contributors. They are short on purpose: follow them.
 | Puzzle packs and their format | [`docs/pack-format.md`](docs/pack-format.md) |
 | The workspace: pcap viewer, decoder, request console, notebook | [`docs/toolkit.md`](docs/toolkit.md) |
 | The Learn track and its practice puzzles | [`docs/learn.md`](docs/learn.md) |
+| Discord link and discussion threads | [`docs/community.md`](docs/community.md) |
 | Live puzzles, the Library, writing a sample | [`docs/live.md`](docs/live.md) |
 | Container labs, the range VM, the spawner | [`docs/range.md`](docs/range.md) |
 | Building and running the image | [`docs/docker.md`](docs/docker.md) |

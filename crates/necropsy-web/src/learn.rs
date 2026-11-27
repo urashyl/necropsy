@@ -220,12 +220,12 @@ pub struct PathQuery {
     path: String,
 }
 
-/// Released dailies that have closed (not today's) and name this module.
+/// Dailies that have closed and name this module.
 fn worked_examples<'a>(state: &'a AppState, id: &str) -> Vec<&'a RenderedPack> {
     state
         .released_dailies()
         .into_iter()
-        .filter(|p| !state.is_today(p) && p.pack.meta.learn.iter().any(|l| l == id))
+        .filter(|p| state.is_closed(p) && p.pack.meta.learn.iter().any(|l| l == id))
         .rev()
         .collect()
 }

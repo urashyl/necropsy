@@ -481,6 +481,23 @@ fn puzzle_page(
 
                     (answer_block(rp))
 
+                    @if let Some(link) = crate::community::discussion_link(state, rp) {
+                        p.discuss {
+                            a href=(link) rel="noopener noreferrer" {
+                                @if state.community.thread(&m.id).is_some() {
+                                    "Discuss it on Discord"
+                                } @else {
+                                    "Discuss closed dailies on Discord"
+                                }
+                            }
+                        }
+                    } @else if daily && state.community.on() {
+                        // Shown by app.js once solved: there is no thread for an open daily.
+                        p #discuss-later.muted.hidden {
+                            "The discussion opens once this daily has closed, when its date is over in every timezone."
+                        }
+                    }
+
                     nav.pager aria-label="Puzzles" {
                         @if let Some(p) = &prev {
                             a href=(p.href) { "← " (p.label) }
@@ -641,9 +658,9 @@ pub(crate) fn side_facts(rp: &RenderedPack, stats: &Stats) -> Markup {
                 }
             }
         }
-        div #share.share.hidden {
-            button #share-btn.button.button-quiet type="button" { "Copy result" }
-            button #share-card.button.button-quiet.hidden type="button" { "Share card" }
+        div #share.share.hidden data-label=(rp.label()) {
+            pre #share-preview.share-preview {}
+            button #share-btn.button type="button" { "Share" }
             button #share-save.button.button-quiet.hidden type="button" { "Save image" }
             button #share-stop.link-button.hidden type="button" { "Stop sharing" }
             span #share-msg.muted role="status" aria-live="polite" {}
@@ -755,6 +772,9 @@ pub fn layout(
                     div.wrap.footer-inner {
                         a href="https://urashyl.dev" { "urashyl.dev" }
                         a href="https://github.com/urashyl/necropsy" rel="noopener noreferrer" { "Source" }
+                        @if let Some(d) = &state.community.invite {
+                            a href=(d) rel="noopener noreferrer" { "Discord" }
+                        }
                     }
                 }
                 script src={"/static/app.js?v=" (state.js_v)} defer {}
