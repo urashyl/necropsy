@@ -56,6 +56,7 @@ unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 bin="$bin_dir/necropsy-web"
 packs="$data_dir/packs"
 learn="$data_dir/learn"
+sealed="$data_dir/packs-sealed"
 toolkit="$data_dir/toolkit"
 db="$state_dir/necropsy.db"
 env_file="$config_dir/necropsy.env"
@@ -63,7 +64,7 @@ unit="$unit_dir/necropsy.service"
 
 # Unit files treat whitespace, quotes and % specially. Refuse rather than
 # write a unit that quietly means something else.
-for p in "$bin" "$packs" "$learn" "$toolkit" "$db" "$env_file" "$state_dir"; do
+for p in "$bin" "$packs" "$learn" "$sealed" "$toolkit" "$db" "$env_file" "$state_dir"; do
   case "$p" in
     *[[:space:]\"\'\\%]*) die "path contains a space, quote, backslash or %: $p" ;;
   esac
@@ -174,6 +175,15 @@ if [ -d "$repo/learn" ]; then
   mv "$learn.new" "$learn"
 fi
 
+# Sealed packs (docs/sealing.md), the same way. They open only with the master
+# key in the settings file.
+if [ -d "$repo/packs-sealed" ]; then
+  rm -rf "$sealed.new"
+  cp -R "$repo/packs-sealed" "$sealed.new"
+  rm -rf "$sealed"
+  mv "$sealed.new" "$sealed"
+fi
+
 # The in-browser toolkit (docs/toolkit.md). Versions already there are kept, so
 # this only downloads after toolkit/sources.txt changes. Without it the site
 # runs and the workspace says the tools are missing.
@@ -196,6 +206,7 @@ sed \
   -e "s|@STATE_DIR@|$state_dir|g" \
   -e "s|@PACKS@|$packs|g" \
   -e "s|@LEARN@|$learn|g" \
+  -e "s|@SEALED@|$sealed|g" \
   -e "s|@TOOLKIT@|$toolkit|g" \
   -e "s|@DB@|$db|g" \
   -e "s|@ENV_FILE@|$env_file|g" \

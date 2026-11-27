@@ -41,6 +41,21 @@ jobs:
       - name: Pack validation
         run: cargo run --locked -q -p necropsy-pack --bin pack-tool -- validate packs
 
+      # Sealed packs (docs/sealing.md), with no secret: the format, the
+      # manifest, and that each is sealed to the current committed wrap key.
+      - name: Sealed packs
+        run: cargo run --locked -q -p necropsy-pack --bin pack-tool -- check-sealed packs packs-sealed
+
+      # Plaintext of unreleased packs and secrets never enter the repository.
+      - name: No pack sources or secrets committed
+        run: |
+          bad=$(git ls-files | grep -E '(^|/)packs-src/|(^|/)\.env($|\.)|\.key$|(^|/)server-secret$' | grep -v '^\.env\.example$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::these must not be committed:"
+            echo "$bad"
+            exit 1
+          fi
+
       # Generated packs (docs/generators.md). The generators' own tests, then
       # every generator over many seeds, then a rebuild of each generator.wasm
       # from its source with the pinned toolchain (packs/rust-toolchain.toml,

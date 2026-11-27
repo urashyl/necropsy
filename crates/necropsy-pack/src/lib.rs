@@ -26,6 +26,8 @@ pub mod curl;
 pub mod gen;
 pub mod learn;
 pub mod scenario;
+pub mod seal;
+pub mod site;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -153,14 +155,32 @@ pub fn parse_date(s: &str) -> Option<i64> {
     if !(1..=days_in_month).contains(&d) {
         return None;
     }
-    // Days from civil date (Howard Hinnant's algorithm).
+    Some(days_from_civil(y, m, d))
+}
+
+/// Days since 1970-01-01 of a date (Howard Hinnant's algorithm).
+pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y.rem_euclid(400);
     let mp = (m + 9) % 12;
     let doy = (153 * mp + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Some(era * 146_097 + doe - 719_468)
+    era * 146_097 + doe - 719_468
+}
+
+/// The date of a day number: (year, month, day).
+pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y, m, d)
 }
 
 /// A file under `files/`, addressed by its path relative to `files/`
@@ -284,7 +304,7 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 40
         && !id.starts_with('-')
@@ -296,9 +316,28 @@ fn valid_id(id: &str) -> bool {
 
 /// Loads one pack directory.
 pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
+    load_pack_files(dir, read_pack_files(dir)?, None)
+}
+
+/// Every file of a pack directory, by path, with the same rules as [`load_pack`]
+/// (no symlinks, size limits, a generator's `target/` skipped). What `pack-tool
+/// seal` puts in a sealed pack.
+pub fn read_pack_files(dir: &Path) -> Result<Vec<(String, Vec<u8>)>, PackError> {
     let mut raw: Vec<(String, Vec<u8>)> = Vec::new();
     let mut total = 0u64;
     walk(dir, dir, 0, &mut raw, &mut total)?;
+    Ok(raw)
+}
+
+/// A pack from its files in memory, such as an opened sealed pack. `dir` only
+/// names it in errors. `assign_date` gives a daily without a date one: a
+/// fallback sealed pack, released in another's place (see seal.rs).
+pub fn load_pack_files(
+    dir: &Path,
+    mut raw: Vec<(String, Vec<u8>)>,
+    assign_date: Option<&str>,
+) -> Result<Pack, PackError> {
+    raw.sort_by(|a, b| a.0.cmp(&b.0));
 
     let take = |name: &str| -> Result<&Vec<u8>, PackError> {
         raw.iter()
@@ -311,8 +350,17 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
             .map_err(|_| invalid(&dir.join(name), "not valid UTF-8"))
     };
 
-    let meta: Meta = toml::from_str(&text("pack.toml")?)
+    let mut meta: Meta = toml::from_str(&text("pack.toml")?)
         .map_err(|e| invalid(&dir.join("pack.toml"), e.to_string()))?;
+    if let Some(d) = assign_date {
+        if meta.track != Track::Daily || meta.date.is_some() {
+            return Err(invalid(
+                &dir.join("pack.toml"),
+                "a fallback is a daily with no date of its own",
+            ));
+        }
+        meta.date = Some(d.to_owned());
+    }
     if !valid_id(&meta.id) {
         return Err(invalid(
             &dir.join("pack.toml"),
@@ -670,6 +718,18 @@ mod tests {
             ("b".to_owned(), Vec::new()),
         ];
         assert_ne!(hash_files(&a), hash_files(&moved));
+    }
+
+    #[test]
+    fn civil_dates_round_trip() {
+        for d in [-1000, 0, 1, 19_000, 20_784, 60_000] {
+            let (y, m, dd) = civil_from_days(d);
+            assert_eq!(days_from_civil(y, m, dd), d);
+        }
+        assert_eq!(
+            civil_from_days(parse_date("2026-11-27").unwrap()),
+            (2026, 11, 27)
+        );
     }
 
     #[test]

@@ -111,6 +111,8 @@ pub struct AppState {
     pub community: crate::community::Community,
     /// Runs generated packs, with the server secret. See `generated.rs`.
     pub generator: crate::generated::Generator,
+    /// Sealed packs: the wrap key, each loaded pack's key, and what happened to each.
+    pub sealed: crate::sealed::Sealed,
     /// Highlights code files: at startup for packs, per player for generated ones.
     hl: Highlighter,
 }
@@ -166,6 +168,7 @@ impl AppState {
             learn: Vec::new(),
             community: crate::community::Community::default(),
             generator: crate::generated::Generator::default(),
+            sealed: crate::sealed::Sealed::default(),
             hl,
         }
     }

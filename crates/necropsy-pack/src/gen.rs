@@ -157,6 +157,104 @@ pub fn encode(o: &Output) -> Vec<u8> {
     out
 }
 
+/// Seeds [`check`] tries.
+pub const CHECK_SEEDS: usize = 24;
+
+/// The pack's own text that must not hold an answer: everything but the
+/// generator's code (`generator/src`, where lists of candidate values belong),
+/// its build files and its module.
+pub fn plaintext(files: &[(String, Vec<u8>)]) -> Vec<(String, Vec<u8>)> {
+    files
+        .iter()
+        .filter(|(p, _)| {
+            p != "generator.wasm"
+                && !p.starts_with("generator/src/")
+                && !p.starts_with("generator/target/")
+                && !p.starts_with("generator/Cargo.")
+        })
+        .cloned()
+        .collect()
+}
+
+/// The checks a generator must pass, over [`CHECK_SEEDS`] seeds keyed with
+/// `key` (never the site's secret, so no output is a real player's):
+/// - it runs within its limits and is deterministic (two runs, same output);
+/// - different seeds give different answers (one repeat is allowed);
+/// - no answer is in the pack's own text ([`plaintext`]);
+/// - unless `answer_in_files`, no answer is in the generated files as it is.
+///
+/// `pack-tool check-gen` runs it, and the site on every sealed pack it opens.
+pub fn check(
+    p: &crate::Pack,
+    plaintext: &[(String, Vec<u8>)],
+    key: &[u8],
+) -> Result<String, String> {
+    check_with(p, plaintext, key, &mut run)
+}
+
+/// Runs a generator's wasm with a seed.
+pub type Runner<'a> = dyn FnMut(&[u8], [u64; 4]) -> Result<Output, String> + 'a;
+
+/// [`check`], running the generator with `runner`: the site passes one that
+/// runs it in a child process, as it runs every generator.
+pub fn check_with(
+    p: &crate::Pack,
+    plaintext: &[(String, Vec<u8>)],
+    key: &[u8],
+    runner: &mut Runner<'_>,
+) -> Result<String, String> {
+    let run = |w: &[u8], s: [u64; 4], r: &mut Runner<'_>| r(w, s);
+    let wasm = p.generator.as_deref().ok_or("no generator")?;
+    let id = &p.meta.id;
+    let mut answers = std::collections::HashSet::new();
+    let started = std::time::Instant::now();
+    for i in 0..CHECK_SEEDS {
+        let seed = seed_for(key, id, &format!("check-{i}"));
+        let a = run(wasm, seed, runner)?;
+        let b = run(wasm, seed, runner)?;
+        if a != b {
+            return Err(format!(
+                "seed {i}: two runs gave different output: it is not deterministic"
+            ));
+        }
+        let answer = crate::normalize_answer(&a.answer);
+        for (path, data) in plaintext {
+            if String::from_utf8_lossy(data)
+                .to_lowercase()
+                .contains(&answer)
+            {
+                return Err(format!("seed {i}: the answer {:?} is in {path}", a.answer));
+            }
+        }
+        if !p.meta.answer_in_files {
+            for f in &a.files {
+                if String::from_utf8_lossy(&f.data)
+                    .to_lowercase()
+                    .contains(&answer)
+                {
+                    return Err(format!(
+                        "seed {i}: the answer {:?} is in the generated {} as it is \
+                         (set answer_in_files = true if it is meant to be found there)",
+                        a.answer, f.path
+                    ));
+                }
+            }
+        }
+        answers.insert(answer);
+    }
+    if answers.len() + 1 < CHECK_SEEDS {
+        return Err(format!(
+            "{CHECK_SEEDS} seeds gave only {} different answers: an answer shared by friends would work for too many players",
+            answers.len()
+        ));
+    }
+    Ok(format!(
+        "{CHECK_SEEDS} seeds, {} answers, {:.1} ms a run",
+        answers.len(),
+        started.elapsed().as_secs_f64() * 1000.0 / (2 * CHECK_SEEDS) as f64
+    ))
+}
+
 /// Whether `p` is a plain relative path: `/`-separated names, no `.` or `..`,
 /// no backslashes or control characters, at most 8 levels.
 pub fn valid_path(p: &str) -> bool {

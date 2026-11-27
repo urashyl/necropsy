@@ -51,6 +51,7 @@ LABEL org.opencontainers.image.title="necropsy" \
 COPY --from=build /out/necropsy-web /app/necropsy-web
 COPY packs /app/packs
 COPY learn /app/learn
+COPY packs-sealed /app/packs-sealed
 COPY --from=toolkit /out/toolkit /app/toolkit
 # Created here so a new volume mounted at /data starts out writable by nonroot.
 COPY --from=build --chown=65532:65532 /data /data
@@ -58,6 +59,7 @@ COPY --from=build --chown=65532:65532 /data /data
 ENV NECROPSY_ADDR=0.0.0.0:8080 \
     NECROPSY_PACKS=/app/packs \
     NECROPSY_LEARN=/app/learn \
+    NECROPSY_SEALED=/app/packs-sealed \
     NECROPSY_TOOLKIT=/app/toolkit \
     NECROPSY_DB=/data/necropsy.db
 

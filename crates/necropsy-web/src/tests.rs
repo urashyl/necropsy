@@ -5188,4 +5188,5 @@ mod generated_flow;
 mod learn_flow;
 mod learn_live;
 mod phase1_flow;
+mod sealed_flow;
 mod workspace_flow;

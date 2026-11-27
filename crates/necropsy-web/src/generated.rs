@@ -165,6 +165,50 @@ async fn run_child(exe: &Path, wasm: &[u8], seed: [u64; 4]) -> Result<Output, St
     gen::decode(&out.stdout)
 }
 
+/// [`run_child`], blocking: for checking sealed packs' generators at startup,
+/// before the server runs. The child's own CPU limit ends a runaway generator.
+pub fn run_child_blocking(exe: &Path, wasm: &[u8], seed: [u64; 4]) -> Result<Output, String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new(exe)
+        .arg("generate")
+        .env_clear()
+        .current_dir("/")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("cannot start the generator process: {e}"))?;
+    let mut input = Vec::with_capacity(32 + wasm.len());
+    for w in seed {
+        input.extend_from_slice(&w.to_le_bytes());
+    }
+    input.extend_from_slice(wasm);
+    let mut stdin = child.stdin.take().ok_or("no stdin")?;
+    let writer = std::thread::spawn(move || stdin.write_all(&input));
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("the generator process failed: {e}"))?;
+    let _ = writer.join();
+    if !out.status.success() {
+        let msg: String = String::from_utf8_lossy(&out.stderr)
+            .chars()
+            .take(500)
+            .collect();
+        return Err(format!("the generator failed: {}", msg.trim()));
+    }
+    gen::decode(&out.stdout)
+}
+
+impl Generator {
+    /// Runs a generator now, blocking, the way the site runs generators.
+    pub fn run_blocking(&self, wasm: &[u8], seed: [u64; 4]) -> Result<Output, String> {
+        match &self.runner {
+            Runner::InProcess => gen::run(wasm, seed),
+            Runner::Process(exe) => run_child_blocking(exe, wasm, seed),
+        }
+    }
+}
+
 /// `necropsy-web generate`: the child's side. Limits its own resources, reads
 /// the seed and module from stdin, runs it, and writes the output to stdout.
 pub fn child_main() -> std::process::ExitCode {

@@ -24,6 +24,7 @@ mod markdown;
 mod mfa;
 mod pages;
 mod progress;
+mod sealed;
 mod state;
 mod toolkit;
 mod workspace;
@@ -142,9 +143,6 @@ async fn main() {
         modules.len(),
         learn_dir.display()
     );
-    let mut state = AppState::new(packs, config, db, mailer);
-    state.set_learn(modules);
-    state.community = community::from_env().unwrap_or_else(|e| fail(&e));
     // The server secret keys every generated pack's seeds and every live flag.
     // By default it sits next to the database; see docs/generators.md.
     let secret_path = std::env::var("NECROPSY_SERVER_SECRET_FILE")
@@ -161,7 +159,35 @@ async fn main() {
     let secret = generated::load_secret(&secret_path).unwrap_or_else(|e| fail(&e));
     let exe = std::env::current_exe()
         .unwrap_or_else(|e| fail(&format!("cannot find this program's own path: {e}")));
-    state.generator = generated::Generator::new(secret, generated::Runner::Process(exe));
+    let generator = generated::Generator::new(secret, generated::Runner::Process(exe));
+    // Sealed packs (docs/sealing.md): opened with the master key, checked, and
+    // served like any other daily. Without a master key none are opened.
+    let master = necropsy_pack::seal::MasterKeys::from_env().unwrap_or_else(|e| fail(&e));
+    let sealed_dir = PathBuf::from(env_or("NECROPSY_SEALED", "packs-sealed"));
+    let (sealed_packs, sealed_state) =
+        sealed::load(&sealed_dir, master.as_ref(), &packs, &mut |wasm, seed| {
+            generator.run_blocking(wasm, seed)
+        });
+    match &master {
+        Some(m) => tracing::info!(
+            "sealed packs: {} opened from {}, wrap key v{}",
+            sealed_packs.len(),
+            sealed_dir.display(),
+            m.current_version()
+        ),
+        None => tracing::info!("sealed packs: no master key, none opened"),
+    }
+    for s in sealed_state.status.iter().filter(|s| !s.ok) {
+        tracing::warn!("sealed pack {}: {}", s.id, s.outcome);
+    }
+    let mut packs = packs;
+    packs.extend(sealed_packs);
+    let mut state = AppState::new(packs, config, db, mailer);
+    state.generator = generator;
+    state.sealed = sealed_state;
+    state.set_learn(modules);
+    state.community = community::from_env().unwrap_or_else(|e| fail(&e));
+
     let toolkit_dir = PathBuf::from(env_or("NECROPSY_TOOLKIT", "toolkit/dist"));
     state.toolkit = toolkit::Toolkit::load(&toolkit_dir);
     if state.toolkit.complete() {
@@ -493,6 +519,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/live/{label}/ws", get(wsconsole::ws))
         .route("/toolkit/{*path}", get(toolkit::file))
         .route("/static/toolkit/{file}", get(workspace::static_file))
+        .route("/api/packs/wrap-key", get(sealed::wrap_key))
+        .route("/api/packs/keys", get(sealed::keys))
+        .route("/api/packs/{id}/key", get(sealed::key))
         .route("/healthz", get(|| async { "ok" }))
         .route("/static/app.css", get(pages::static_css))
         .route("/static/app.js", get(pages::static_js))

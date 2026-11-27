@@ -12,6 +12,7 @@ Rules for AI agents and contributors. They are short on purpose: follow them.
 | Pages, routes, the JSON API, player state, time, hints, stats, search | [`docs/web.md`](docs/web.md) |
 | Accounts, login, two-step verification, abuse limits, the database | [`docs/accounts.md`](docs/accounts.md) |
 | Puzzle packs and their format | [`docs/pack-format.md`](docs/pack-format.md) |
+| Sealed packs, keys, release | [`docs/sealing.md`](docs/sealing.md) |
 | The workspace: pcap viewer, decoder, request console, notebook | [`docs/toolkit.md`](docs/toolkit.md) |
 | The Learn track and its practice puzzles | [`docs/learn.md`](docs/learn.md) |
 | Discord link and discussion threads | [`docs/community.md`](docs/community.md) |
@@ -46,6 +47,7 @@ cargo test --locked
 node --test crates/necropsy-web/tests-js/*.test.mjs
 cargo run -q --bin pack-tool -- validate packs
 cargo run -q --bin pack-tool -- check-gen packs && cargo run -q --bin pack-tool -- gen-build --check packs
+cargo run -q --bin pack-tool -- check-sealed packs packs-sealed
 deploy/test/common.sh && deploy/test/install-site.sh && deploy/test/install-range.sh && deploy/test/range-update.sh
 deploy/bluegreen/test/run.sh && range/local-test.sh
 ```
@@ -54,5 +56,5 @@ deploy/bluegreen/test/run.sh && range/local-test.sh
 
 - Work on the scratch branch you were given. When a change is done and its checks pass, push that branch and **open a pull request from it into `main`**, without being asked. If a pull request from the branch is already open, the push updates it and no second one is opened; say which one in your reply.
 - **`dev` is for testing that needs a live server** (a lab on the range, the real domain, mail, a deploy). Push to `dev` only when the user asks for such a test, and say so when you do. Never open a pull request from `dev`, and never merge `dev` into `main` or into your scratch branch.
-- Commit messages say what changed and why. Never commit secrets, `.env` files or database files.
+- Commit messages say what changed and why. Never commit secrets, `.env` files, database files, `packs-src/` or key files.
 - Secrets go in files or the environment, never in command-line options.

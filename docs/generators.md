@@ -95,7 +95,7 @@ cargo run -q --bin pack-tool -- gen-build --check packs
 | --- | --- | --- |
 | `NECROPSY_SERVER_SECRET_FILE` | `server-secret` next to `NECROPSY_DB` | A file holding the secret: at least 32 characters. Created, random, with mode 0600, if it does not exist. |
 
-It keys every generated seed and every live flag (see [live.md](live.md)). Keep it out of the repository and out of any copy of the database you share. The Docker image keeps it in the data volume (`/data/server-secret`) and the installed service in its state directory, beside the database.
+It keys every generated seed and every live flag (see [live.md](live.md)). It is not the master key that opens sealed packs ([sealing.md](sealing.md)): each can leak without the other. Keep it out of the repository and out of any copy of the database you share. The Docker image keeps it in the data volume (`/data/server-secret`) and the installed service in its state directory, beside the database.
 
 **Changing it** changes every player's generated files and answers at once, and the flag of every live instance made since flags were keyed. A player in the middle of a puzzle gets new files, and an answer worked out from the old ones is refused. Change it only after a leak, and say so to players. Copying the database to a new server without the secret has the same effect: copy both.
 

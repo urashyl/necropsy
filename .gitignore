@@ -7,3 +7,5 @@
 __pycache__/
 /toolkit/dist/
 /packs/*/generator/target/
+/packs-src/
+*.key
