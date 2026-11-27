@@ -37,10 +37,12 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. |
 | `/archive` | Released dailies, newest first. |
 | `/library` | Puzzles outside the daily rotation. |
+| `/card/{token}`, `/card/{token}.svg` | A shared solve card: the page, and the image (SVG, 1200 by 630). Public, no login, `noindex`. See [Solve cards](#solve-cards). |
 | `/search` | `?q=words` and `?tag=name`. Puzzles whose title, tags, id or brief contain every word, best match first (title, then tags and id, then brief). With no query it lists every tag with its puzzle count. Only puzzles the player can open are searched, and explainers and hints never are, since they hold the answer. A puzzle's tags link here. |
 | `/format` | Renders `docs/pack-format.md`. |
 | `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string, "seconds"?: n, "hints"?: n}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the server's own time and hints, and those two come back. The `seconds` and `hints` in the request are used only for a solve the server never timed (see [Time and hints](#time-and-hints)). |
 | `POST /api/p/{id}/beat` | `{"have": n, "peek"?: bool}`. The page is open: starts the clock on the first call and returns `{"user": bool, "seconds"?: n, "hints": n, "texts": [...], "solved": bool, "running": bool}`. |
+| `POST /api/p/{id}/share` | Signed in. Turns sharing on for the player's solve of the puzzle and returns `{"url": ".../card/<token>"}`, the same one each time. `409` if the solve has no server-kept time, or there is no solve. `DELETE` turns it off (`204`). |
 | `POST /api/p/{id}/hint` | `{"have": n}`. Reveals the next hint and returns the same shape. |
 | `/register`, `/verify`, `/login`, `/login/verify`, `/logout`, `/forgot`, `/reset`, `/account`, `/account/mfa/*`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |
 | `/admin` | Admin only. |
@@ -67,6 +69,16 @@ For a signed-in player the **server** keeps the time and the hints, so the brows
 - **Signed-out players** have no server record: their time and hint count stay in the browser, and `/hint` returns hint text for the count the browser sends, without keeping anything. They can solve puzzles but do not appear in the averages.
 
 Progress records are deleted 30 days after they were started.
+
+## Solve cards
+
+A solved puzzle can be shared as a card: a page and an image that say the puzzle, the time, the number of hints and the date, for the player to send to friends. After solving, the puzzle page offers **Share card** (the system share sheet where there is one, otherwise it copies the link), **Save image** (a PNG drawn in the browser from the card's SVG) and **Stop sharing**.
+
+- **Only server-timed solves.** A card needs a solve whose time and hints the server kept (see [Time and hints](#time-and-hints)), so a card cannot show numbers the player made up. A signed-out solve, an imported one or an answer posted without opening the page has no card. The existing **Copy result** text still works for those.
+- **What it shows.** The puzzle's title and number, the time, the hints, the difficulty, the date (in the solver's own calendar) and the site's host. With at least four other timed solves of the puzzle, also "Faster than N% of solvers". It never shows the player's name or email, or the answer or explainer.
+- **Who can open it.** Anyone with the link, no login. The link holds a random 16-character token, made when the player first shares that solve. Pages and images are sent with `X-Robots-Tag: noindex, nofollow`, and the page's title and description carry the summary, so a pasted link previews as text ("Who got in? solved in 3:12", "Solved in 3:12 with 1 hint.").
+- **Turning it off.** **Stop sharing** removes the token: the page and image return 404 at once. Sharing again makes a new token, so the old link stays dead. Deleting the account deletes the solves and their cards.
+- **Not an image preview.** Link previews on chat sites use a PNG, and the card is an SVG, so previews show text, not the card. The card is shown on its page and saved as a PNG by the player.
 
 ## Statistics
 

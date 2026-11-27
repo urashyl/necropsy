@@ -12,6 +12,7 @@ mod accounts;
 mod admin;
 mod auth;
 mod captcha;
+mod cards;
 mod db;
 mod ipnet;
 mod live;
@@ -382,6 +383,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/p/{id}/explainer", get(explainer))
         .route(
+            "/api/p/{id}/share",
+            post(cards::share_post)
+                .delete(cards::share_delete)
+                .layer(DefaultBodyLimit::max(256)),
+        )
+        .route("/card/{file}", get(cards::card_get))
+        .route(
             "/api/p/{id}/beat",
             post(progress::beat).layer(DefaultBodyLimit::max(256)),
         )
@@ -711,6 +719,11 @@ struct SolveOut {
     ontime: bool,
     seconds: i64,
     hints: i64,
+    /// The server kept this solve's time, so it can have a share card.
+    timed: bool,
+    /// The address of the share card the player made for it, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    share_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -752,6 +765,8 @@ async fn progress(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUs
                         ontime,
                         seconds: s.seconds,
                         hints: s.hints,
+                        timed: s.timed,
+                        share_url: s.share.map(|t| format!("{}/card/{t}", state.base_url)),
                     }
                 })
                 .collect(),

@@ -3484,45 +3484,128 @@ mod library {
         assert!(submit(&s, &cookie, "xor-implant", &flag_in(&res.body, "bot")).await);
     }
 
-    /// The sample's generator, as written in `netcheck.py`.
-    fn dga(y: i64, m: i64, d: i64) -> String {
-        let mut s: i64 = 0x2F1C9 ^ (y * 10000 + m * 100 + d);
+    fn h32(t: &str) -> u32 {
+        t.bytes()
+            .fold(0u32, |h, c| h.wrapping_mul(31).wrapping_add(u32::from(c)))
+    }
+
+    /// The sample's generator: seeded by the victim's machine GUID and the script's own
+    /// file name, then a linear congruential generator on the date.
+    fn dga(guid: &str, script: &str, y: u32, m: u32, d: u32) -> String {
+        let mut s = (h32(&guid.to_lowercase()) ^ h32(script)) ^ (y * 10000 + m * 100 + d);
         let mut out = String::new();
         for _ in 0..12 {
-            s = (s * 1103515245 + 12345) & 0x7FFFFFFF;
+            s = s.wrapping_mul(1103515245).wrapping_add(12345) & 0x7FFF_FFFF;
             out.push((97 + (s >> 16) % 26) as u8 as char);
         }
         out + [".top", ".xyz", ".info", ".biz"][(s % 4) as usize]
+    }
+
+    fn victim_guid() -> String {
+        let notes = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../packs/dga-sinkhole/files/victim.txt"),
+        )
+        .unwrap();
+        between(&notes, "MachineGuid:", "\n").trim().to_owned()
     }
 
     #[tokio::test]
     async fn dga_sinkhole() {
         let s = live_site().await;
         let (cookie, l) = spin_up(&s, "lib7", "dga-sinkhole").await;
-        let py = live_send(&s, &l, "GET", "/dl/netcheck.py.txt", &[], "")
+        let js = live_send(&s, &l, "GET", "/dl/netcheck.js.txt", &[], "")
             .await
             .body;
-        assert!(py.contains("1103515245"));
-        let miss = live_send(
-            &s,
-            &l,
-            "GET",
-            &format!("/lookup?domain={}", dga(2026, 12, 23)),
-            &[],
-            "",
-        )
+        // The strings the program works with are not in the file.
+        for hidden in ["RegRead", "MachineGuid", "ScriptName", "imul", "getUTCDate"] {
+            assert!(!js.contains(hidden), "{hidden} is readable in the sample");
+        }
+        let guid = victim_guid();
+        let lookup = |domain: String| {
+            let (s, l) = (&s, &l);
+            async move {
+                live_send(s, l, "GET", &format!("/lookup?domain={domain}"), &[], "")
+                    .await
+                    .body
+            }
+        };
+        let miss = lookup(dga(&guid, "netcheck.js", 2026, 12, 23)).await;
+        assert!(miss.contains("NXDOMAIN"));
+        // What a run as found gives (the file renamed) is a decoy the sinkhole knows.
+        let decoy = lookup(dga(&guid, "netcheck.js.txt", 2026, 12, 24)).await;
+        assert!(
+            decoy.contains("parked") && !decoy.contains("sink{"),
+            "{decoy}"
+        );
+        // Another machine's GUID gives another domain.
+        let other = lookup(dga(
+            "00000000-0000-0000-0000-000000000000",
+            "netcheck.js",
+            2026,
+            12,
+            24,
+        ))
         .await;
-        assert!(miss.body.contains("NXDOMAIN"));
-        let hit = live_send(
-            &s,
-            &l,
-            "GET",
-            &format!("/lookup?domain={}", dga(2026, 12, 24)),
-            &[],
-            "",
-        )
-        .await;
-        assert!(submit(&s, &cookie, "dga-sinkhole", &flag_in(&hit.body, "sink")).await);
+        assert!(other.contains("NXDOMAIN"));
+        let none = live_send(&s, &l, "GET", "/lookup", &[], "").await;
+        assert_eq!(none.status, StatusCode::BAD_REQUEST);
+        // Last: solving stops the instance.
+        let hit = lookup(dga(&guid, "netcheck.js", 2026, 12, 24)).await;
+        assert!(submit(&s, &cookie, "dga-sinkhole", &flag_in(&hit, "sink")).await);
+    }
+
+    #[test]
+    fn the_dga_sample_computes_what_the_sinkhole_expects() {
+        // Runs the real file under Node with Windows Script Host stubbed, the way an
+        // analyst would. Skipped where Node is not installed.
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/dga-sinkhole");
+        let sample = root.join("live/netcheck.js.txt");
+        let stub = format!(
+            r#"
+const src = require('fs').readFileSync({sample:?}, 'utf8');
+const RealDate = Date;
+globalThis.Date = class extends RealDate {{ constructor(...a) {{ super(...(a.length ? a : ['2026-12-24T12:00:00Z'])); }} }};
+globalThis.WScript = {{ ScriptName: process.argv[2] }};
+let url = null;
+globalThis.ActiveXObject = function (n) {{
+  if (n === 'WScript.Shell') return {{ RegRead: () => process.argv[1] }};
+  return {{ open: (m, u) => {{ url = u; }}, send() {{}} }};
+}};
+new Function(src)();
+console.log(url);
+"#
+        );
+        let run = |guid: &str, script: &str| {
+            std::process::Command::new("node")
+                .args(["-e", &stub, "--", guid, script])
+                .output()
+        };
+        let guid = victim_guid();
+        let Ok(out) = run(&guid, "netcheck.js") else {
+            eprintln!("node is not installed: skipping");
+            return;
+        };
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let url = String::from_utf8(out.stdout).unwrap();
+        assert_eq!(
+            url.trim(),
+            format!("http://{}/c", dga(&guid, "netcheck.js", 2026, 12, 24))
+        );
+        // Upper-case GUID, as in the notes: the same. The renamed file: the decoy.
+        let upper =
+            String::from_utf8(run(&guid.to_uppercase(), "netcheck.js").unwrap().stdout).unwrap();
+        assert_eq!(upper, url);
+        let decoy = String::from_utf8(run(&guid, "netcheck.js.txt").unwrap().stdout).unwrap();
+        assert_eq!(
+            decoy.trim(),
+            format!("http://{}/c", dga(&guid, "netcheck.js.txt", 2026, 12, 24))
+        );
     }
 
     #[tokio::test]
@@ -4126,7 +4209,8 @@ mod mfa_flow {
         {
             let c = rusqlite::Connection::open(&path).unwrap();
             c.execute_batch(
-                "DROP INDEX solves_pack; DROP TABLE progress; ALTER TABLE solves DROP COLUMN timed;
+                "DROP INDEX solves_share; ALTER TABLE solves DROP COLUMN share;
+                 DROP INDEX solves_pack; DROP TABLE progress; ALTER TABLE solves DROP COLUMN timed;
                  DROP TABLE recovery_codes; DROP TABLE mfa_tickets; DROP TABLE mfa_setup;
                  ALTER TABLE users DROP COLUMN totp_secret;
                  ALTER TABLE users DROP COLUMN totp_last_step;
@@ -4785,4 +4869,289 @@ async fn search_is_an_icon_in_the_header_so_the_nav_does_not_wrap() {
     let nav = page.split("<nav class=\"site-nav\"").nth(1).unwrap();
     let nav = nav.split("</nav>").next().unwrap();
     assert!(!nav.contains("Search"), "the nav has a Search word: {nav}");
+}
+
+#[tokio::test]
+async fn an_instance_with_a_sample_links_it_from_its_home_page() {
+    // A player starts an instance and finds the sample from its home page.
+    let s = live_site().await;
+    s.register_verified("sampler", "sampler@example.org").await;
+    let cookie = s.login_cookie("sampler").await;
+    let post = |path: String| {
+        let (s, cookie) = (&s, cookie.clone());
+        async move {
+            s.send(
+                Request::post(path)
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+        }
+    };
+    for pack in [
+        "xor-implant",
+        "vbs-dropper",
+        "macro-stager",
+        "ps-loader",
+        "dga-sinkhole",
+        "ransom-recovery",
+    ] {
+        let r = post(format!("/api/p/{pack}/instance")).await;
+        assert_eq!(r.status, StatusCode::OK, "{pack}: {}", r.body);
+        let v: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+        let label = v["url"]
+            .as_str()
+            .unwrap()
+            .split("://")
+            .nth(1)
+            .unwrap()
+            .split('.')
+            .next()
+            .unwrap()
+            .to_owned();
+        let home = live_send(&s, &label, "GET", "/", &[], "").await;
+        assert_eq!(
+            home.status,
+            StatusCode::OK,
+            "{pack}: the home page is not a 404"
+        );
+        let toml = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../packs")
+                .join(pack)
+                .join("live.toml"),
+        )
+        .unwrap();
+        let sample = toml
+            .lines()
+            .filter_map(|l| l.strip_prefix("path = \""))
+            .find(|p| p.starts_with("/dl/"))
+            .map(|p| p.trim_end_matches('"').to_owned())
+            .unwrap_or_else(|| panic!("{pack} serves no /dl/ sample"));
+        assert!(
+            home.body.contains(&sample),
+            "{pack}: its home page does not link {sample}"
+        );
+        let file = live_send(&s, &label, "GET", &sample, &[], "").await;
+        assert_eq!(file.status, StatusCode::OK, "{pack}: {sample}");
+        post(format!("/api/p/{pack}/instance/stop")).await;
+    }
+}
+
+// ---------------------------------------------------------------------- solve cards
+
+mod cards_flow {
+    use super::*;
+
+    async fn user(s: &Site, name: &str) -> String {
+        s.register_verified(name, &format!("{name}@example.org"))
+            .await;
+        s.login_cookie(name).await
+    }
+
+    /// Opens intro-log, lets `secs` pass, takes `hints` hints, and solves it.
+    async fn solve_in(s: &Site, cookie: &str, secs: i64, hints: usize) {
+        let call = |what: &'static str| {
+            let (s, cookie) = (s, cookie.to_owned());
+            async move {
+                s.post_json(
+                    &format!("/api/p/intro-log/{what}"),
+                    r#"{"have":0}"#,
+                    Some(&cookie),
+                )
+                .await
+            }
+        };
+        call("beat").await;
+        for _ in 0..hints {
+            call("hint").await;
+        }
+        // Only this player has a progress row, so ageing every row ages theirs.
+        s.state
+            .db
+            .run(move |c| {
+                c.execute(
+                    "UPDATE progress SET started_at = started_at - ?1 WHERE started_at > 0",
+                    [secs],
+                )
+            })
+            .await
+            .unwrap();
+        let r = s
+            .post_json(
+                "/api/p/intro-log/answer",
+                r#"{"answer":"203.0.113.77","seconds":1,"hints":0}"#,
+                Some(cookie),
+            )
+            .await;
+        assert!(r.body.contains("\"correct\":true"), "{}", r.body);
+    }
+
+    async fn share(s: &Site, cookie: &str) -> Reply {
+        s.post_json("/api/p/intro-log/share", "{}", Some(cookie))
+            .await
+    }
+
+    fn token_of(r: &Reply) -> String {
+        let v: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+        v["url"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_owned()
+    }
+
+    #[tokio::test]
+    async fn a_timed_solve_has_a_card_with_the_servers_numbers() {
+        let s = site().await;
+        let cookie = user(&s, "cardsolver").await;
+        solve_in(&s, &cookie, 192, 1).await;
+
+        let progress = s.get("/api/me/progress", Some(&cookie)).await.body;
+        assert!(progress.contains("\"timed\":true"), "{progress}");
+        assert!(!progress.contains("share_url"), "nothing is shared yet");
+
+        let r = share(&s, &cookie).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let token = token_of(&r);
+        assert_eq!(token.len(), 16);
+        // The same address each time.
+        assert_eq!(token_of(&share(&s, &cookie).await), token);
+        assert!(s
+            .get("/api/me/progress", Some(&cookie))
+            .await
+            .body
+            .contains(&format!("/card/{token}")));
+
+        // Anyone can open the page and the image. The time is the server's (the browser
+        // claimed one second), and nothing says who or what the answer was.
+        let page = s.get(&format!("/card/{token}"), None).await;
+        assert_eq!(page.status, StatusCode::OK);
+        assert!(page.body.contains("Solved in 3:1"), "{}", page.body);
+        assert!(page.body.contains("with 1 hint"));
+        assert!(page.body.contains("Who got in?"));
+        assert!(page.body.contains(&format!("/card/{token}.svg")));
+        assert_eq!(
+            page.headers.get("x-robots-tag").unwrap(),
+            "noindex, nofollow"
+        );
+        let img = s.get(&format!("/card/{token}.svg"), None).await;
+        assert_eq!(img.status, StatusCode::OK);
+        assert_eq!(
+            img.headers.get(header::CONTENT_TYPE).unwrap(),
+            "image/svg+xml"
+        );
+        assert!(img.body.starts_with("<svg") && img.body.contains(">3:1"));
+        for text in [&page.body, &img.body] {
+            for secret in ["cardsolver", "@example.org", "203.0.113.77"] {
+                assert!(!text.contains(secret), "the card shows {secret}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_solve_the_server_did_not_time_cannot_be_shared() {
+        let s = site().await;
+        let cookie = user(&s, "untimed").await;
+        // Solved without ever opening the page: stored as the browser said, untimed.
+        let r = s
+            .post_json(
+                "/api/p/intro-log/answer",
+                r#"{"answer":"203.0.113.77","seconds":1,"hints":0}"#,
+                Some(&cookie),
+            )
+            .await;
+        assert!(r.body.contains("\"correct\":true"));
+        assert_eq!(share(&s, &cookie).await.status, StatusCode::CONFLICT);
+        // And a puzzle that is not solved has no card either.
+        let other = user(&s, "unsolved").await;
+        assert_eq!(share(&s, &other).await.status, StatusCode::CONFLICT);
+        // Signed out: no.
+        assert_eq!(share(&s, "").await.status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn stopping_sharing_kills_the_card_and_a_new_one_has_a_new_address() {
+        let s = site().await;
+        let cookie = user(&s, "stopper").await;
+        solve_in(&s, &cookie, 60, 0).await;
+        let first = token_of(&share(&s, &cookie).await);
+        let del = s
+            .send(
+                Request::delete("/api/p/intro-log/share")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(del.status, StatusCode::NO_CONTENT);
+        assert_eq!(
+            s.get(&format!("/card/{first}"), None).await.status,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            s.get(&format!("/card/{first}.svg"), None).await.status,
+            StatusCode::NOT_FOUND
+        );
+        assert!(!s
+            .get("/api/me/progress", Some(&cookie))
+            .await
+            .body
+            .contains("share_url"));
+        let second = token_of(&share(&s, &cookie).await);
+        assert_ne!(first, second, "the old address must not come back");
+    }
+
+    #[tokio::test]
+    async fn only_real_tokens_open_a_card() {
+        let s = site().await;
+        for bad in [
+            "nope",
+            "AAAAAAAAAAAAAAAA",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa.svg",
+            "..%2f..%2fetc",
+        ] {
+            assert_eq!(
+                s.get(&format!("/card/{bad}"), None).await.status,
+                StatusCode::NOT_FOUND,
+                "{bad}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_card_says_how_much_faster_than_others_once_there_are_enough_solves() {
+        let s = site().await;
+        let mut tokens = Vec::new();
+        for (i, secs) in [30, 60, 90, 120, 150].iter().enumerate() {
+            let cookie = user(&s, &format!("racer{i}")).await;
+            solve_in(&s, &cookie, *secs, 0).await;
+            tokens.push(token_of(&share(&s, &cookie).await));
+        }
+        // The fastest beat all four others; the slowest, none.
+        let fastest = s.get(&format!("/card/{}", tokens[0]), None).await.body;
+        assert!(fastest.contains("Faster than 100% of solvers"), "{fastest}");
+        let slowest = s.get(&format!("/card/{}", tokens[4]), None).await.body;
+        assert!(slowest.contains("Faster than 0% of solvers"), "{slowest}");
+    }
+
+    #[tokio::test]
+    async fn a_card_says_nothing_about_rank_with_few_solves() {
+        let s = site().await;
+        let cookie = user(&s, "lonely").await;
+        solve_in(&s, &cookie, 45, 0).await;
+        let t = token_of(&share(&s, &cookie).await);
+        let page = s.get(&format!("/card/{t}"), None).await.body;
+        assert!(
+            page.contains("Solved in 0:4") && page.contains("no hints"),
+            "{page}"
+        );
+        assert!(!page.contains("Faster than"));
+    }
 }

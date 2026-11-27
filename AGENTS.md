@@ -47,6 +47,7 @@ deploy/bluegreen/test/run.sh && range/local-test.sh
 
 ## Git
 
-- Develop on the branch you were given. Push to `dev` only when asked. Open a pull request only when asked.
+- Work on the scratch branch you were given. When a change is done and its checks pass, push that branch and **open a pull request from it into `main`**, without being asked. If a pull request from the branch is already open, the push updates it and no second one is opened; say which one in your reply.
+- **`dev` is for testing that needs a live server** (a lab on the range, the real domain, mail, a deploy). Push to `dev` only when the user asks for such a test, and say so when you do. Never open a pull request from `dev`, and never merge `dev` into `main` or into your scratch branch.
 - Commit messages say what changed and why. Never commit secrets, `.env` files or database files.
 - Secrets go in files or the environment, never in command-line options.

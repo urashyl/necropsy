@@ -4,9 +4,9 @@ number = 7
 title = "Domain of the day"
 difficulty = 3
 modes = ["web", "live"]
-tags = ["python", "dga", "sinkhole", "threat intel", "live"]
+tags = ["jscript", "dga", "anti-analysis", "sinkhole", "threat intel", "live"]
 hints = [
-  "The domain depends only on the date. Run the function, but give it the date from the brief, not today's.",
-  "The generator uses an integer recurrence. Python's integers do not overflow, so mask them as the sample does.",
-  "The lookup answers on `/lookup`. Ask it for a domain with `?domain=`.",
+  "The file runs on Windows Script Host, and it asks the system for things before it computes anything. Find what it asks for before you run it.",
+  "Two of the inputs are the victim's: a registry value and the file's own name. `victim.txt` has both. Names the sample gets wrong are what a sandbox sees.",
+  "The arithmetic is 32-bit on purpose: look for `imul` and `>>> 0`. A re-implementation that uses plain multiplication drifts.",
 ]

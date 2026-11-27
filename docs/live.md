@@ -118,7 +118,7 @@ The Library (the always-available `library` track) is where these live. It grows
 | 4 | `vbs-dropper` | VBScript with character-shifted strings | Caesar-shift decoding; `StrReverse` tokens; `Execute` of the server's reply |
 | 5 | `macro-stager` | Extracted VBA macro | Defanged URLs, hex paths, sandbox checks, header fingerprinting |
 | 6 | `xor-implant` | Python implant with XOR'd strings | Single-byte XOR; being the other side of a C2 protocol |
-| 7 | `dga-sinkhole` | Domain generation algorithm | Running a DGA for a chosen date; sinkholes |
+| 7 | `dga-sinkhole` | Obfuscated JScript DGA, seeded by the victim's machine GUID and the file's own name | Decoding a string table and a state machine; anti-analysis (a renamed file gives a decoy); running Windows Script Host code outside Windows; exact 32-bit arithmetic; sinkholes |
 | 8 | `ransom-recovery` | Ransomware encryptor, Python | Key derivation flaws; repeating-key XOR; what recovery needs |
 | 9 | `implant-lab` | Packed Python implant, **real C2 server** in a container | Unpacking `exec(zlib...)`; reusing the implant's own code; an authenticated, encrypted protocol with replay protection |
 | 10 | `elf-lab` | **Real compiled ELF**, stripped, with an RC4-encrypted config | Static and dynamic analysis; XOR-hidden strings and keys; anti-debugging; a gateway that answers only the right client |

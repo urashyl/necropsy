@@ -16,7 +16,9 @@ Two repository rulesets, with nobody on the bypass list, admins included:
 - **`main`:** changes land only through a pull request. Direct pushes, force pushes and deleting the branch are blocked. The CI `check` and `image` jobs must pass, and review threads must be resolved, before merging. No approving review is required, since GitHub does not let you approve your own pull request. Raise it in the ruleset once someone else reviews.
 - **`dev`:** ordinary pushes are allowed. Force pushes and deleting the branch are blocked.
 
-The usual flow is push (or merge) into `dev`, which deploys to development, then a PR from `dev` into `main`, which deploys to production.
+Work happens on a scratch branch, and reaches `main` by a pull request from that branch. CI runs on the pull request and on every push to the branch. A merge to `main` deploys to production.
+
+`dev` is not part of that path. It exists for testing that needs a live server (a lab on the range, the real domain, mail, a deploy), and it is updated by hand, only when someone wants that test: push the scratch branch to `dev`, or reset `dev` to it. **Nothing is ever merged from `dev` into `main`**, and no pull request has `dev` as its head. What `dev` holds is whatever was last tested, so it may be ahead of, behind or beside `main`.
 
 ## What a deploy does
 
