@@ -14,7 +14,17 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
+
+/// Discussion threads for closed dailies (version 8): the Discord thread the
+/// site made for each. See docs/community.md.
+const DISCUSSION_SCHEMA: &str = "
+CREATE TABLE discussions (
+    pack_id    TEXT PRIMARY KEY,
+    url        TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+";
 
 /// The Learn track (version 7): checkpoints passed, and the tool path a player
 /// chose. See docs/learn.md.
@@ -242,6 +252,7 @@ pub struct Solve {
 /// A solve looked up by its share token, for the card page.
 #[derive(Debug)]
 pub struct SharedSolve {
+    pub user_id: i64,
     pub pack_id: String,
     pub seconds: i64,
     pub hints: i64,
@@ -323,6 +334,9 @@ impl Db {
         }
         if version < 7 {
             conn.execute_batch(LEARN_SCHEMA)?;
+        }
+        if version < 8 {
+            conn.execute_batch(DISCUSSION_SCHEMA)?;
         }
         if version != SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -956,7 +970,7 @@ impl Db {
     pub async fn shared_solve(&self, token: String) -> rusqlite::Result<Option<SharedSolve>> {
         self.run(move |c| {
             c.query_row(
-                "SELECT pack_id, seconds, hints, solved_at, tz FROM solves WHERE share = ?1",
+                "SELECT pack_id, seconds, hints, solved_at, tz, user_id FROM solves WHERE share = ?1",
                 [token],
                 |r| {
                     Ok(SharedSolve {
@@ -965,10 +979,32 @@ impl Db {
                         hints: r.get(2)?,
                         solved_at: r.get(3)?,
                         tz: r.get(4)?,
+                        user_id: r.get(5)?,
                     })
                 },
             )
             .optional()
+        })
+        .await
+    }
+
+    /// The discussion thread of each daily that has one.
+    pub async fn discussions(&self) -> rusqlite::Result<std::collections::HashMap<String, String>> {
+        self.run(|c| {
+            let mut st = c.prepare("SELECT pack_id, url FROM discussions")?;
+            let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect()
+        })
+        .await
+    }
+
+    pub async fn add_discussion(&self, pack_id: String, url: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "INSERT OR IGNORE INTO discussions (pack_id, url, created_at) VALUES (?1, ?2, ?3)",
+                params![pack_id, url, now()],
+            )
+            .map(|_| ())
         })
         .await
     }

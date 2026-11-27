@@ -1713,3 +1713,22 @@ a.icon-btn {
 .learn-practice-head {
   margin-top: 2.5rem;
 }
+
+/* The text the Share button sends, as it will look. */
+.share-preview {
+  flex-basis: 100%;
+  margin: 0 0 0.25rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.discuss {
+  font-weight: 600;
+}

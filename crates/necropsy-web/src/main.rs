@@ -13,6 +13,7 @@ mod admin;
 mod auth;
 mod captcha;
 mod cards;
+mod community;
 mod db;
 mod ipnet;
 mod learn;
@@ -134,6 +135,7 @@ async fn main() {
     );
     let mut state = AppState::new(packs, config, db, mailer);
     state.set_learn(modules);
+    state.community = community::from_env().unwrap_or_else(|e| fail(&e));
     let toolkit_dir = PathBuf::from(env_or("NECROPSY_TOOLKIT", "toolkit/dist"));
     state.toolkit = toolkit::Toolkit::load(&toolkit_dir);
     if state.toolkit.complete() {
@@ -150,6 +152,17 @@ async fn main() {
     }
     let state = Arc::new(state);
     spawn_housekeeping(state.clone());
+    state.community.load(&state.db).await;
+    if state.community.forum.is_some() {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(community::INTERVAL);
+            loop {
+                tick.tick().await;
+                community::post_due_threads(&state).await;
+            }
+        });
+    }
     // Say at startup whether the range can be reached from here, which is where a
     // misconfigured network or firewall shows up first.
     if state.live.as_ref().is_some_and(|l| l.range.is_some()) {

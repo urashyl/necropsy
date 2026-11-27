@@ -107,6 +107,8 @@ pub struct AppState {
     pub toolkit: crate::toolkit::Toolkit,
     /// The Learn modules, in order.
     pub learn: Vec<crate::learn::LearnModule>,
+    /// Discord: the invite link and the discussion threads of closed dailies.
+    pub community: crate::community::Community,
 }
 
 impl AppState {
@@ -169,6 +171,7 @@ impl AppState {
             theme_v: short_hash(crate::pages::THEME_JS),
             toolkit: crate::toolkit::Toolkit::default(),
             learn: Vec::new(),
+            community: crate::community::Community::default(),
         }
     }
 
@@ -217,6 +220,32 @@ impl AppState {
                 .unwrap_or(0)
         });
         (secs + client_tz_min() * 60).div_euclid(86_400)
+    }
+
+    /// Seconds since the epoch: the clock, or a test's override. With only
+    /// `today_override` set, it is noon UTC of that day.
+    pub fn now_secs(&self) -> i64 {
+        if let Some(s) = self.clock_override {
+            return s;
+        }
+        if let Some(d) = self.today_override {
+            return d * 86_400 + 43_200;
+        }
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+
+    /// Whether a daily has closed: its date is over in every timezone, the last
+    /// being UTC-12. Before that it is someone's puzzle of the day, so it is not
+    /// discussed in public.
+    pub fn is_closed(&self, p: &RenderedPack) -> bool {
+        p.pack.meta.track == Track::Daily
+            && p.pack
+                .meta
+                .release_day()
+                .is_some_and(|d| self.now_secs() >= (d + 1) * 86_400 - TZ_MIN * 60)
     }
 
     /// Intro stages are always visible. A daily is visible from its release

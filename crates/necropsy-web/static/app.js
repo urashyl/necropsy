@@ -118,14 +118,6 @@
     return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
   }
 
-  function formatTimeWords(seconds) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h) return `${h}h ${String(m).padStart(2, "0")}m`;
-    return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
-  }
-
   // ---- theme ---------------------------------------------------------------
 
   const root = document.documentElement;
@@ -379,6 +371,7 @@
     explainerBody.innerHTML = html;
     explainer.classList.remove("hidden");
     share.classList.remove("hidden");
+    document.getElementById("discuss-later")?.classList.remove("hidden");
     input.readOnly = true;
     form.querySelector("button[type=submit]").disabled = true;
     renderHints();
@@ -640,49 +633,84 @@
   }
 
   // ---- share ---------------------------------------------------------------
+  //
+  // One button. A solve the server timed is shared as its card: the server makes the
+  // link and the text (cards.rs). Any other solve is shared as text with the puzzle's
+  // link, made here the same way. Either way: the system share sheet where there is
+  // one, otherwise the clipboard.
 
-  if (solved) share.classList.remove("hidden");
-
-  // A card is offered for a solve the server timed: its numbers are the server's.
-  const cardBtn = document.getElementById("share-card");
+  const shareLabel = share.dataset.label || label;
+  const preview = document.getElementById("share-preview");
   const saveBtn = document.getElementById("share-save");
   const stopBtn = document.getElementById("share-stop");
-  function showCardButtons() {
+  let cardText = null;
+
+  /** Squares, one per hint the puzzle has: yellow if used, green if not needed. */
+  function hintGrid(used, total) {
+    if (total <= 0) return "🟩";
+    const u = Math.max(0, Math.min(used, total));
+    return "🟨".repeat(u) + "🟩".repeat(total - u);
+  }
+
+  function localText() {
+    const s = state.solved[id] || server.solved[id] || {};
+    const used = s.hints ?? hintsShown;
+    const secs = s.seconds ?? seconds;
+    let line = `${hintGrid(used, hintTotal)} ${formatTime(secs)} · ${hintTotal ? `${used} of ${hintTotal} hints` : "no hints"}`;
+    const streak = s.ontime ? currentStreak() : 0;
+    if (streak > 1) line += ` · ${streak}-day streak`;
+    const url = server.solved[id]?.share_url || shareUrl;
+    return `necropsy ${shareLabel} · ${puzzle.dataset.title}\n${line}\n${url}`;
+  }
+
+  function renderShare() {
     const s = server.solved[id];
     const timed = !!(s && s.timed);
-    cardBtn.classList.toggle("hidden", !timed);
     saveBtn.classList.toggle("hidden", !(timed && s.share_url));
     stopBtn.classList.toggle("hidden", !(timed && s.share_url));
+    if (preview) preview.textContent = cardText || localText();
   }
-  ready.then(showCardButtons);
+
+  if (solved) share.classList.remove("hidden");
+  ready.then(renderShare);
   document.addEventListener("necropsy:solved", async () => {
     await loadProgress();
-    showCardButtons();
+    renderShare();
   });
 
-  cardBtn.addEventListener("click", async () => {
-    const s = server.solved[id];
-    if (!s) return;
+  shareBtn.addEventListener("click", async () => {
+    shareMsg.textContent = "";
+    let text;
     try {
-      if (!s.share_url) {
+      const s = server.solved[id];
+      if (s && s.timed) {
         const r = await fetch(`/api/p/${encodeURIComponent(id)}/share`, { method: "POST", credentials: "same-origin" });
         if (!r.ok) throw new Error(await r.text());
-        s.share_url = (await r.json()).url;
-        showCardButtons();
+        const out = await r.json();
+        s.share_url = out.url;
+        cardText = out.text;
+        text = out.text;
+      } else {
+        text = localText();
       }
-      const text = `necropsy ${label}: solved in ${formatTimeWords(s.seconds)}${s.hints ? ` with ${s.hints} hint${s.hints === 1 ? "" : "s"}` : ""}`;
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: "necropsy", text, url: s.share_url });
-          return;
-        } catch (e) {
-          if (e && e.name === "AbortError") return;
-        }
-      }
-      await navigator.clipboard.writeText(s.share_url);
-      shareMsg.textContent = "Link copied.";
+      renderShare();
     } catch (e) {
-      shareMsg.textContent = e.message || "Could not make a card.";
+      shareMsg.textContent = e.message || "Could not make the card.";
+      text = localText();
+    }
+    if (navigator.share) {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      shareMsg.textContent = "Copied.";
+    } catch {
+      shareMsg.textContent = "Could not copy. Select the text above.";
     }
   });
 
@@ -698,25 +726,11 @@
       const r = await fetch(`/api/p/${encodeURIComponent(id)}/share`, { method: "DELETE", credentials: "same-origin" });
       if (!r.ok) throw new Error();
       delete s.share_url;
-      showCardButtons();
+      cardText = null;
+      renderShare();
       shareMsg.textContent = "The card no longer works.";
     } catch {
       shareMsg.textContent = "Could not stop sharing.";
     }
   });
-
-  if (shareBtn) {
-    shareBtn.addEventListener("click", async () => {
-      const s = state.solved[id] || server.solved[id] || {};
-      const parts = [`necropsy ${label}`, `solved in ${formatTimeWords(s.seconds ?? seconds)}`];
-      if (s.hints) parts.push(`${s.hints} hint${s.hints === 1 ? "" : "s"}`);
-      const text = `${parts.join(" · ")}\n${shareUrl}`;
-      try {
-        await navigator.clipboard.writeText(text);
-        shareMsg.textContent = "Copied.";
-      } catch {
-        shareMsg.textContent = "Could not copy.";
-      }
-    });
-  }
 })();

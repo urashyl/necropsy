@@ -123,7 +123,7 @@ A daily lists the modules it is a worked example for in `pack.toml`:
 learn = ["encodings", "crypto-basics"]
 ```
 
-Once it has closed (released, and no longer today's puzzle), it is listed under **Worked examples** on those modules' pages. Its explainer is shown to players who solve it.
+Once it has closed (its date is over in every timezone, see [community.md](community.md#when-a-daily-is-discussed)), it is listed under **Worked examples** on those modules' pages. Its explainer is shown to players who solve it.
 
 ## Writing a module
 
