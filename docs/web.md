@@ -38,7 +38,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/archive` | Released dailies, newest first. |
 | `/format` | Renders `docs/pack-format.md`. |
 | `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string, "seconds"?: n, "hints"?: n}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the server's own time and hints, and those two come back. The `seconds` and `hints` in the request are used only for a solve the server never timed (see [Time and hints](#time-and-hints)). |
-| `POST /api/p/{id}/beat` | `{"have": n, "peek"?: bool}`. The page is open: counts the time and returns `{"user": bool, "seconds"?: n, "hints": n, "texts": [...], "solved": bool}`. |
+| `POST /api/p/{id}/beat` | `{"have": n, "peek"?: bool}`. The page is open: starts the clock on the first call and returns `{"user": bool, "seconds"?: n, "hints": n, "texts": [...], "solved": bool}`. |
 | `POST /api/p/{id}/hint` | `{"have": n}`. Reveals the next hint and returns the same shape. |
 | `/register`, `/verify`, `/login`, `/login/verify`, `/logout`, `/forgot`, `/reset`, `/account`, `/account/mfa/*`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |
 | `/admin` | Admin only. |
@@ -48,7 +48,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 
 ## Player state
 
-Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. A signed-out player's solve timer runs in the browser while the page is open, in a background tab too, and stops when the page is closed.
+Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. A signed-out player's timer is the same rule kept in the browser: time since the page was first opened, up to 3 hours.
 
 A returning player's solved answer is kept locally and re-submitted on page load to bring the explainer back.
 
@@ -58,13 +58,13 @@ For a signed-in user the server also stores solves. On each page load `app.js` f
 
 For a signed-in player the **server** keeps the time and the hints, so the browser cannot report them.
 
-- **Time.** The page sends a beat (`/api/p/{id}/beat`) when it opens and every 15 seconds while it is open, in a background tab too, since the work is often done in a terminal or a disassembler. Each beat adds the time since the last one to the player's active time, but at most 120 seconds of it, so a closed tab or a machine that slept does not count. The page shows the server's number and ticks between beats.
+- **Time.** The clock starts the first time the player opens the puzzle (the page's first `/api/p/{id}/beat`). The time is the wall-clock time since then, so closing the tab or letting the laptop sleep does not pause it: there is no way to stop the clock, find the answer and come back. It stops growing at **3 hours**. The page shows the server's number, ticks locally and re-syncs once a minute.
 - **Hints.** The hint text is not in the page. `/api/p/{id}/hint` reveals the next one and counts it. A hint is revealed once for the account, so reloading or using another device shows the same ones, and asking for more than exist counts nothing.
 - **Solving.** A correct answer is recorded with the server's time and hint count, whatever the browser sends, and the progress record is removed. A solved puzzle shows its recorded time and hints and counts nothing more.
 - **Solves the server did not time.** A solve with no progress record is stored as the browser reported it and marked untimed. That is a solve made while signed out and uploaded after signing in (a browser can only be trusted about its own history), or an answer posted without opening the page. Untimed solves count toward "solved by" but not toward averages.
 - **Signed-out players** have no server record: their time and hint count stay in the browser, and `/hint` returns hint text for the count the browser sends, without keeping anything. They can solve puzzles but do not appear in the averages.
 
-Progress records are deleted 30 days after their last beat.
+Progress records are deleted 30 days after they were started.
 
 ## Statistics
 

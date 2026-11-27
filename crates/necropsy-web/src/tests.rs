@@ -4219,7 +4219,7 @@ mod progress_flow {
     async fn age(s: &Site, secs: i64) {
         s.state
             .db
-            .run(move |c| c.execute("UPDATE progress SET last_beat = last_beat - ?1", [secs]))
+            .run(move |c| c.execute("UPDATE progress SET started_at = started_at - ?1", [secs]))
             .await
             .unwrap();
     }
@@ -4271,24 +4271,43 @@ mod progress_flow {
     }
 
     #[tokio::test]
-    async fn the_server_counts_active_time_and_a_long_gap_adds_a_few_minutes() {
+    async fn the_clock_keeps_running_when_the_page_is_closed_and_stops_at_three_hours() {
         let s = site().await;
         let cookie = user(&s, "timer").await;
-        call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert!(b["seconds"].as_i64().unwrap() <= 1);
+        // Nothing is sent for 50 seconds, as with the tab closed: the time still passed.
         age(&s, 50).await;
         let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
         assert!((50..=52).contains(&b["seconds"].as_i64().unwrap()), "{b}");
-        // Away for most of an hour: only the cap is added.
+        // And for most of an hour more, with the laptop asleep.
         age(&s, 3000).await;
-        let b2 = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
-        let added = b2["seconds"].as_i64().unwrap() - b["seconds"].as_i64().unwrap();
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
         assert!(
-            (crate::progress::GAP_CAP..=crate::progress::GAP_CAP + 2).contains(&added),
-            "{added}"
+            (3050..=3052).contains(&b["seconds"].as_i64().unwrap()),
+            "{b}"
         );
-        // Beating faster than time passes does not add time.
-        let b3 = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
-        assert!(b3["seconds"].as_i64().unwrap() - b2["seconds"].as_i64().unwrap() <= 1);
+        // It stops growing at three hours.
+        age(&s, 5 * 3600).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(b["seconds"], 3 * 3600);
+        // A solve then records the cap, not more.
+        let r = solve(&s, &cookie, r#""seconds":1"#).await;
+        assert_eq!(r["seconds"], 3 * 3600);
+    }
+
+    #[tokio::test]
+    async fn stopping_the_clock_by_staying_away_does_not_lower_the_time() {
+        // Open the puzzle, leave for a while, then solve without a single beat between.
+        let s = site().await;
+        let cookie = user(&s, "sneaky").await;
+        call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        age(&s, 1200).await;
+        let r = solve(&s, &cookie, r#""seconds":5"#).await;
+        assert!(
+            (1200..=1202).contains(&r["seconds"].as_i64().unwrap()),
+            "{r}"
+        );
     }
 
     #[tokio::test]

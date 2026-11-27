@@ -2,12 +2,12 @@
 //! A signed-in player's time and hints on a puzzle, kept by the server so the browser
 //! cannot report them. See `docs/web.md`.
 //!
-//! The page sends a beat every few seconds while it is open. The time since the last
-//! beat is added to the player's active time, but at most [`GAP_CAP`] seconds of it, so
-//! a closed tab or a sleeping machine does not count while a background tab, whose
-//! timers are slowed down but not stopped, still does. Hints are not in the page: each
-//! one is sent when the player asks for it, and counted then. When the answer is right,
-//! the solve is recorded with these numbers, whatever the browser says.
+//! The clock starts the first time a signed-in player opens a puzzle, and the time is
+//! what has passed since, up to [`TIME_CAP`]. It is wall-clock time on purpose: closing
+//! the tab or putting the laptop to sleep does not pause it, so there is no way to stop
+//! the clock, find the answer and come back. Hints are not in the page: each one is
+//! sent when the player asks for it, and counted then. When the answer is right, the
+//! solve is recorded with these numbers, whatever the browser says.
 //!
 //! Signed-out players keep their own time and hint count in the browser (the server
 //! stores nothing about them), but hint text still comes from the server on request.
@@ -24,8 +24,8 @@ use serde::{Deserialize, Serialize};
 use crate::auth::MaybeUser;
 use crate::state::AppState;
 
-/// The most seconds one gap between beats adds to the active time.
-pub const GAP_CAP: i64 = 120;
+/// A puzzle's time stops growing here: three hours.
+pub const TIME_CAP: i64 = 3 * 3600;
 
 #[derive(Deserialize)]
 pub struct HaveReq {
@@ -99,12 +99,12 @@ async fn respond(
     let result = if reveal {
         state
             .db
-            .progress_hint(user.id, id.to_owned(), total, GAP_CAP)
+            .progress_hint(user.id, id.to_owned(), total, TIME_CAP)
             .await
     } else {
         state
             .db
-            .progress_beat(user.id, id.to_owned(), GAP_CAP)
+            .progress_beat(user.id, id.to_owned(), TIME_CAP)
             .await
     };
     match result {

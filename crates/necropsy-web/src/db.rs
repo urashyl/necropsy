@@ -45,18 +45,17 @@ CREATE TABLE mfa_setup (
 );
 ";
 
-/// Server-side progress (version 5): when a signed-in player is on a puzzle, the active
-/// time and the hints revealed so far are kept here, so neither can be reported by the
-/// browser. `solves.timed` is 1 when a solve was recorded from this, 0 when the time
-/// and hints were only the browser's word (an import of a solve made while signed out).
+/// Server-side progress (version 5): when a signed-in player first opened a puzzle and
+/// the hints they have revealed, so neither can be reported by the browser. The time
+/// is the wall-clock time since `started_at`, so closing the tab does not pause it.
+/// `solves.timed` is 1 when a solve was recorded from this, 0 when the time and hints
+/// were only the browser's word (an import of a solve made while signed out).
 const PROGRESS_SCHEMA: &str = "
 CREATE TABLE progress (
-    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    pack_id     TEXT NOT NULL,
-    started_at  INTEGER NOT NULL,
-    active_secs INTEGER NOT NULL DEFAULT 0,
-    last_beat   INTEGER NOT NULL,
-    hints       INTEGER NOT NULL DEFAULT 0,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_id    TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    hints      INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, pack_id)
 );
 ALTER TABLE solves ADD COLUMN timed INTEGER NOT NULL DEFAULT 0;
@@ -648,45 +647,30 @@ impl Db {
 
     // ---- progress ----------------------------------------------------------
 
-    /// Notes that the player is on this puzzle now. Time since their last beat is
-    /// added to the active time, up to `gap_cap` seconds, so a closed tab or a
-    /// sleeping machine does not count. The first beat starts the clock.
+    /// Notes that the player is on this puzzle. The first call starts their clock.
+    /// The time is what has passed since then, up to `cap` seconds: it keeps running
+    /// while the page is closed or the machine sleeps, and stops growing at the cap.
     pub async fn progress_beat(
         &self,
         user_id: i64,
         pack_id: String,
-        gap_cap: i64,
+        cap: i64,
     ) -> rusqlite::Result<Progress> {
         self.run(move |c| {
-            let tx = c.transaction()?;
             let t = now();
-            let row = tx
-                .query_row(
-                    "SELECT active_secs, last_beat, hints FROM progress WHERE user_id = ?1 AND pack_id = ?2",
-                    params![user_id, pack_id],
-                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
-                )
-                .optional()?;
-            let p = match row {
-                None => {
-                    tx.execute(
-                        "INSERT INTO progress (user_id, pack_id, started_at, active_secs, last_beat, hints)
-                         VALUES (?1, ?2, ?3, 0, ?3, 0)",
-                        params![user_id, pack_id, t],
-                    )?;
-                    Progress { seconds: 0, hints: 0 }
-                }
-                Some((secs, last, hints)) => {
-                    let secs = secs + (t - last).clamp(0, gap_cap);
-                    tx.execute(
-                        "UPDATE progress SET active_secs = ?3, last_beat = ?4 WHERE user_id = ?1 AND pack_id = ?2",
-                        params![user_id, pack_id, secs, t],
-                    )?;
-                    Progress { seconds: secs, hints }
-                }
-            };
-            tx.commit()?;
-            Ok(p)
+            c.execute(
+                "INSERT OR IGNORE INTO progress (user_id, pack_id, started_at, hints) VALUES (?1, ?2, ?3, 0)",
+                params![user_id, pack_id, t],
+            )?;
+            let (started, hints): (i64, i64) = c.query_row(
+                "SELECT started_at, hints FROM progress WHERE user_id = ?1 AND pack_id = ?2",
+                params![user_id, pack_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            Ok(Progress {
+                seconds: (t - started).clamp(0, cap),
+                hints,
+            })
         })
         .await
     }
@@ -697,11 +681,9 @@ impl Db {
         user_id: i64,
         pack_id: String,
         total: i64,
-        gap_cap: i64,
+        cap: i64,
     ) -> rusqlite::Result<Progress> {
-        let p = self
-            .progress_beat(user_id, pack_id.clone(), gap_cap)
-            .await?;
+        let p = self.progress_beat(user_id, pack_id.clone(), cap).await?;
         if p.hints >= total {
             return Ok(p);
         }
@@ -718,25 +700,25 @@ impl Db {
         .await
     }
 
-    /// The final progress for a solve, which removes the record: the time up to now
-    /// (capped as in a beat) and the hints revealed. None if there was no record.
+    /// The final progress for a solve, which removes the record: the time since the
+    /// player started (up to `cap`) and the hints revealed. None if there was no record.
     pub async fn progress_finish(
         &self,
         user_id: i64,
         pack_id: String,
-        gap_cap: i64,
+        cap: i64,
     ) -> rusqlite::Result<Option<Progress>> {
         self.run(move |c| {
             let tx = c.transaction()?;
             let row = tx
                 .query_row(
-                    "SELECT active_secs, last_beat, hints FROM progress WHERE user_id = ?1 AND pack_id = ?2",
+                    "SELECT started_at, hints FROM progress WHERE user_id = ?1 AND pack_id = ?2",
                     params![user_id, pack_id],
-                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
                 )
                 .optional()?;
-            let out = row.map(|(secs, last, hints)| Progress {
-                seconds: secs + (now() - last).clamp(0, gap_cap),
+            let out = row.map(|(started, hints)| Progress {
+                seconds: (now() - started).clamp(0, cap),
                 hints,
             });
             tx.execute(
@@ -1201,7 +1183,7 @@ impl Db {
             c.execute("DELETE FROM mfa_tickets WHERE expires_at <= ?1", [t])?;
             c.execute("DELETE FROM mfa_setup WHERE expires_at <= ?1", [t])?;
             c.execute(
-                "DELETE FROM progress WHERE last_beat <= ?1",
+                "DELETE FROM progress WHERE started_at <= ?1",
                 [t - 30 * 24 * 3600],
             )?;
             c.execute(

@@ -627,7 +627,7 @@ async fn check_answer(
             // The server's own time and hints, when it has been keeping them.
             let kept = state
                 .db
-                .progress_finish(user.id, id.clone(), progress::GAP_CAP)
+                .progress_finish(user.id, id.clone(), progress::TIME_CAP)
                 .await
                 .ok()
                 .flatten();

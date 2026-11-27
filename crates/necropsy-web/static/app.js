@@ -17,7 +17,7 @@
 
   // ---- local storage -------------------------------------------------------
 
-  const empty = () => ({ solved: {}, hints: {}, time: {} });
+  const empty = () => ({ solved: {}, hints: {}, time: {}, started: {} });
 
   function load() {
     try {
@@ -111,14 +111,18 @@
   }
 
   function formatTime(seconds) {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
+    const ss = String(s).padStart(2, "0");
+    return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
   }
 
   function formatTimeWords(seconds) {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
+    if (h) return `${h}h ${String(m).padStart(2, "0")}m`;
     return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
   }
 
@@ -199,7 +203,22 @@
   const shareMsg = document.getElementById("share-msg");
 
   let solved = !!state.solved[id];
-  let seconds = state.solved[id]?.seconds ?? state.time[id] ?? 0;
+  // The time on a puzzle is the wall-clock time since it was first opened, up to three
+  // hours, so closing the tab or sleeping the laptop does not pause it. For a signed-in
+  // player the server keeps the clock and this only displays it; signed out, it is kept
+  // here from the first time the page was opened.
+  const TIME_CAP = 3 * 3600;
+  const clock = { base: null, at: 0, frozen: false };
+  if (!state.solved[id] && !state.started[id]) {
+    state.started[id] = Date.now();
+    save(state);
+  }
+  function elapsed() {
+    const since = (ms) => Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    if (clock.base !== null) return clock.frozen ? clock.base : Math.min(clock.base + since(clock.at), TIME_CAP);
+    return Math.min(since(state.started[id] || Date.now()), TIME_CAP);
+  }
+  let seconds = state.solved[id]?.seconds ?? elapsed();
   let hintsShown = state.solved[id]?.hints ?? state.hints[id] ?? 0;
   // The hints revealed so far. Their text is not in the page: the server sends each
   // one when asked, and counts it.
@@ -285,7 +304,12 @@
     });
     if (!res.ok) throw new Error(String(res.status));
     const s = await res.json();
-    if (s.user && typeof s.seconds === "number") seconds = s.seconds;
+    if (s.user && typeof s.seconds === "number") {
+      seconds = s.seconds;
+      clock.base = s.seconds;
+      clock.at = Date.now();
+      clock.frozen = !!s.solved;
+    }
     hintsShown = s.hints;
     hintTexts = s.texts;
     if (!solved) state.hints[id] = hintsShown;
@@ -294,12 +318,13 @@
     return s;
   }
 
-  // The first beat starts the clock and brings back any hints already shown. A puzzle
-  // this browser solved while signed out only reads its hints, and starts no clock.
+  // The first beat starts the server's clock and brings back any hints already shown. A
+  // puzzle this browser solved while signed out only reads its hints, and starts no clock.
+  // A beat a minute keeps the display in step with the server.
   ready.then(() => sync("beat").catch(() => {}));
   setInterval(() => {
     if (!solved) sync("beat").catch(() => {});
-  }, 15000);
+  }, 60000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !solved) sync("beat").catch(() => {});
   });
@@ -353,34 +378,11 @@
     submit.disabled = false;
   });
 
-  // Time counts while the page is open and the puzzle is unsolved, in a background
-  // tab too: the work is often done in a terminal or a disassembler while this page
-  // sits in another window. Each tick adds the time since the last one, so a throttled
-  // background timer still counts in full, and a gap longer than two minutes (the
-  // machine slept) adds only two minutes.
-  let ticks = 0;
-  let lastTick = Date.now();
-  let carryMs = 0;
   setInterval(() => {
-    const now = Date.now();
-    carryMs += Math.min(Math.max(now - lastTick, 0), 120000);
-    lastTick = now;
-    const whole = Math.floor(carryMs / 1000);
-    if (whole < 1) return;
-    carryMs -= whole * 1000;
-    if (solved) return;
-    seconds += whole;
+    if (solved || clock.frozen) return;
+    seconds = elapsed();
     renderTime();
-    if (++ticks % 5 === 0) persistTime();
   }, 1000);
-
-  function persistTime() {
-    if (solved) return;
-    state.time[id] = seconds;
-    save(state);
-  }
-  document.addEventListener("visibilitychange", () => document.hidden && persistTime());
-  addEventListener("pagehide", persistTime);
 
   // ---- live instance -------------------------------------------------------
 
