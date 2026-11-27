@@ -3484,45 +3484,128 @@ mod library {
         assert!(submit(&s, &cookie, "xor-implant", &flag_in(&res.body, "bot")).await);
     }
 
-    /// The sample's generator, as written in `netcheck.py`.
-    fn dga(y: i64, m: i64, d: i64) -> String {
-        let mut s: i64 = 0x2F1C9 ^ (y * 10000 + m * 100 + d);
+    fn h32(t: &str) -> u32 {
+        t.bytes()
+            .fold(0u32, |h, c| h.wrapping_mul(31).wrapping_add(u32::from(c)))
+    }
+
+    /// The sample's generator: seeded by the victim's machine GUID and the script's own
+    /// file name, then a linear congruential generator on the date.
+    fn dga(guid: &str, script: &str, y: u32, m: u32, d: u32) -> String {
+        let mut s = (h32(&guid.to_lowercase()) ^ h32(script)) ^ (y * 10000 + m * 100 + d);
         let mut out = String::new();
         for _ in 0..12 {
-            s = (s * 1103515245 + 12345) & 0x7FFFFFFF;
+            s = s.wrapping_mul(1103515245).wrapping_add(12345) & 0x7FFF_FFFF;
             out.push((97 + (s >> 16) % 26) as u8 as char);
         }
         out + [".top", ".xyz", ".info", ".biz"][(s % 4) as usize]
+    }
+
+    fn victim_guid() -> String {
+        let notes = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../packs/dga-sinkhole/files/victim.txt"),
+        )
+        .unwrap();
+        between(&notes, "MachineGuid:", "\n").trim().to_owned()
     }
 
     #[tokio::test]
     async fn dga_sinkhole() {
         let s = live_site().await;
         let (cookie, l) = spin_up(&s, "lib7", "dga-sinkhole").await;
-        let py = live_send(&s, &l, "GET", "/dl/netcheck.py.txt", &[], "")
+        let js = live_send(&s, &l, "GET", "/dl/netcheck.js.txt", &[], "")
             .await
             .body;
-        assert!(py.contains("1103515245"));
-        let miss = live_send(
-            &s,
-            &l,
-            "GET",
-            &format!("/lookup?domain={}", dga(2026, 12, 23)),
-            &[],
-            "",
-        )
+        // The strings the program works with are not in the file.
+        for hidden in ["RegRead", "MachineGuid", "ScriptName", "imul", "getUTCDate"] {
+            assert!(!js.contains(hidden), "{hidden} is readable in the sample");
+        }
+        let guid = victim_guid();
+        let lookup = |domain: String| {
+            let (s, l) = (&s, &l);
+            async move {
+                live_send(s, l, "GET", &format!("/lookup?domain={domain}"), &[], "")
+                    .await
+                    .body
+            }
+        };
+        let miss = lookup(dga(&guid, "netcheck.js", 2026, 12, 23)).await;
+        assert!(miss.contains("NXDOMAIN"));
+        // What a run as found gives (the file renamed) is a decoy the sinkhole knows.
+        let decoy = lookup(dga(&guid, "netcheck.js.txt", 2026, 12, 24)).await;
+        assert!(
+            decoy.contains("parked") && !decoy.contains("sink{"),
+            "{decoy}"
+        );
+        // Another machine's GUID gives another domain.
+        let other = lookup(dga(
+            "00000000-0000-0000-0000-000000000000",
+            "netcheck.js",
+            2026,
+            12,
+            24,
+        ))
         .await;
-        assert!(miss.body.contains("NXDOMAIN"));
-        let hit = live_send(
-            &s,
-            &l,
-            "GET",
-            &format!("/lookup?domain={}", dga(2026, 12, 24)),
-            &[],
-            "",
-        )
-        .await;
-        assert!(submit(&s, &cookie, "dga-sinkhole", &flag_in(&hit.body, "sink")).await);
+        assert!(other.contains("NXDOMAIN"));
+        let none = live_send(&s, &l, "GET", "/lookup", &[], "").await;
+        assert_eq!(none.status, StatusCode::BAD_REQUEST);
+        // Last: solving stops the instance.
+        let hit = lookup(dga(&guid, "netcheck.js", 2026, 12, 24)).await;
+        assert!(submit(&s, &cookie, "dga-sinkhole", &flag_in(&hit, "sink")).await);
+    }
+
+    #[test]
+    fn the_dga_sample_computes_what_the_sinkhole_expects() {
+        // Runs the real file under Node with Windows Script Host stubbed, the way an
+        // analyst would. Skipped where Node is not installed.
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/dga-sinkhole");
+        let sample = root.join("live/netcheck.js.txt");
+        let stub = format!(
+            r#"
+const src = require('fs').readFileSync({sample:?}, 'utf8');
+const RealDate = Date;
+globalThis.Date = class extends RealDate {{ constructor(...a) {{ super(...(a.length ? a : ['2026-12-24T12:00:00Z'])); }} }};
+globalThis.WScript = {{ ScriptName: process.argv[2] }};
+let url = null;
+globalThis.ActiveXObject = function (n) {{
+  if (n === 'WScript.Shell') return {{ RegRead: () => process.argv[1] }};
+  return {{ open: (m, u) => {{ url = u; }}, send() {{}} }};
+}};
+new Function(src)();
+console.log(url);
+"#
+        );
+        let run = |guid: &str, script: &str| {
+            std::process::Command::new("node")
+                .args(["-e", &stub, "--", guid, script])
+                .output()
+        };
+        let guid = victim_guid();
+        let Ok(out) = run(&guid, "netcheck.js") else {
+            eprintln!("node is not installed: skipping");
+            return;
+        };
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let url = String::from_utf8(out.stdout).unwrap();
+        assert_eq!(
+            url.trim(),
+            format!("http://{}/c", dga(&guid, "netcheck.js", 2026, 12, 24))
+        );
+        // Upper-case GUID, as in the notes: the same. The renamed file: the decoy.
+        let upper =
+            String::from_utf8(run(&guid.to_uppercase(), "netcheck.js").unwrap().stdout).unwrap();
+        assert_eq!(upper, url);
+        let decoy = String::from_utf8(run(&guid, "netcheck.js.txt").unwrap().stdout).unwrap();
+        assert_eq!(
+            decoy.trim(),
+            format!("http://{}/c", dga(&guid, "netcheck.js.txt", 2026, 12, 24))
+        );
     }
 
     #[tokio::test]

@@ -9,55 +9,47 @@ status = 200
 content_type = "text/html; charset=utf-8"
 body = '''<!doctype html><title>Sinkhole console</title><h2>Sinkhole console</h2>
 <p>Registered by the sinkhole: any domain a sample is known to derive. Query with <code>/lookup?domain=NAME</code>.</p>
-<p>Recovered sample: <a href="/dl/netcheck.py.txt">netcheck.py.txt</a></p>
+<p>Recovered sample: <a href="/dl/netcheck.js.txt">netcheck.js.txt</a></p>
 '''
 
 [[route]]
 method = "GET"
-path = "/dl/netcheck.py.txt"
+path = "/dl/netcheck.js.txt"
 [route.respond]
 status = 200
 content_type = "text/plain; charset=utf-8"
-headers = { "content-disposition" = 'attachment; filename="netcheck.py.txt"' }
-body = '''# netcheck.py - the domain generation routine, recovered from a packed loader
-import datetime
-
-SEED = 0x2F1C9
-TLDS = [".top", ".xyz", ".info", ".biz"]
-
-
-def gen(d):
-    s = SEED ^ (d.year * 10000 + d.month * 100 + d.day)
-    name = ""
-    for _ in range(12):
-        s = (s * 1103515245 + 12345) & 0x7FFFFFFF
-        name += chr(97 + (s >> 16) % 26)
-    return name + TLDS[s % 4]
-
-
-def rendezvous():
-    return gen(datetime.date.today())
-'''
+headers = { "content-disposition" = 'attachment; filename="netcheck.js.txt"' }
+file = "netcheck.js.txt"
 
 [[route]]
 method = "GET"
 path = "/lookup"
 [route.when]
-query = { "domain" = 'wadmhxhfyokk.xyz' }
+query = { domain = 'xsevkmhqcrbd.biz' }
 [route.respond]
 status = 200
 content_type = "application/json"
-body = '''{"domain":"wadmhxhfyokk.xyz","status":"sinkholed","last_seen":"2026-12-24T06:11:09Z","hits":314,"analyst_note":"{{flag}}"}'''
+body = '{"domain":"xsevkmhqcrbd.biz","status":"sinkholed","last_seen":"2026-12-24T06:11:09Z","hits":314,"analyst_note":"{{flag}}"}'
 
 [[route]]
 method = "GET"
 path = "/lookup"
 [route.when]
-query = { "domain" = '*' }
+query = { domain = 'njbgxaducnhg.xyz' }
 [route.respond]
 status = 200
 content_type = "application/json"
-body = '''{"status":"NXDOMAIN"}'''
+body = '{"domain":"njbgxaducnhg.xyz","status":"parked","note":"held by a security vendor, not the operator"}'
+
+[[route]]
+method = "GET"
+path = "/lookup"
+[route.when]
+query = { domain = "*" }
+[route.respond]
+status = 200
+content_type = "application/json"
+body = '{"status":"NXDOMAIN"}'
 
 [[route]]
 method = "GET"
@@ -65,5 +57,4 @@ path = "/lookup"
 [route.respond]
 status = 400
 content_type = "application/json"
-body = '''{"error":"missing domain"}'''
-
+body = '{"error":"missing domain"}'
