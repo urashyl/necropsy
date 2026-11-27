@@ -667,7 +667,7 @@ pub fn layout(
                 a.skip-link href="#main" { "Skip to content" }
                 header.site-header {
                     div.wrap.header-inner {
-                        a.site-name href="/" {
+                        a.site-name href="/" aria-label="necropsy" {
                             svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" {
                                 rect width="32" height="32" rx="8" fill="var(--accent)" {}
                                 rect x="7" y="8.5" width="14" height="3.5" rx="1.75" fill="var(--accent-ink)" {}
@@ -684,7 +684,6 @@ pub fn layout(
                                 a href="/library" aria-current=[current(Nav::Library)] { "Library" }
                             }
                             a href="/archive" aria-current=[current(Nav::Archive)] { "Archive" }
-                            a href="/search" aria-current=[current(Nav::Search)] { "Search" }
                             a href="/format" aria-current=[current(Nav::Format)] { "Format" }
                         }
                         div.header-tools {
@@ -697,6 +696,15 @@ pub fn layout(
                                 a.user-link href="/login" { "Log in" }
                             }
                             a #streak-chip.streak.hidden href="/archive" title="Days in a row with a solved puzzle" {}
+                            a.icon-btn href="/search" aria-label="Search" title="Search"
+                                aria-current=[current(Nav::Search)] {
+                                svg.icon width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    aria-hidden="true" {
+                                    circle cx="11" cy="11" r="7" {}
+                                    path d="m20 20-3.5-3.5" {}
+                                }
+                            }
                             button #theme-toggle.icon-btn type="button"
                                 aria-label="Switch color theme" title="Switch color theme" {
                                 svg.icon width="18" height="18" viewBox="0 0 24 24" fill="none"

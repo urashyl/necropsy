@@ -207,15 +207,19 @@
   // hours, so closing the tab or sleeping the laptop does not pause it. For a signed-in
   // player the server keeps the clock and this only displays it; signed out, it is kept
   // here from the first time the page was opened.
+  // On a live puzzle the clock starts when the player starts an instance, so it stays at
+  // zero until the server says it is running.
   const TIME_CAP = 3 * 3600;
+  const isLive = !!document.getElementById("live");
   const clock = { base: null, at: 0, frozen: false };
-  if (!state.solved[id] && !state.started[id]) {
+  if (!isLive && !state.solved[id] && !state.started[id]) {
     state.started[id] = Date.now();
     save(state);
   }
   function elapsed() {
     const since = (ms) => Math.max(0, Math.floor((Date.now() - ms) / 1000));
     if (clock.base !== null) return clock.frozen ? clock.base : Math.min(clock.base + since(clock.at), TIME_CAP);
+    if (isLive) return 0;
     return Math.min(since(state.started[id] || Date.now()), TIME_CAP);
   }
   let seconds = state.solved[id]?.seconds ?? elapsed();
@@ -308,7 +312,7 @@
       seconds = s.seconds;
       clock.base = s.seconds;
       clock.at = Date.now();
-      clock.frozen = !!s.solved;
+      clock.frozen = !!s.solved || !s.running;
     }
     hintsShown = s.hints;
     hintTexts = s.texts;
@@ -327,6 +331,10 @@
   }, 60000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !solved) sync("beat").catch(() => {});
+  });
+  // Starting an instance starts the clock on a live puzzle.
+  document.addEventListener("necropsy:instance-started", () => {
+    if (!solved) sync("beat").catch(() => {});
   });
 
   if (hintBtn) {
@@ -473,6 +481,7 @@
         const r = await fetch(api + path, { method, headers, credentials: "same-origin" });
         if (!r.ok) throw new Error(await r.text());
         renderInstance(await r.json());
+        if (method === "POST" && path === "") document.dispatchEvent(new Event("necropsy:instance-started"));
       } catch (e) {
         liveMsg.textContent = e.message || "Something went wrong.";
         liveMsg.classList.add("err-text");

@@ -4608,3 +4608,181 @@ fn every_doc_is_listed_in_the_readme_and_agents_names_the_rules() {
         }
     }
 }
+
+mod live_clock {
+    use super::*;
+
+    async fn beat(s: &Site, cookie: &str) -> serde_json::Value {
+        let r = s
+            .post_json("/api/p/kit-left-open/beat", r#"{"have":0}"#, Some(cookie))
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        serde_json::from_str(&r.body).unwrap()
+    }
+
+    async fn age_started(s: &Site, secs: i64) {
+        s.state
+            .db
+            .run(move |c| {
+                c.execute(
+                    "UPDATE progress SET started_at = started_at - ?1 WHERE started_at > 0",
+                    [secs],
+                )
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn user_id(s: &Site, name: &str) -> i64 {
+        s.state
+            .db
+            .user_for_login(name.into())
+            .await
+            .unwrap()
+            .unwrap()
+            .0
+            .id
+    }
+
+    #[tokio::test]
+    async fn the_clock_on_a_live_puzzle_starts_with_the_instance() {
+        let s = live_site().await;
+        s.register_verified("liveclock", "liveclock@example.org")
+            .await;
+        let cookie = s.login_cookie("liveclock").await;
+
+        // Reading the page, and waiting, do not start it.
+        let b = beat(&s, &cookie).await;
+        assert_eq!(
+            (b["running"].clone(), b["seconds"].clone()),
+            (false.into(), 0.into())
+        );
+        age_started(&s, 600).await;
+        assert_eq!(beat(&s, &cookie).await["seconds"], 0);
+        // Nor does asking for a hint.
+        let r = s
+            .post_json("/api/p/kit-left-open/hint", r#"{"have":0}"#, Some(&cookie))
+            .await;
+        let h: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+        assert_eq!(
+            (h["hints"].clone(), h["running"].clone()),
+            (1.into(), false.into())
+        );
+
+        // Starting an instance does.
+        let (_, label) = spin_up_as(&s, &cookie).await;
+        let b = beat(&s, &cookie).await;
+        assert_eq!(b["running"], true);
+        assert!(b["seconds"].as_i64().unwrap() <= 1, "{b}");
+        assert_eq!(b["hints"], 1, "the hint is still counted");
+        age_started(&s, 90).await;
+        let b = beat(&s, &cookie).await;
+        assert!((90..=92).contains(&b["seconds"].as_i64().unwrap()), "{b}");
+
+        // Stopping and starting again does not reset it.
+        let stop = s
+            .send(
+                Request::post("/api/p/kit-left-open/instance/stop")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(stop.status, StatusCode::OK);
+        let restarted = s
+            .send(
+                Request::post("/api/p/kit-left-open/instance")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(restarted.status, StatusCode::OK, "{}", restarted.body);
+        assert_ne!(label, "");
+        assert!(beat(&s, &cookie).await["seconds"].as_i64().unwrap() >= 90);
+
+        // The solve takes the time since the instance started.
+        let uid = user_id(&s, "liveclock").await;
+        let done = s
+            .state
+            .db
+            .progress_finish(uid, "kit-left-open".into(), crate::progress::TIME_CAP)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(done.seconds >= 90 && done.hints == 1);
+    }
+
+    #[tokio::test]
+    async fn a_solve_with_no_started_clock_is_not_timed() {
+        let s = live_site().await;
+        s.register_verified("neverstarted", "neverstarted@example.org")
+            .await;
+        let cookie = s.login_cookie("neverstarted").await;
+        beat(&s, &cookie).await;
+        let uid = user_id(&s, "neverstarted").await;
+        let done = s
+            .state
+            .db
+            .progress_finish(uid, "kit-left-open".into(), crate::progress::TIME_CAP)
+            .await
+            .unwrap();
+        assert!(done.is_none(), "a clock that never started has no time");
+    }
+
+    #[tokio::test]
+    async fn an_admins_instance_does_not_start_a_players_clock() {
+        // The admin starts instances to try puzzles; that is not play.
+        let s = live_site().await;
+        let admin = s.admin_cookie().await;
+        let r = s
+            .send(
+                Request::post("/admin/live/kit-left-open/start")
+                    .header(header::ORIGIN, ORIGIN)
+                    .header(header::COOKIE, &admin)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        let rows: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT COUNT(*) FROM progress", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(rows, 0);
+    }
+
+    /// Starts an instance for the signed-in user.
+    async fn spin_up_as(s: &Site, cookie: &str) -> (String, String) {
+        let r = s
+            .send(
+                Request::post("/api/p/kit-left-open/instance")
+                    .header(header::COOKIE, cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let v: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+        (
+            cookie.to_owned(),
+            v["url"].as_str().unwrap_or_default().to_owned(),
+        )
+    }
+}
+
+#[tokio::test]
+async fn search_is_an_icon_in_the_header_so_the_nav_does_not_wrap() {
+    let s = site().await;
+    let page = s.get("/learn", None).await.body;
+    assert!(page.contains("aria-label=\"Search\""));
+    assert!(page.contains("href=\"/search\""));
+    let nav = page.split("<nav class=\"site-nav\"").nth(1).unwrap();
+    let nav = nav.split("</nav>").next().unwrap();
+    assert!(!nav.contains("Search"), "the nav has a Search word: {nav}");
+}

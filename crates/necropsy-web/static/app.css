@@ -293,9 +293,14 @@ pre {
   cursor: pointer;
 }
 
-.icon-btn:hover {
+.icon-btn:hover,
+.icon-btn[aria-current="page"] {
   background: var(--surface-2);
   color: var(--ink);
+}
+
+a.icon-btn {
+  text-decoration: none;
 }
 
 @media (max-width: 640px) {
@@ -341,6 +346,14 @@ pre {
   /* Leave room beside a long name for the Admin link. */
   .site-header .user-name {
     max-width: calc(100% - 6.5rem);
+  }
+}
+
+/* On the narrowest phones the logo alone stands for the name, so the streak and the
+   two buttons still fit on the first row. */
+@media (max-width: 340px) {
+  .site-name span {
+    display: none;
   }
 }
 

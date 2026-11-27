@@ -2,8 +2,9 @@
 //! A signed-in player's time and hints on a puzzle, kept by the server so the browser
 //! cannot report them. See `docs/web.md`.
 //!
-//! The clock starts the first time a signed-in player opens a puzzle, and the time is
-//! what has passed since, up to [`TIME_CAP`]. It is wall-clock time on purpose: closing
+//! The clock starts the first time a signed-in player opens a puzzle (for a live puzzle,
+//! when they start an instance), and the time is what has passed since, up to
+//! [`TIME_CAP`]. It is wall-clock time on purpose: closing
 //! the tab or putting the laptop to sleep does not pause it, so there is no way to stop
 //! the clock, find the answer and come back. Hints are not in the page: each one is
 //! sent when the player asks for it, and counted then. When the answer is right, the
@@ -48,6 +49,8 @@ pub struct StateRes {
     /// The hints revealed so far, in order.
     texts: Vec<String>,
     solved: bool,
+    /// Whether the clock is running. On a live puzzle it starts with the instance.
+    running: bool,
 }
 
 fn first(hints: &[String], n: i64) -> Vec<String> {
@@ -76,6 +79,7 @@ async fn respond(
             hints: n,
             texts: first(hints, n),
             solved: false,
+            running: false,
         })
         .into_response();
     };
@@ -93,18 +97,22 @@ async fn respond(
             hints: s.hints,
             texts: first(hints, s.hints),
             solved: true,
+            running: false,
         })
         .into_response();
     }
+    // A live puzzle's clock starts when the player starts an instance, not when they
+    // open the page or ask for a hint.
+    let start = !p.pack.is_live();
     let result = if reveal {
         state
             .db
-            .progress_hint(user.id, id.to_owned(), total, TIME_CAP)
+            .progress_hint(user.id, id.to_owned(), total, TIME_CAP, start)
             .await
     } else {
         state
             .db
-            .progress_beat(user.id, id.to_owned(), TIME_CAP)
+            .progress_beat(user.id, id.to_owned(), TIME_CAP, start)
             .await
     };
     match result {
@@ -114,6 +122,7 @@ async fn respond(
             hints: pr.hints,
             texts: first(hints, pr.hints),
             solved: false,
+            running: pr.running,
         })
         .into_response(),
         Err(e) => {

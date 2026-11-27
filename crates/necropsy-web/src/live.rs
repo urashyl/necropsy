@@ -1028,7 +1028,13 @@ pub async fn instance_post(
         Err(e) => return server_error(e),
     }
     match create_instance(&state, uid, pack).await {
-        Ok(inst) => Json(view(&state, Some(&inst))).into_response(),
+        Ok(inst) => {
+            // The player's clock on this puzzle starts with their first instance.
+            if let Err(e) = state.db.progress_start(uid, pack.meta.id.clone()).await {
+                tracing::error!("starting the clock failed: {e}");
+            }
+            Json(view(&state, Some(&inst))).into_response()
+        }
         Err(refusal) => refusal.into_response(),
     }
 }

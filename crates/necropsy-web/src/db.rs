@@ -48,6 +48,8 @@ CREATE TABLE mfa_setup (
 /// Server-side progress (version 5): when a signed-in player first opened a puzzle and
 /// the hints they have revealed, so neither can be reported by the browser. The time
 /// is the wall-clock time since `started_at`, so closing the tab does not pause it.
+/// `started_at = 0` means the clock has not started yet, as on a live puzzle before the
+/// player starts an instance.
 /// `solves.timed` is 1 when a solve was recorded from this, 0 when the time and hints
 /// were only the browser's word (an import of a solve made while signed out).
 const PROGRESS_SCHEMA: &str = "
@@ -147,6 +149,8 @@ impl User {
 pub struct Progress {
     pub seconds: i64,
     pub hints: i64,
+    /// Whether the clock has started. A live puzzle's starts with its instance.
+    pub running: bool,
 }
 
 /// What players have done on a puzzle, in aggregate.
@@ -647,20 +651,23 @@ impl Db {
 
     // ---- progress ----------------------------------------------------------
 
-    /// Notes that the player is on this puzzle. The first call starts their clock.
-    /// The time is what has passed since then, up to `cap` seconds: it keeps running
-    /// while the page is closed or the machine sleeps, and stops growing at the cap.
+    /// Notes that the player is on this puzzle and returns their progress. With `start`
+    /// the first call starts their clock; without it (a live puzzle, whose clock starts
+    /// with the instance) the row is made with the clock stopped. The time is what has
+    /// passed since the clock started, up to `cap` seconds: it keeps running while the
+    /// page is closed or the machine sleeps, and stops growing at the cap.
     pub async fn progress_beat(
         &self,
         user_id: i64,
         pack_id: String,
         cap: i64,
+        start: bool,
     ) -> rusqlite::Result<Progress> {
         self.run(move |c| {
             let t = now();
             c.execute(
                 "INSERT OR IGNORE INTO progress (user_id, pack_id, started_at, hints) VALUES (?1, ?2, ?3, 0)",
-                params![user_id, pack_id, t],
+                params![user_id, pack_id, if start { t } else { 0 }],
             )?;
             let (started, hints): (i64, i64) = c.query_row(
                 "SELECT started_at, hints FROM progress WHERE user_id = ?1 AND pack_id = ?2",
@@ -668,9 +675,29 @@ impl Db {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )?;
             Ok(Progress {
-                seconds: (t - started).clamp(0, cap),
+                seconds: if started == 0 { 0 } else { (t - started).clamp(0, cap) },
                 hints,
+                running: started != 0,
             })
+        })
+        .await
+    }
+
+    /// Starts the clock on a puzzle whose clock starts with an action, such as starting
+    /// an instance. Starting again changes nothing, so restarting an instance does not
+    /// reset the time.
+    pub async fn progress_start(&self, user_id: i64, pack_id: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            let t = now();
+            c.execute(
+                "INSERT OR IGNORE INTO progress (user_id, pack_id, started_at, hints) VALUES (?1, ?2, ?3, 0)",
+                params![user_id, pack_id, t],
+            )?;
+            c.execute(
+                "UPDATE progress SET started_at = ?3 WHERE user_id = ?1 AND pack_id = ?2 AND started_at = 0",
+                params![user_id, pack_id, t],
+            )
+            .map(|_| ())
         })
         .await
     }
@@ -682,8 +709,11 @@ impl Db {
         pack_id: String,
         total: i64,
         cap: i64,
+        start: bool,
     ) -> rusqlite::Result<Progress> {
-        let p = self.progress_beat(user_id, pack_id.clone(), cap).await?;
+        let p = self
+            .progress_beat(user_id, pack_id.clone(), cap, start)
+            .await?;
         if p.hints >= total {
             return Ok(p);
         }
@@ -693,15 +723,16 @@ impl Db {
                 params![user_id, pack_id, total],
             )?;
             Ok(Progress {
-                seconds: p.seconds,
                 hints: (p.hints + 1).min(total),
+                ..p
             })
         })
         .await
     }
 
     /// The final progress for a solve, which removes the record: the time since the
-    /// player started (up to `cap`) and the hints revealed. None if there was no record.
+    /// clock started (up to `cap`) and the hints revealed. None if there was no record
+    /// or its clock never started.
     pub async fn progress_finish(
         &self,
         user_id: i64,
@@ -717,10 +748,13 @@ impl Db {
                     |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
                 )
                 .optional()?;
-            let out = row.map(|(started, hints)| Progress {
-                seconds: (now() - started).clamp(0, cap),
-                hints,
-            });
+            let out = row
+                .filter(|(started, _)| *started != 0)
+                .map(|(started, hints)| Progress {
+                    seconds: (now() - started).clamp(0, cap),
+                    hints,
+                    running: true,
+                });
             tx.execute(
                 "DELETE FROM progress WHERE user_id = ?1 AND pack_id = ?2",
                 params![user_id, pack_id],
