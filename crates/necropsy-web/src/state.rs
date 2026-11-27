@@ -238,6 +238,11 @@ impl AppState {
         self.all.iter().filter(|p| p.pack.is_live()).collect()
     }
 
+    /// Every puzzle a player can open now, in order.
+    pub fn visible_packs(&self) -> Vec<&RenderedPack> {
+        self.all.iter().filter(|p| self.is_visible(p)).collect()
+    }
+
     /// The library, in order: puzzles that are not part of the daily rotation.
     /// Always available.
     pub fn library(&self) -> Vec<&RenderedPack> {

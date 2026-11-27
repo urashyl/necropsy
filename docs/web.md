@@ -36,6 +36,8 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/p/{id}` | A puzzle by id. Unreleased dailies are "not found". |
 | `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. |
 | `/archive` | Released dailies, newest first. |
+| `/library` | Puzzles outside the daily rotation. |
+| `/search` | `?q=words` and `?tag=name`. Puzzles whose title, tags, id or brief contain every word, best match first (title, then tags and id, then brief). With no query it lists every tag with its puzzle count. Only puzzles the player can open are searched, and explainers and hints never are, since they hold the answer. A puzzle's tags link here. |
 | `/format` | Renders `docs/pack-format.md`. |
 | `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string, "seconds"?: n, "hints"?: n}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the server's own time and hints, and those two come back. The `seconds` and `hints` in the request are used only for a solve the server never timed (see [Time and hints](#time-and-hints)). |
 | `POST /api/p/{id}/beat` | `{"have": n, "peek"?: bool}`. The page is open: starts the clock on the first call and returns `{"user": bool, "seconds"?: n, "hints": n, "texts": [...], "solved": bool}`. |

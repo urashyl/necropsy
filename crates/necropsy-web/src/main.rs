@@ -321,6 +321,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
         .route("/learn", get(pages::learn))
         .route("/library", get(pages::library_list))
+        .route("/search", get(pages::search))
         .route(
             "/live",
             get(|| async { axum::response::Redirect::permanent("/library") }),

@@ -30,6 +30,7 @@ pub enum Nav {
     Learn,
     Library,
     Archive,
+    Search,
     Format,
     Account,
     Admin,
@@ -160,6 +161,139 @@ pub async fn library_list(
         "Puzzles that are not part of the daily rotation.",
         Nav::Library,
         "/library",
+        body,
+    )
+}
+
+/// `%XX`-encodes everything but unreserved characters, for a query value.
+fn urlencode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+fn search_form(q: &str) -> Markup {
+    html! {
+        form.search-form method="get" action="/search" role="search" {
+            input name="q" type="search" value=(q) placeholder="Search puzzles" aria-label="Search puzzles"
+                maxlength="100" autocomplete="off";
+            button.button type="submit" { "Search" }
+        }
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct SearchQuery {
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    tag: String,
+}
+
+/// Puzzles whose title, tags, id or brief contain every word of the query, best match
+/// first. Only puzzles the player can open are searched, and never explainers or hints,
+/// which hold the answer.
+fn search_matches<'a>(state: &'a AppState, q: &str, tag: &str) -> Vec<&'a RenderedPack> {
+    let words: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
+    let tag = tag.trim().to_lowercase();
+    let mut hits: Vec<(u8, &RenderedPack)> = Vec::new();
+    for p in state.visible_packs() {
+        let m = &p.pack.meta;
+        if !tag.is_empty() && !m.tags.iter().any(|t| t.to_lowercase() == tag) {
+            continue;
+        }
+        let title = m.title.to_lowercase();
+        let tags = m.tags.join(" ").to_lowercase();
+        let id = m.id.to_lowercase();
+        let brief = p.pack.brief_md.to_lowercase();
+        let mut score = 0u8;
+        let mut all = true;
+        for w in &words {
+            let s = if title.contains(w) {
+                4
+            } else if tags.contains(w) || id.contains(w) {
+                3
+            } else if brief.contains(w) {
+                1
+            } else {
+                0
+            };
+            if s == 0 {
+                all = false;
+                break;
+            }
+            score = score.saturating_add(s);
+        }
+        if all {
+            hits.push((score, p));
+        }
+    }
+    // Best first; the puzzle order breaks ties.
+    hits.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+    hits.into_iter().map(|(_, p)| p).take(100).collect()
+}
+
+pub async fn search(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+    axum::extract::Query(sq): axum::extract::Query<SearchQuery>,
+) -> Markup {
+    let stats = state.stats().await;
+    let q: String = sq.q.chars().take(100).collect();
+    let tag: String = sq.tag.chars().take(50).collect();
+    let searching = !q.trim().is_empty() || !tag.trim().is_empty();
+    let found = if searching {
+        search_matches(&state, &q, &tag)
+    } else {
+        Vec::new()
+    };
+    // Every tag on a puzzle the player can open, with how many carry it.
+    let mut tags: std::collections::BTreeMap<String, (String, usize)> = Default::default();
+    if !searching {
+        for p in state.visible_packs() {
+            for t in &p.pack.meta.tags {
+                tags.entry(t.to_lowercase())
+                    .or_insert_with(|| (t.clone(), 0))
+                    .1 += 1;
+            }
+        }
+    }
+    let body = html! {
+        section.wrap.page-head {
+            h1 { "Search" }
+            (search_form(&q))
+        }
+        section.wrap.section-tight {
+            @if searching {
+                p.muted {
+                    @if !tag.trim().is_empty() { "Tagged " strong { (tag.trim()) } ". " }
+                    (found.len()) @if found.len() == 1 { " puzzle." } @else { " puzzles." }
+                    " " a href="/search" { "All tags" }
+                }
+                ul.work-list {
+                    @for p in &found { (pack_row(&state, p, &stats)) }
+                }
+            } @else {
+                ul.tag-list {
+                    @for (_, (name, n)) in &tags {
+                        li { a.tag href={"/search?tag=" (urlencode(name))} { (name) " " span.muted { (n) } } }
+                    }
+                }
+            }
+        }
+    };
+    layout(
+        &state,
+        viewer.as_ref(),
+        "Search",
+        "Search puzzles by title, tag or brief.",
+        Nav::Search,
+        "/search",
         body,
     )
 }
@@ -440,7 +574,12 @@ fn puzzle_page(
                         div { dt { "Difficulty" } dd { (difficulty(m.difficulty)) } }
                         div { dt { "Files" } dd { (rp.files.len()) } }
                         @if !m.tags.is_empty() {
-                            div { dt { "Tags" } dd { (m.tags.join(", ")) } }
+                            div { dt { "Tags" } dd.tag-links {
+                                @for (i, t) in m.tags.iter().enumerate() {
+                                    @if i > 0 { ", " }
+                                    a href={"/search?tag=" (urlencode(t))} { (t) }
+                                }
+                            } }
                         }
                         div { dt { "Time" } dd #stat-time.tabular { "0:00" } }
                         @if !m.hints.is_empty() {
@@ -545,6 +684,7 @@ pub fn layout(
                                 a href="/library" aria-current=[current(Nav::Library)] { "Library" }
                             }
                             a href="/archive" aria-current=[current(Nav::Archive)] { "Archive" }
+                            a href="/search" aria-current=[current(Nav::Search)] { "Search" }
                             a href="/format" aria-current=[current(Nav::Format)] { "Format" }
                         }
                         div.header-tools {

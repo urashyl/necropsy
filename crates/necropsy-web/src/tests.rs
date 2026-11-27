@@ -4465,3 +4465,101 @@ async fn the_admin_is_told_to_add_an_email_before_email_codes() {
     assert!(page.contains("Add an email address under Change email first."));
     assert!(page.contains("Change email"), "the admin can add one");
 }
+
+// ------------------------------------------------------------------------- search
+
+mod search {
+    use super::*;
+
+    async fn results(s: &Site, query: &str) -> String {
+        let r = s.get(&format!("/search?{query}"), None).await;
+        assert_eq!(r.status, StatusCode::OK);
+        r.body
+    }
+
+    #[tokio::test]
+    async fn finds_puzzles_by_title_tag_and_brief_ignoring_case() {
+        let s = site().await;
+        let by_title = results(&s, "q=PEANUTS").await;
+        assert!(by_title.contains("href=\"/p/peanuts\""), "{by_title}");
+        assert!(!by_title.contains("href=\"/p/intro-log\""));
+        let by_tag = results(&s, "tag=SSH").await;
+        assert!(by_tag.contains("href=\"/p/intro-log\""));
+        assert!(!by_tag.contains("href=\"/p/peanuts\""));
+        let by_brief = results(&s, "q=three+nights").await;
+        assert!(by_brief.contains("href=\"/p/intro-log\""), "{by_brief}");
+    }
+
+    #[tokio::test]
+    async fn every_word_has_to_match() {
+        let s = site().await;
+        assert!(results(&s, "q=ssh+logs").await.contains("/p/intro-log"));
+        let none = results(&s, "q=ssh+banana").await;
+        assert!(!none.contains("/p/intro-log"));
+        assert!(none.contains("0 puzzles"));
+        // A tag and a word together.
+        assert!(results(&s, "tag=ssh&q=nights")
+            .await
+            .contains("/p/intro-log"));
+        assert!(!results(&s, "tag=ssh&q=peanuts")
+            .await
+            .contains("/p/intro-log"));
+    }
+
+    #[tokio::test]
+    async fn explainers_and_hints_are_not_searched() {
+        let s = site().await;
+        // The first hint of intro-log, whole: it is in no title, tag or brief.
+        let hint = "Leave the failures for now. List every login that worked";
+        let r = results(&s, &format!("q={}", hint.replace(' ', "+"))).await;
+        assert!(r.contains("0 puzzles"), "a hint was searchable: {r}");
+        let explainer = s.state.get("peanuts").unwrap().pack.explainer_md.clone();
+        let phrase: String = explainer
+            .split_whitespace()
+            .take(12)
+            .collect::<Vec<_>>()
+            .join("+");
+        let r = results(&s, &format!("q={phrase}")).await;
+        assert!(!r.contains("/p/peanuts\""), "an explainer was searchable");
+    }
+
+    #[tokio::test]
+    async fn unreleased_puzzles_are_not_found() {
+        let early = site_on("2026-11-26").await;
+        let r = results(&early, "q=kerberoast").await;
+        assert!(r.contains("0 puzzles"), "{r}");
+        let later = site().await;
+        assert!(results(&later, "q=kerberoast")
+            .await
+            .contains("href=\"/p/kerberoast\""));
+    }
+
+    #[tokio::test]
+    async fn with_no_query_it_lists_tags_that_link_to_the_search() {
+        let s = site().await;
+        let page = results(&s, "").await;
+        assert!(page.contains("href=\"/search?tag=ssh\""), "{page}");
+        assert!(page.contains("href=\"/search?tag=supply%20chain\""));
+        // A puzzle's page links its tags too.
+        let p = s.get("/p/lockfile", None).await.body;
+        assert!(p.contains("href=\"/search?tag=supply%20chain\""));
+        assert!(s
+            .get("/learn", None)
+            .await
+            .body
+            .contains("href=\"/search\""));
+    }
+
+    #[tokio::test]
+    async fn the_query_is_escaped() {
+        let s = site().await;
+        let r = results(
+            &s,
+            "q=%3Cscript%3Ealert(1)%3C%2Fscript%3E&tag=%22%3E%3Cb%3E",
+        )
+        .await;
+        assert!(!r.contains("<script>alert(1)"), "{r}");
+        assert!(!r.contains("\"><b>"));
+        assert!(r.contains("&lt;script&gt;"));
+    }
+}
