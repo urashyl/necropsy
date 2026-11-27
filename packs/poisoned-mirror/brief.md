@@ -1,6 +1,6 @@
 A popular npm package for terminal colours, **chalkline**, got a patch release, 2.4.1, that nobody on the project remembers publishing.
 
-Your instance is your team's read-only registry mirror. Browse a package the way you would on unpkg:
+Your team keeps a read-only mirror of the registry. Browse a package the way you would on unpkg:
 
 - `/chalkline` for the package's metadata
 - `/chalkline/<version>/files` for the files in a release

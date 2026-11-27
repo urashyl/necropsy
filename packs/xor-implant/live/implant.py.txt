@@ -1,4 +1,4 @@
-# implant.py - recovered from an infected laptop (renamed, will not be run)
+# implant.py - recovered from an infected laptop
 import base64, json, time, urllib.request
 
 BOT = "{{d:bot}}"

@@ -118,8 +118,7 @@ knows its path and credentials, and nobody else.</p>
 <ul>
 <li><code>strings</code> shows a format string for an HTTP request and almost nothing else. No domain, no path, no key.</li>
 <li>The binary refuses to run under a debugger, and does nothing visible when run normally.</li>
-<li>The gateway name ends in <code>.invalid</code>, so it does not resolve. Use this server instead.</li>
-<li>Run it only somewhere you can throw away. You will not need to run it to solve this.</li>
+<li>Run it only somewhere you can throw away.</li>
 </ul>
 </body></html>
 """

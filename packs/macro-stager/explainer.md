@@ -1,4 +1,4 @@
-Office macros are the classic way in. This one does four things that are worth knowing.
+Office macros are the classic way in. This one does four things.
 
 **It hides the URL in plain sight.** `hxxp` is the convention analysts use to defang links, and the macro puts `http` back with `Replace`. A string search for `http://` finds nothing in the source. The per-victim path is hex, decoded two characters at a time.
 

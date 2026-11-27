@@ -4163,6 +4163,14 @@ fn no_filler_in_copy() {
         "delve",
         "start it below",
         "yours alone",
+        // Boilerplate in puzzle text: the instance is the server, and samples are .txt.
+        "does not resolve",
+        "exist anywhere",
+        "to your instance",
+        "instance's link",
+        "so it cannot run",
+        "cannot run by accident",
+        "will not be run",
     ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut files: Vec<std::path::PathBuf> = Vec::new();
@@ -4177,10 +4185,17 @@ fn no_filler_in_copy() {
     }
     for e in std::fs::read_dir(root.join("packs")).unwrap() {
         let d = e.unwrap().path();
-        for name in ["brief.md", "explainer.md"] {
+        for name in ["brief.md", "explainer.md", "pack.toml", "live.toml"] {
             if d.join(name).exists() {
                 files.push(d.join(name));
             }
+        }
+    }
+    // The pages the code-based labs serve.
+    for e in std::fs::read_dir(root.join("range")).unwrap() {
+        let server = e.unwrap().path().join("server.py");
+        if server.exists() {
+            files.push(server);
         }
     }
     assert!(files.len() > 40);
@@ -4561,5 +4576,35 @@ mod search {
         assert!(!r.contains("<script>alert(1)"), "{r}");
         assert!(!r.contains("\"><b>"));
         assert!(r.contains("&lt;script&gt;"));
+    }
+}
+
+#[test]
+fn every_doc_is_listed_in_the_readme_and_agents_names_the_rules() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
+    for e in std::fs::read_dir(root.join("docs")).unwrap() {
+        let name = e.unwrap().file_name().to_string_lossy().into_owned();
+        if name.ends_with(".md") {
+            assert!(
+                readme.contains(&format!("docs/{name}")),
+                "README.md does not list docs/{name}"
+            );
+        }
+    }
+    // The agent rules exist, point at the design standards, and require docs.
+    let agents = std::fs::read_to_string(root.join("AGENTS.md")).unwrap();
+    assert!(agents.contains("docs/design.md"));
+    assert!(agents.contains("Write docs with every change"));
+    assert!(agents.contains("Read before you change anything"));
+    // Every docs page AGENTS.md links to exists.
+    for part in agents.split("](").skip(1) {
+        let target = part.split(')').next().unwrap();
+        if target.starts_with("docs/") {
+            assert!(
+                root.join(target).exists(),
+                "AGENTS.md links to missing {target}"
+            );
+        }
     }
 }

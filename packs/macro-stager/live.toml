@@ -21,7 +21,7 @@ status = 200
 content_type = "text/plain; charset=utf-8"
 headers = { "content-disposition" = 'attachment; filename="PO-88231_macro.bas.txt"' }
 body = '''Attribute VB_Name = "Module1"
-' PO-88231 - extracted macro (VBA source, not a file that can run)
+' PO-88231 - extracted macro
 Option Explicit
 
 Private Function HexDecode(s As String) As String
