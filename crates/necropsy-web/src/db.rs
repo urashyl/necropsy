@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 /// Two-step verification (version 4): an authenticator-app secret and the last
 /// time step accepted from it, email codes, one-time recovery codes, the short-lived
@@ -62,6 +62,13 @@ CREATE TABLE progress (
 );
 ALTER TABLE solves ADD COLUMN timed INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX solves_pack ON solves(pack_id);
+";
+
+/// Solve cards (version 6): a solve the player chose to share gets a random token, and
+/// the card page is looked up by it. NULL means not shared.
+const SHARE_SCHEMA: &str = "
+ALTER TABLE solves ADD COLUMN share TEXT;
+CREATE UNIQUE INDEX solves_share ON solves(share);
 ";
 
 const SCHEMA: &str = "
@@ -214,6 +221,20 @@ pub struct Solve {
     pub hints: i64,
     /// The solver's timezone when they solved it, in minutes ahead of UTC.
     pub tz: i64,
+    /// The server kept this solve's time and hints (see `progress`).
+    pub timed: bool,
+    /// The token of the solve's share card, if the solver made one.
+    pub share: Option<String>,
+}
+
+/// A solve looked up by its share token, for the card page.
+#[derive(Debug)]
+pub struct SharedSolve {
+    pub pack_id: String,
+    pub seconds: i64,
+    pub hints: i64,
+    pub solved_at: i64,
+    pub tz: i64,
 }
 
 #[derive(Debug)]
@@ -284,6 +305,9 @@ impl Db {
         }
         if version < 5 {
             conn.execute_batch(PROGRESS_SCHEMA)?;
+        }
+        if version < 6 {
+            conn.execute_batch(SHARE_SCHEMA)?;
         }
         if version != SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -632,7 +656,7 @@ impl Db {
     pub async fn solve_of(&self, user_id: i64, pack_id: String) -> rusqlite::Result<Option<Solve>> {
         self.run(move |c| {
             c.query_row(
-                "SELECT pack_id, solved_at, seconds, hints, tz FROM solves WHERE user_id = ?1 AND pack_id = ?2",
+                "SELECT pack_id, solved_at, seconds, hints, tz, timed, share FROM solves WHERE user_id = ?1 AND pack_id = ?2",
                 params![user_id, pack_id],
                 |r| {
                     Ok(Solve {
@@ -641,6 +665,8 @@ impl Db {
                         seconds: r.get(2)?,
                         hints: r.get(3)?,
                         tz: r.get(4)?,
+                        timed: r.get(5)?,
+                        share: r.get(6)?,
                     })
                 },
             )
@@ -807,7 +833,7 @@ impl Db {
     pub async fn solves_of(&self, user_id: i64) -> rusqlite::Result<Vec<Solve>> {
         self.run(move |c| {
             let mut st = c.prepare(
-                "SELECT pack_id, solved_at, seconds, hints, tz FROM solves WHERE user_id = ?1 ORDER BY solved_at",
+                "SELECT pack_id, solved_at, seconds, hints, tz, timed, share FROM solves WHERE user_id = ?1 ORDER BY solved_at",
             )?;
             let rows = st.query_map([user_id], |r| {
                 Ok(Solve {
@@ -816,9 +842,83 @@ impl Db {
                     seconds: r.get(2)?,
                     hints: r.get(3)?,
                     tz: r.get(4)?,
+                    timed: r.get(5)?,
+                    share: r.get(6)?,
                 })
             })?;
             rows.collect()
+        })
+        .await
+    }
+
+    // ---- solve cards -------------------------------------------------------
+
+    /// The solve's share token, made from `candidate` if it has none. Only a solve
+    /// whose time the server kept can be shared: its numbers are the server's, so the
+    /// card cannot say something the player made up. None if there is no such solve.
+    pub async fn share_enable(
+        &self,
+        user_id: i64,
+        pack_id: String,
+        candidate: String,
+    ) -> rusqlite::Result<Option<String>> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE solves SET share = COALESCE(share, ?3) WHERE user_id = ?1 AND pack_id = ?2 AND timed = 1",
+                params![user_id, pack_id, candidate],
+            )?;
+            c.query_row(
+                "SELECT share FROM solves WHERE user_id = ?1 AND pack_id = ?2 AND timed = 1",
+                params![user_id, pack_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map(Option::flatten)
+        })
+        .await
+    }
+
+    /// Stops sharing a solve: its card page and image stop working.
+    pub async fn share_disable(&self, user_id: i64, pack_id: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE solves SET share = NULL WHERE user_id = ?1 AND pack_id = ?2",
+                params![user_id, pack_id],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    pub async fn shared_solve(&self, token: String) -> rusqlite::Result<Option<SharedSolve>> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT pack_id, seconds, hints, solved_at, tz FROM solves WHERE share = ?1",
+                [token],
+                |r| {
+                    Ok(SharedSolve {
+                        pack_id: r.get(0)?,
+                        seconds: r.get(1)?,
+                        hints: r.get(2)?,
+                        solved_at: r.get(3)?,
+                        tz: r.get(4)?,
+                    })
+                },
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// For a card: how many timed solves of the puzzle there are, and how many of them
+    /// took longer than `seconds`.
+    pub async fn slower_than(&self, pack_id: String, seconds: i64) -> rusqlite::Result<(i64, i64)> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(seconds > ?2), 0) FROM solves WHERE pack_id = ?1 AND timed = 1",
+                params![pack_id, seconds],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
         })
         .await
     }

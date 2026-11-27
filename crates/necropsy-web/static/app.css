@@ -1115,6 +1115,21 @@ a.icon-btn {
 
 /* Search */
 
+.card-view {
+  max-width: 40rem;
+  line-height: 0;
+}
+
+.card-view svg {
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+}
+
+.card-actions {
+  margin-top: 1.25rem;
+}
+
 .search-form {
   display: flex;
   gap: 0.5rem;

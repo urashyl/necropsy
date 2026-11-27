@@ -60,7 +60,7 @@ pub async fn puzzle(
 }
 
 /// `m:ss`, or `h:mm:ss` from an hour up.
-fn clock(secs: f64) -> String {
+pub(crate) fn clock(secs: f64) -> String {
     let s = secs.round().max(0.0) as i64;
     if s >= 3600 {
         format!("{}:{:02}:{:02}", s / 3600, s % 3600 / 60, s % 60)
@@ -599,6 +599,9 @@ fn puzzle_page(
                     }
                     div #share.share.hidden {
                         button #share-btn.button.button-quiet type="button" { "Copy result" }
+                        button #share-card.button.button-quiet.hidden type="button" { "Share card" }
+                        button #share-save.button.button-quiet.hidden type="button" { "Save image" }
+                        button #share-stop.link-button.hidden type="button" { "Stop sharing" }
                         span #share-msg.muted role="status" aria-live="polite" {}
                     }
                 }
