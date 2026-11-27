@@ -69,7 +69,7 @@ pub(crate) fn clock(secs: f64) -> String {
     }
 }
 
-type Stats = std::collections::HashMap<String, crate::db::PackStats>;
+pub(crate) type Stats = std::collections::HashMap<String, crate::db::PackStats>;
 
 /// How many solved it, and how long it took on average, for a list row.
 fn stats_text(st: Option<&crate::db::PackStats>) -> Option<String> {
@@ -80,7 +80,7 @@ fn stats_text(st: Option<&crate::db::PackStats>) -> Option<String> {
     })
 }
 
-fn pack_row(state: &AppState, p: &RenderedPack, stats: &Stats) -> Markup {
+pub(crate) fn pack_row(state: &AppState, p: &RenderedPack, stats: &Stats) -> Markup {
     let m = &p.pack.meta;
     let solved_by = stats_text(stats.get(&m.id));
     html! {
@@ -102,36 +102,6 @@ fn pack_row(state: &AppState, p: &RenderedPack, stats: &Stats) -> Markup {
             }
         }
     }
-}
-
-pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
-    let stats = state.stats().await;
-    let body = html! {
-        section.wrap.page-head {
-            h1 { "Learn" }
-            p.page-lead {
-                "Four short puzzles on the basics: reading a log, decoding, deobfuscating, "
-                "following a chain."
-            }
-        }
-        section.wrap.section-tight {
-            ul.work-list {
-                @for p in state.intros() { (pack_row(&state, p, &stats)) }
-            }
-            @if state.today_daily().is_some() {
-                p.after-list { a href="/" { "Then: today's puzzle →" } }
-            }
-        }
-    };
-    layout(
-        &state,
-        viewer.as_ref(),
-        "Learn",
-        "Short introductory puzzles.",
-        Nav::Learn,
-        "/learn",
-        body,
-    )
 }
 
 /// The library: puzzles that are not part of the daily rotation. Always available.
@@ -166,7 +136,7 @@ pub async fn library_list(
 }
 
 /// `%XX`-encodes everything but unreserved characters, for a query value.
-fn urlencode(s: &str) -> String {
+pub(crate) fn urlencode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
@@ -377,7 +347,7 @@ pub async fn not_found(
     not_found_page(&state, viewer.as_ref()).into_response()
 }
 
-fn not_found_page(state: &AppState, viewer: Option<&User>) -> (StatusCode, Markup) {
+pub(crate) fn not_found_page(state: &AppState, viewer: Option<&User>) -> (StatusCode, Markup) {
     let body = html! {
         section.wrap.page-head {
             h1 { "Not found" }
@@ -426,7 +396,7 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 
 /// The controls of a live puzzle: spin up an instance, see its link, its
 /// time left and the requests it has had. Driven by app.js.
-fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+pub(crate) fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
     let captcha_key = state.captcha.site_key();
     let ttl = rp.pack.live.as_ref().map(|s| s.ttl_minutes).unwrap_or(60);
     html! {
@@ -469,7 +439,6 @@ fn puzzle_page(
 ) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
-    let share_url = format!("{}/p/{}", state.base_url, m.id);
     let daily = m.track == Track::Daily;
     let intro_ids = state
         .intros()
@@ -477,24 +446,13 @@ fn puzzle_page(
         .map(|p| p.pack.meta.id.clone())
         .collect::<Vec<_>>()
         .join(",");
-    let release_day = m.release_day().map(|d| d.to_string()).unwrap_or_default();
 
     let body = html! {
         div #puzzle data-id=(m.id) data-number=(m.number) data-title=(m.title)
-            data-hints=(m.hints.len()) data-url=(share_url)
-            data-label=(rp.label().to_lowercase()) data-day=(release_day) {
+            data-hints=(m.hints.len()) data-url=(puzzle_url(state, rp))
+            data-label=(rp.label().to_lowercase()) data-day=(release_day(rp)) {
             section.wrap.page-head {
-                p.crumb {
-                    @if daily {
-                        (rp.label())
-                        @if let Some(d) = &m.date { " · " (d) }
-                        @if state.is_today(rp) { " " span.badge { "Today" } }
-                    } @else if m.track == Track::Library {
-                        "Library " (m.number) " of " (state.library().len())
-                    } @else {
-                        "Intro " (m.number) " of " (state.intros().len())
-                    }
-                }
+                (crumb(state, rp))
                 h1 { (m.title) }
             }
             div.wrap.case-grid {
@@ -502,62 +460,26 @@ fn puzzle_page(
                     @if daily {
                         // Shown by app.js when nothing in the intro track is solved yet.
                         p #intro-banner.notice.hidden data-intros=(intro_ids) {
-                            "New here? " a href="/learn" { "Start with the intro puzzles" } "."
+                            "New here? " a href="/learn" { "Start with Learn" } "."
                         }
                     }
                     div.prose.brief { (PreEscaped(&rp.brief_html)) }
+
+                    p.workspace-link {
+                        a.button.button-quiet href={"/w/" (m.id)} { "Open the workspace" }
+                        " "
+                        span.muted { "Pcap viewer, decoder, "
+                            @if rp.pack.is_live() { "request console, " }
+                            "notebook and hex viewer, in the browser." }
+                    }
 
                     @if rp.pack.is_live() {
                         (live_panel(state, viewer, rp))
                     }
 
-                    @for f in &rp.files {
-                        figure.codefile {
-                            figcaption.codefile-head {
-                                span.codefile-name { (f.path) }
-                                a href={"/p/" (m.id) "/files/" (f.path)} { "Raw" }
-                            }
-                            @if let Some((hl, lines)) = &f.inline {
-                                div.codefile-body tabindex="0" role="region"
-                                    aria-label={"Contents of " (f.path)} {
-                                    pre.gutter aria-hidden="true" {
-                                        @for n in 1..=*lines { (n) "\n" }
-                                    }
-                                    pre.code.hl { code { (PreEscaped(hl)) } }
-                                }
-                            } @else {
-                                p.codefile-bin {
-                                    "Binary or large file, " (f.size) " bytes. "
-                                    a href={"/p/" (m.id) "/files/" (f.path)} { "Download" }
-                                }
-                            }
-                        }
-                    }
+                    (file_figures(rp))
 
-                    form #answer-form.answer-form {
-                        label for="answer" {
-                            @if rp.pack.is_live() { "Flag" } @else { "Answer" }
-                        }
-                        div.answer-row {
-                            input #answer name="answer" type="text" required maxlength="512"
-                                autocomplete="off" autocapitalize="off" spellcheck="false";
-                            button.button type="submit" { "Submit" }
-                        }
-                        p #answer-msg.answer-msg role="status" aria-live="polite" {}
-                        noscript { p.muted { "Checking answers needs JavaScript." } }
-                    }
-
-                    @if !m.hints.is_empty() {
-                        section #hints.hints {
-                            ol #hint-list.hint-list {}
-                            button #hint-btn.link-button type="button" { "Show a hint" }
-                        }
-                    }
-
-                    section #explainer.explainer.hidden {
-                        h2 { "Explainer" }
-                        div #explainer-body.prose {}
-                    }
+                    (answer_block(rp))
 
                     nav.pager aria-label="Puzzles" {
                         @if let Some(p) = &prev {
@@ -570,40 +492,7 @@ fn puzzle_page(
                 }
 
                 aside.case-side {
-                    dl.facts {
-                        div { dt { "Difficulty" } dd { (difficulty(m.difficulty)) } }
-                        div { dt { "Files" } dd { (rp.files.len()) } }
-                        @if !m.tags.is_empty() {
-                            div { dt { "Tags" } dd.tag-links {
-                                @for (i, t) in m.tags.iter().enumerate() {
-                                    @if i > 0 { ", " }
-                                    a href={"/search?tag=" (urlencode(t))} { (t) }
-                                }
-                            } }
-                        }
-                        div { dt { "Time" } dd #stat-time.tabular { "0:00" } }
-                        @if !m.hints.is_empty() {
-                            div { dt { "Hints used" } dd #stat-hints.tabular { "0" } }
-                        }
-                    }
-                    @if let Some(st) = stats.get(&m.id).filter(|s| s.solves > 0) {
-                        dl.facts.facts-stats {
-                            div { dt { "Solved by" } dd.tabular { (st.solves) } }
-                            @if let (Some(avg), true) = (st.avg_seconds, st.timed > 0) {
-                                div { dt { "Average time" } dd.tabular { (clock(avg)) } }
-                            }
-                            @if let (Some(avg), false, true) = (st.avg_hints, m.hints.is_empty(), st.timed > 0) {
-                                div { dt { "Average hints" } dd.tabular { (format!("{avg:.1}")) } }
-                            }
-                        }
-                    }
-                    div #share.share.hidden {
-                        button #share-btn.button.button-quiet type="button" { "Copy result" }
-                        button #share-card.button.button-quiet.hidden type="button" { "Share card" }
-                        button #share-save.button.button-quiet.hidden type="button" { "Save image" }
-                        button #share-stop.link-button.hidden type="button" { "Stop sharing" }
-                        span #share-msg.muted role="status" aria-live="polite" {}
-                    }
+                    (side_facts(rp, stats))
                 }
             }
         }
@@ -618,6 +507,148 @@ fn puzzle_page(
         &format!("/p/{}", m.id),
         body,
     )
+}
+
+/// The puzzle's public address, for the share text.
+pub(crate) fn puzzle_url(state: &AppState, rp: &RenderedPack) -> String {
+    format!("{}/p/{}", state.base_url, rp.pack.meta.id)
+}
+
+/// A daily's release day as days since 1970, or "" for other tracks.
+pub(crate) fn release_day(rp: &RenderedPack) -> String {
+    rp.pack
+        .meta
+        .release_day()
+        .map(|d| d.to_string())
+        .unwrap_or_default()
+}
+
+/// "Daily #3 · 2026-11-27 Today", "Library 2 of 10" or "Intro 1 of 4".
+pub(crate) fn crumb(state: &AppState, rp: &RenderedPack) -> Markup {
+    let m = &rp.pack.meta;
+    html! {
+        p.crumb {
+            @if m.track == Track::Daily {
+                (rp.label())
+                @if let Some(d) = &m.date { " · " (d) }
+                @if state.is_today(rp) { " " span.badge { "Today" } }
+            } @else if m.track == Track::Library {
+                "Library " (position(&state.library(), rp)) " of " (state.library().len())
+            } @else {
+                "Intro " (position(&state.intros(), rp)) " of " (state.intros().len())
+            }
+        }
+    }
+}
+
+/// Where a puzzle is in its list, counting from 1. Hidden puzzles (live ones on
+/// a site without live puzzles) are not in the list, so they leave no gap.
+fn position(list: &[&RenderedPack], rp: &RenderedPack) -> usize {
+    list.iter()
+        .position(|p| p.pack.meta.id == rp.pack.meta.id)
+        .map_or(0, |i| i + 1)
+}
+
+/// Each file of the puzzle: text inline with line numbers, anything else as a
+/// download.
+pub(crate) fn file_figures(rp: &RenderedPack) -> Markup {
+    let m = &rp.pack.meta;
+    html! {
+        @for f in &rp.files {
+            figure.codefile {
+                figcaption.codefile-head {
+                    span.codefile-name { (f.path) }
+                    a href={"/p/" (m.id) "/files/" (f.path)} { "Raw" }
+                }
+                @if let Some((hl, lines)) = &f.inline {
+                    div.codefile-body tabindex="0" role="region"
+                        aria-label={"Contents of " (f.path)} {
+                        pre.gutter aria-hidden="true" {
+                            @for n in 1..=*lines { (n) "\n" }
+                        }
+                        pre.code.hl { code { (PreEscaped(hl)) } }
+                    }
+                } @else {
+                    p.codefile-bin {
+                        "Binary or large file, " (f.size) " bytes. "
+                        a href={"/p/" (m.id) "/files/" (f.path)} { "Download" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The answer form, the hints and the explainer, driven by app.js.
+pub(crate) fn answer_block(rp: &RenderedPack) -> Markup {
+    let m = &rp.pack.meta;
+    html! {
+        form #answer-form.answer-form {
+            label for="answer" {
+                @if rp.pack.is_live() { "Flag" } @else { "Answer" }
+            }
+            div.answer-row {
+                input #answer name="answer" type="text" required maxlength="512"
+                    autocomplete="off" autocapitalize="off" spellcheck="false";
+                button.button type="submit" { "Submit" }
+            }
+            p #answer-msg.answer-msg role="status" aria-live="polite" {}
+            noscript { p.muted { "Checking answers needs JavaScript." } }
+        }
+
+        @if !m.hints.is_empty() {
+            section #hints.hints {
+                ol #hint-list.hint-list {}
+                button #hint-btn.link-button type="button" { "Show a hint" }
+            }
+        }
+
+        section #explainer.explainer.hidden {
+            h2 { "Explainer" }
+            div #explainer-body.prose {}
+        }
+    }
+}
+
+/// Difficulty, files, tags, the clock, the solve statistics and the share buttons.
+pub(crate) fn side_facts(rp: &RenderedPack, stats: &Stats) -> Markup {
+    let m = &rp.pack.meta;
+    html! {
+        dl.facts {
+            div { dt { "Difficulty" } dd { (difficulty(m.difficulty)) } }
+            div { dt { "Files" } dd { (rp.files.len()) } }
+            @if !m.tags.is_empty() {
+                div { dt { "Tags" } dd.tag-links {
+                    @for (i, t) in m.tags.iter().enumerate() {
+                        @if i > 0 { ", " }
+                        a href={"/search?tag=" (urlencode(t))} { (t) }
+                    }
+                } }
+            }
+            div { dt { "Time" } dd #stat-time.tabular { "0:00" } }
+            @if !m.hints.is_empty() {
+                div { dt { "Hints used" } dd #stat-hints.tabular { "0" } }
+            }
+        }
+        @if let Some(st) = stats.get(&m.id).filter(|s| s.solves > 0) {
+            dl.facts.facts-stats {
+                div { dt { "Solved by" } dd.tabular { (st.solves) } }
+                @if let (Some(avg), true) = (st.avg_seconds, st.timed > 0) {
+                    div { dt { "Average time" } dd.tabular { (clock(avg)) } }
+                }
+                @if let (Some(avg), false, true) = (st.avg_hints, m.hints.is_empty(), st.timed > 0) {
+                    div { dt { "Average hints" } dd.tabular { (format!("{avg:.1}")) } }
+                }
+            }
+        }
+        div #share.share.hidden {
+            button #share-btn.button.button-quiet type="button" { "Copy result" }
+            button #share-card.button.button-quiet.hidden type="button" { "Share card" }
+            button #share-save.button.button-quiet.hidden type="button" { "Save image" }
+            button #share-stop.link-button.hidden type="button" { "Stop sharing" }
+            span #share-msg.muted role="status" aria-live="polite" {}
+        }
+    }
 }
 
 fn difficulty(d: u8) -> Markup {

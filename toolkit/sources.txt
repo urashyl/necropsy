@@ -1,0 +1,5 @@
+# Third-party toolkit builds, fetched by toolkit/fetch.sh into toolkit/dist/.
+# name      version   sha256 of the download                                              url
+wiregasm    2.0.0     c22726d355c21849dcfb55c5e32ae0a9cc9e1d68298ebe259890e11365c253f7  https://registry.npmjs.org/@goodtools/wiregasm/-/wiregasm-2.0.0.tgz
+pyodide     314.0.8   9a52704e0ae5b07aaacb8e4fed9f1658e8024694a078695ea45ac79dee4cefcb  https://registry.npmjs.org/pyodide/-/pyodide-314.0.8.tgz
+cyberchef   10.20.0   5c41ce4e095726da9e376f3c3cabd70611d05d53f30a09b2028e15fd7f46e8db  https://github.com/gchq/CyberChef/releases/download/v10.20.0/CyberChef_v10.20.0.zip

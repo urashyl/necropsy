@@ -14,7 +14,19 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
+
+/// The Learn track (version 7): checkpoints passed, and the tool path a player
+/// chose. See docs/learn.md.
+const LEARN_SCHEMA: &str = "
+CREATE TABLE learn_passed (
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    module    TEXT NOT NULL,
+    passed_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, module)
+);
+ALTER TABLE users ADD COLUMN learn_path TEXT;
+";
 
 /// Two-step verification (version 4): an authenticator-app secret and the last
 /// time step accepted from it, email codes, one-time recovery codes, the short-lived
@@ -308,6 +320,9 @@ impl Db {
         }
         if version < 6 {
             conn.execute_batch(SHARE_SCHEMA)?;
+        }
+        if version < 7 {
+            conn.execute_batch(LEARN_SCHEMA)?;
         }
         if version != SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -815,6 +830,54 @@ impl Db {
                 ))
             })?;
             rows.collect()
+        })
+        .await
+    }
+
+    /// Learn modules whose checkpoint the user has passed.
+    pub async fn learn_passed(&self, user_id: i64) -> rusqlite::Result<Vec<String>> {
+        self.run(move |c| {
+            let mut st =
+                c.prepare("SELECT module FROM learn_passed WHERE user_id = ?1 ORDER BY passed_at")?;
+            let rows = st.query_map([user_id], |r| r.get(0))?;
+            rows.collect()
+        })
+        .await
+    }
+
+    /// Records a passed checkpoint. Passing again keeps the first time.
+    pub async fn learn_pass(&self, user_id: i64, module: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "INSERT OR IGNORE INTO learn_passed (user_id, module, passed_at) VALUES (?1, ?2, ?3)",
+                params![user_id, module, now()],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    /// The tool path the user chose for Learn, `browser` or `terminal`.
+    pub async fn learn_path(&self, user_id: i64) -> rusqlite::Result<Option<String>> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT learn_path FROM users WHERE id = ?1",
+                [user_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map(Option::flatten)
+        })
+        .await
+    }
+
+    pub async fn set_learn_path(&self, user_id: i64, path: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE users SET learn_path = ?2 WHERE id = ?1",
+                params![user_id, path],
+            )
+            .map(|_| ())
         })
         .await
     }

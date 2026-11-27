@@ -1,0 +1,11 @@
+id = "learn-aes-config"
+track = "intro"
+number = 9
+title = "Locked config"
+difficulty = 2
+modes = ["web"]
+tags = ["crypto", "aes", "hmac", "key-derivation", "learn"]
+hints = [
+  "The key is not in the file, but the recipe for it is: key_derivation says to hash the campaign name with SHA-256. That gives 32 bytes, which is exactly an AES-256 key. {decoder: SHA2('256',64,160)}",
+  "Decrypt data with AES-256-CBC. The key is the SHA-256 of OPAL-17, 9d4df76c...ed7e, the IV is the iv field, and data is base64, so decode it first. Paste data into the decoder's input. {decoder: From_Base64('A-Za-z0-9+/=',true,false)AES_Decrypt({'option':'Hex','string':'9d4df76ca1d027e6b3cd6a6afd4ea309c6424b8c9703f15365628ebca79aed7e'},{'option':'Hex','string':'6e65637230707379a1b2c3d4e5f60718'},'CBC','Raw','Raw',{'option':'Hex','string':''},{'option':'Hex','string':''})}",
+]

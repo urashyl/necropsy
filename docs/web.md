@@ -14,6 +14,8 @@ cargo run -p necropsy-web
 | `NECROPSY_PACKS` | `packs` | Directory containing one subdirectory per pack. |
 | `NECROPSY_BASE_URL` | `https://necropsy.urashyl.dev` | Origin used in links, emails and canonical URLs. Change it when the domain changes. Cookies are `Secure` when it starts with `https://`. |
 | `NECROPSY_DB` | `necropsy.db` | SQLite file for accounts and solves. |
+| `NECROPSY_LEARN` | `learn` | The [Learn](learn.md) modules. The server exits if one is invalid. |
+| `NECROPSY_TOOLKIT` | `toolkit/dist` | The workspace's third-party tools, from `toolkit/fetch.sh` (see [toolkit.md](toolkit.md)). Missing tools are reported in the log and on their tab. |
 | `NECROPSY_LIVE_DOMAIN` | unset | Turns on [live puzzles](live.md) at `<label>.<domain>`. |
 | `NECROPSY_LIVE_HOST_HEADER` | unset | Header with the original host, only if your proxy cannot pass `Host` through. |
 | `NECROPSY_RANGE_URL`, `NECROPSY_RANGE_TOKEN` | unset | The range VM that runs container-backed [live puzzles](range.md), and this site's token there. Set both or neither. |
@@ -32,7 +34,14 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | Route | |
 | --- | --- |
 | `/` | Today's puzzle: the latest daily released by today (the viewer's own date, see [Days and timezones](#days-and-timezones)). Goes to `/learn` if none is out yet. |
-| `/learn` | The intro stages, in order. |
+| `/learn` | The [Learn](learn.md) modules by tier, the tool path choice, and every practice puzzle (the `intro` track). |
+| `/learn/{id}` | A Learn module: the idea, the walkthrough for the chosen path, practice, checkpoint. `?path=browser\|terminal` shows that walkthrough. |
+| `POST /learn/path`, `POST /learn/{id}/checkpoint` | Learn forms, see [learn.md](learn.md#routes). |
+| `POST /api/learn/{id}/checkpoint`, `GET /api/me/learn` | Learn's JSON API, see [learn.md](learn.md#routes). |
+| `/w/{id}` | The puzzle's [workspace](toolkit.md): its files and the in-browser tools, with the answer form, hints and clock. Unreleased dailies are "not found". |
+| `/toolkit/{path}` | The toolkit's third-party files (Wiregasm, Pyodide, CyberChef), cached for good. See [toolkit.md](toolkit.md#how-the-files-are-served). |
+| `/static/toolkit/{file}` | The workspace's own scripts, revalidated by ETag. |
+| `GET /api/live/{label}/ws` | The request console's WebSocket to the player's own live instance. See [toolkit.md](toolkit.md#transport). |
 | `/p/{id}` | A puzzle by id. Unreleased dailies are "not found". |
 | `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. |
 | `/archive` | Released dailies, newest first. |
@@ -52,7 +61,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 
 ## Player state
 
-Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. A signed-out player's timer is the same rule kept in the browser: time since the page was first opened, up to 3 hours.
+Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`, and passed Learn checkpoints under `necropsy:learn:v1`. The workspace's notebook keeps its cells under `necropsy:notebook:<id>`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. A signed-out player's timer is the same rule kept in the browser: time since the page was first opened, up to 3 hours.
 
 A returning player's solved answer is kept locally and re-submitted on page load to bring the explainer back.
 
@@ -87,7 +96,7 @@ Each puzzle page and list row shows how many players solved it and, from the tim
 ## Security notes
 
 - Pack markdown is rendered with raw HTML converted to text. Highlighted code comes from syntect and is escaped. Everything else goes through maud, which escapes.
-- The CSP allows only same-origin scripts, plus the Google Fonts stylesheet and font files. There is no inline script or style, so the theme bootstrap lives in `static/theme.js`.
+- The CSP allows only same-origin scripts, plus the Google Fonts stylesheet and font files. There is no inline script or style, so the theme bootstrap lives in `static/theme.js`. The workspace page adds a same-origin frame and workers; its workers and CyberChef have policies of their own (see [toolkit.md](toolkit.md#security)). A handler that sets its own `Content-Security-Policy` or `X-Frame-Options` keeps it; every other response gets the site's.
 - The answer endpoint caps the request body at 2 KiB and ignores answers over 512 bytes.
 - Pages are sent with `Cache-Control: no-store` and `Referrer-Policy: same-origin`, since email links carry one-time tokens in the query string.
 - Requests are not logged unless you set `NECROPSY_LOG_REQUESTS=1`; then the log records method, path and status, never query strings.

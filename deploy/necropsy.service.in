@@ -15,6 +15,8 @@ WorkingDirectory=@STATE_DIR@
 # Defaults for where packs and the database live. Values in the environment
 # file take precedence, so either can be overridden there.
 Environment=NECROPSY_PACKS=@PACKS@
+Environment=NECROPSY_LEARN=@LEARN@
+Environment=NECROPSY_TOOLKIT=@TOOLKIT@
 Environment=NECROPSY_DB=@DB@
 EnvironmentFile=-@ENV_FILE@
 

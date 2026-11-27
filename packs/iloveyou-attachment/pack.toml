@@ -6,6 +6,7 @@ title = "ILOVEYOU: patient zero"
 difficulty = 3
 modes = ["web"]
 tags = ["worm", "email", "logs"]
+learn = ["encodings"]
 hints = [
   "Start with the messages the scanner caught after 13:04. Find the `from=` line for each queue ID and note the size.",
   "The worm sends one message per address-book entry, all at once. Getting it first isn't the same as opening it first.",

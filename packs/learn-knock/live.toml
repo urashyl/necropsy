@@ -1,0 +1,79 @@
+ttl_minutes = 60
+flag_prefix = "knock"
+
+[[route]]
+method = "GET"
+path = "/"
+[route.respond]
+content_type = "text/plain; charset=utf-8"
+body = """Kit status: running
+Notes: /notes?id=<number> (1 to 3)
+Panel: /panel/login
+"""
+
+[[route]]
+method = "GET"
+path = "/notes"
+[route.when]
+query = { id = "3" }
+[route.respond]
+content_type = "text/plain; charset=utf-8"
+body = """note 3 - operator access
+POST /panel/login
+header  X-Operator: nightjar
+form    user=op
+        pin={{d:pin}}
+"""
+
+[[route]]
+method = "GET"
+path = "/notes"
+[route.when]
+query = { id = "re:^[12]$" }
+[route.respond]
+content_type = "text/plain; charset=utf-8"
+body = "note: rotate the landing page every 48 hours.\n"
+
+[[route]]
+method = "GET"
+path = "/notes"
+[route.respond]
+status = 400
+content_type = "text/plain; charset=utf-8"
+body = "Which note? Add ?id=<number> to the URL.\n"
+
+[[route]]
+method = "POST"
+path = "/panel/login"
+[route.when]
+header = { "x-operator" = "nightjar" }
+form = { user = "op", pin = "{{d:pin}}" }
+[route.respond]
+content_type = "text/plain; charset=utf-8"
+body = "Welcome back, operator.\nsession: {{flag}}\n"
+
+[[route]]
+method = "POST"
+path = "/panel/login"
+[route.when]
+header = { "x-operator" = "nightjar" }
+[route.respond]
+status = 401
+content_type = "text/plain; charset=utf-8"
+body = "Wrong user or pin. The body must be a form: user=...&pin=...\n"
+
+[[route]]
+method = "POST"
+path = "/panel/login"
+[route.respond]
+status = 403
+content_type = "text/plain; charset=utf-8"
+body = "Operators only: the X-Operator header is missing or wrong.\n"
+
+[[route]]
+path = "/panel/login"
+[route.respond]
+status = 405
+content_type = "text/plain; charset=utf-8"
+headers = { allow = "POST" }
+body = "Method not allowed. Use POST.\n"

@@ -1,0 +1,20 @@
+id = "full-intrusions"
+number = 10
+tier = 5
+title = "Full intrusions"
+summary = "Difficulty 5: chain everything. Unpack a sample, reimplement its protocol and talk to a real server."
+practice = ["ransom-recovery", "implant-lab", "elf-lab"]
+more = ["dga-sinkhole", "xor-implant"]
+
+[[checkpoint]]
+question = "A sample's C2 traffic is encrypted with a key it gets in the check-in reply. Where do you look for the code that uses that key?"
+accept = ["the sample", "in the sample", "the implant", "the implant's code", "the code", "the binary", "the malware"]
+
+[[checkpoint]]
+question = "A server rejects a request that is byte-for-byte a replay of a captured one, because it was already used. What is that protection called?"
+accept = ["replay protection", "anti-replay", "replay prevention", "a nonce", "nonce"]
+
+[[checkpoint]]
+question = "Python code runs exec(zlib.decompress(base64.b64decode(X))). How do you see the hidden code without running it?"
+accept = ["print it instead of exec", "replace exec with print", "print instead of exec", "decode it", "decompress it", "zlib.decompress(base64.b64decode(x))"]
+hint = "Do the same decoding, but print the result instead of running it."

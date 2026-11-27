@@ -1,0 +1,27 @@
+id = "http-and-c2"
+number = 2
+tier = 1
+title = "HTTP and C2 patterns"
+summary = "How implants talk to their servers: check-in, beacon, tasking, and the headers that give them away."
+practice = ["learn-beacon"]
+more = ["intro-redirects"]
+
+[[checkpoint]]
+question = "An implant sends the same small POST every 60 seconds and gets OK back. What is that pattern called?"
+accept = ["beacon", "beaconing", "a beacon", "heartbeat"]
+hint = "Like a lighthouse: a regular signal that says I am still here."
+
+[[checkpoint]]
+question = "Which display filter shows only POST requests?"
+kind = "filter"
+accept = ["http.request.method == \"POST\""]
+hint = "The method is in the field http.request.method. Compare it to a string in quotes."
+
+[[checkpoint]]
+question = "Which request header names the program that sent the request?"
+accept = ["User-Agent", "User-Agent:", "the User-Agent header", "user agent"]
+
+[[checkpoint]]
+question = "In learn-beacon, how many seconds pass between two check-ins?"
+accept = ["60", "60 seconds", "60s", "one minute", "a minute"]
+hint = "Filter on the POSTs and compare the Time column of two of them."

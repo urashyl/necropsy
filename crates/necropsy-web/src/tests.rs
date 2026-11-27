@@ -128,6 +128,9 @@ async fn build_logging(
         mailer,
     );
     state.today_override = Some(necropsy_pack::parse_date(today).unwrap());
+    let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    let packs_all = necropsy_pack::load_all(&root.join("packs")).unwrap();
+    state.set_learn(necropsy_pack::learn::load_all(&root.join("learn"), &packs_all).unwrap());
     let state = Arc::new(state);
     Site {
         app: router(state.clone()),
@@ -1496,11 +1499,17 @@ async fn before_any_daily_the_home_page_goes_to_the_intro_stages() {
 #[tokio::test]
 async fn learn_lists_the_intro_stages_in_order() {
     let body = site().await.get("/learn", None).await.body;
+    // The practice puzzles, in Learn's module order; the live ones are hidden here.
     let order = [
+        "First capture",
         "Who got in?",
+        "Every sixty seconds",
+        "Follow the chain",
+        "Layers",
         "Encoded command",
         "Hidden in numbers",
-        "Follow the chain",
+        "Locked config",
+        "String table",
     ];
     let mut last = 0;
     for title in order {
@@ -1533,12 +1542,18 @@ async fn archive_lists_released_dailies_newest_first_with_dates() {
 #[tokio::test]
 async fn the_pager_stays_in_its_track_and_the_last_intro_leads_to_today() {
     let s = site().await;
-    let first = s.get("/p/intro-log", None).await.body;
-    assert!(first.contains("Intro 1 of 4"));
-    assert!(first.contains("/p/intro-powershell"), "next intro");
+    let first = s.get("/p/learn-first-capture", None).await.body;
+    assert!(
+        first.contains("Intro 1 of 9"),
+        "live practice is hidden here: {first}"
+    );
+    assert!(first.contains("/p/intro-log"), "next intro");
     assert!(!first.contains("← "), "no previous before the first");
+    // The position counts the puzzles shown, so hidden live ones leave no gap.
+    let lay = s.get("/p/learn-layers", None).await.body;
+    assert!(lay.contains("Intro 5 of 9"), "{lay}");
 
-    let last = s.get("/p/intro-redirects", None).await.body;
+    let last = s.get("/p/learn-string-table", None).await.body;
     assert!(
         last.contains("Today&#39;s puzzle: One password, everyone")
             || last.contains("Today's puzzle: One password, everyone")
@@ -4209,7 +4224,8 @@ mod mfa_flow {
         {
             let c = rusqlite::Connection::open(&path).unwrap();
             c.execute_batch(
-                "DROP INDEX solves_share; ALTER TABLE solves DROP COLUMN share;
+                "DROP TABLE learn_passed; ALTER TABLE users DROP COLUMN learn_path;
+                 DROP INDEX solves_share; ALTER TABLE solves DROP COLUMN share;
                  DROP INDEX solves_pack; DROP TABLE progress; ALTER TABLE solves DROP COLUMN timed;
                  DROP TABLE recovery_codes; DROP TABLE mfa_tickets; DROP TABLE mfa_setup;
                  ALTER TABLE users DROP COLUMN totp_secret;
@@ -4258,11 +4274,15 @@ fn no_filler_in_copy() {
     ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut files: Vec<std::path::PathBuf> = Vec::new();
-    for dir in ["crates/necropsy-web/src", "crates/necropsy-web/static"] {
+    for dir in [
+        "crates/necropsy-web/src",
+        "crates/necropsy-web/static",
+        "crates/necropsy-web/static/toolkit",
+    ] {
         for e in std::fs::read_dir(root.join(dir)).unwrap() {
             let p = e.unwrap().path();
             let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
-            if (ext == "rs" || ext == "js") && !p.ends_with("tests.rs") {
+            if (ext == "rs" || ext == "js" || ext == "py") && !p.ends_with("tests.rs") {
                 files.push(p);
             }
         }
@@ -4273,6 +4293,13 @@ fn no_filler_in_copy() {
             if d.join(name).exists() {
                 files.push(d.join(name));
             }
+        }
+    }
+    // The Learn modules.
+    for e in std::fs::read_dir(root.join("learn")).unwrap() {
+        let d = e.unwrap().path();
+        for name in ["module.toml", "concept.md", "browser.md", "terminal.md"] {
+            files.push(d.join(name));
         }
     }
     // The pages the code-based labs serve.
@@ -5155,3 +5182,7 @@ mod cards_flow {
         assert!(!page.contains("Faster than"));
     }
 }
+
+mod learn_flow;
+mod learn_live;
+mod workspace_flow;

@@ -1,6 +1,6 @@
 id = "intro-powershell"
 track = "intro"
-number = 2
+number = 7
 title = "Encoded command"
 difficulty = 2
 modes = ["web"]

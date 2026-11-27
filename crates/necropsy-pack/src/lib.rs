@@ -22,6 +22,8 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+pub mod curl;
+pub mod learn;
 pub mod scenario;
 
 use serde::Deserialize;
@@ -109,6 +111,10 @@ pub struct Meta {
     /// Revealed one at a time, in order.
     #[serde(default)]
     pub hints: Vec<String>,
+    /// Learn modules (by id) this puzzle is a worked example for, once it has
+    /// closed. See docs/learn.md.
+    #[serde(default)]
+    pub learn: Vec<String>,
 }
 
 fn default_modes() -> Vec<Mode> {
@@ -333,6 +339,10 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
         _ => {}
     }
 
+    for h in &meta.hints {
+        check_hint(h).map_err(|e| invalid(&dir.join("pack.toml"), e))?;
+    }
+
     let is_live = meta.modes.contains(&Mode::Live);
     let has_raw = |name: &str| raw.iter().any(|(p, _)| p == name);
     let live = if is_live {
@@ -402,6 +412,26 @@ pub fn load_pack(dir: &Path) -> Result<Pack, PackError> {
         live,
         live_files,
     })
+}
+
+/// A hint may end with `{decoder: <CyberChef recipe>}`, which the site shows as a
+/// link that opens the workspace's decoder with that recipe: everything from the
+/// marker to the hint's last `}`. Anywhere but the end, or empty, it is an error.
+pub fn check_hint(hint: &str) -> Result<(), String> {
+    let Some(at) = hint.find("{decoder:") else {
+        return Ok(());
+    };
+    let marker = &hint[at..];
+    let recipe = marker
+        .strip_prefix("{decoder:")
+        .and_then(|r| r.trim_end().strip_suffix('}'))
+        .map(str::trim);
+    match recipe {
+        Some(r) if !r.is_empty() && r.bytes().all(|b| (0x20..0x7f).contains(&b)) => Ok(()),
+        _ => Err(format!(
+            "hint {hint:?}: {{decoder: RECIPE}} must end the hint, with a recipe of printable ASCII"
+        )),
+    }
 }
 
 /// Loads every pack directory directly under `root`, ordered by number.
@@ -607,6 +637,27 @@ mod tests {
             parse_date("2026-11-25").unwrap() - parse_date("2026-11-24").unwrap(),
             1
         );
+    }
+
+    #[test]
+    fn decoder_links_in_hints() {
+        assert!(check_hint("Plain hint.").is_ok());
+        assert!(check_hint("Decode it. {decoder: From_Base64('A-Za-z0-9+/=',true)}").is_ok());
+        assert!(check_hint("Decode it. {decoder: From_Hex('Auto')}  ").is_ok());
+        // Recipes hold option objects in braces.
+        assert!(
+            check_hint("XOR. {decoder: XOR({'option':'Hex','string':'37'},'Standard',false)}")
+                .is_ok()
+        );
+        for bad in [
+            "{decoder: } empty",
+            "{decoder:}",
+            "{decoder: X} then more text",
+            "{decoder: unclosed",
+            "{decoder: é}",
+        ] {
+            assert!(check_hint(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

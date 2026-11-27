@@ -1,0 +1,11 @@
+id = "learn-knock"
+track = "intro"
+number = 5
+title = "Knock knock"
+difficulty = 1
+modes = ["web", "live"]
+tags = ["curl", "http", "live", "learn"]
+hints = [
+  "Start with the note: curl -i 'https://<your instance>/notes?id=3'. The -i shows the status line and headers as well as the body.",
+  "The login takes a POST with a header and a form body: -X POST, -H 'X-Operator: ...' and --data 'user=op&pin=...'. Read each error: it says which part is missing.",
+]

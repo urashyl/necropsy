@@ -1,0 +1,9 @@
+{
+  "version": 3,
+  "campaign": "OPAL-17",
+  "cipher": "aes-256-cbc",
+  "key_derivation": "sha256(campaign)",
+  "iv": "6e65637230707379a1b2c3d4e5f60718",
+  "data": "c5RHVo4dbfTqzL1C/GvNfhYeUMJnUhh0t0kJ78A3d48BWeO71C54LBxWfAPsNiY5lG3BJ6/cGbgNBh2a4y2RiqJcEXwwwdG7uHDjuhGWRPl8eMITjySHaoLlMh4QohS5dDuYHOJwtdwisvxvtpD2GQ==",
+  "mac": "5939f1fb5461b423b999545dc269043145c53284ad5fe1b30c500527caaf34d3"
+}

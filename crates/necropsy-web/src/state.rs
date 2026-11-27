@@ -103,6 +103,10 @@ pub struct AppState {
     pub css_v: String,
     pub js_v: String,
     pub theme_v: String,
+    /// The in-browser toolkit's third-party builds, found at startup.
+    pub toolkit: crate::toolkit::Toolkit,
+    /// The Learn modules, in order.
+    pub learn: Vec<crate::learn::LearnModule>,
 }
 
 impl AppState {
@@ -163,7 +167,17 @@ impl AppState {
             css_v: short_hash(crate::pages::CSS),
             js_v: short_hash(crate::pages::JS),
             theme_v: short_hash(crate::pages::THEME_JS),
+            toolkit: crate::toolkit::Toolkit::default(),
+            learn: Vec::new(),
         }
+    }
+
+    /// Sets the Learn modules, rendering their markdown.
+    pub fn set_learn(&mut self, modules: Vec<necropsy_pack::learn::Module>) {
+        self.learn = modules
+            .into_iter()
+            .map(crate::learn::LearnModule::new)
+            .collect();
     }
 
     /// Solve counts and averages for every puzzle.
@@ -319,7 +333,7 @@ impl AppState {
     }
 }
 
-fn short_hash(s: &str) -> String {
+pub fn short_hash(s: &str) -> String {
     let d = Sha256::digest(s.as_bytes());
     d[..5].iter().map(|b| format!("{b:02x}")).collect()
 }

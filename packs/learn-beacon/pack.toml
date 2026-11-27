@@ -1,0 +1,11 @@
+id = "learn-beacon"
+track = "intro"
+number = 3
+title = "Every sixty seconds"
+difficulty = 1
+modes = ["web"]
+tags = ["pcap", "http", "c2", "beacon", "learn"]
+hints = [
+  "Filter on http.request.method == \"POST\". The same request repeats at a fixed interval: that is the beacon.",
+  "Most replies to the beacon are two bytes long. Compare the Length column of the responses (http.response) and follow the stream of the one that differs.",
+]

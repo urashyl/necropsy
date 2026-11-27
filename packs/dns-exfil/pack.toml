@@ -6,6 +6,7 @@ title = "Small packets"
 difficulty = 3
 modes = ["web"]
 tags = ["dns", "exfiltration", "encoding"]
+learn = ["reading-a-pcap", "encodings"]
 hints = [
   "Two sets of queries have long random-looking names. One of them decodes to something readable. Try base32.",
   "The first label is a sequence number in hex. Some chunks arrive more than once, and not in order.",

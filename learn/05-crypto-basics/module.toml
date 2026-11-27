@@ -1,0 +1,24 @@
+id = "crypto-basics"
+number = 5
+tier = 3
+title = "Crypto basics"
+summary = "Keys and ciphertext, AES, hashes and HMAC, and what it means to derive a key."
+practice = ["learn-aes-config"]
+
+[[checkpoint]]
+question = "How many bytes long is an AES-256 key?"
+accept = ["32", "32 bytes", "256 bits"]
+
+[[checkpoint]]
+question = "AES-CBC needs the key, the ciphertext and one more value that is stored next to the ciphertext and is not secret. What is it called?"
+accept = ["IV", "initialization vector", "initialisation vector", "the iv", "nonce"]
+
+[[checkpoint]]
+question = "A config has a field mac = HMAC-SHA256(key, data). Does it help an analyst decrypt data? Answer yes or no."
+accept = ["no"]
+hint = "An HMAC proves the data was not changed. It hides nothing and reveals nothing."
+
+[[checkpoint]]
+question = "What is the SHA-256 of the text OPAL-17, in hex? (The first 8 hex digits are enough.)"
+accept = ["9d4df76c", "9d4df76ca1d027e6b3cd6a6afd4ea309c6424b8c9703f15365628ebca79aed7e"]
+hint = "SHA2 with size 256 in the decoder, or hashlib.sha256 in Python."

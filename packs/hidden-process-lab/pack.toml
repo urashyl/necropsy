@@ -6,6 +6,7 @@ title = "Not in the list, live"
 difficulty = 4
 modes = ["web", "live"]
 tags = ["linux", "rootkit", "persistence", "live"]
+learn = ["full-intrusions"]
 hints = [
   "The admin's support console runs commands for anyone who sends the right header. Read the notes for the header, then try `ps` and `ls /proc`.",
   "Something is changing what every normal program sees. Look up `/etc/ld.so.preload`. Hidden is not the same as gone: `/proc/<pid>/` still works if you know the pid, and `cat` can open files without listing them.",

@@ -1,0 +1,28 @@
+id = "encodings"
+number = 4
+tier = 2
+title = "Encodings: base64, hex, URL and XOR"
+summary = "Recognize the four encodings malware uses most, undo them, and undo them in layers."
+practice = ["learn-layers"]
+more = ["intro-powershell", "intro-javascript"]
+
+[[checkpoint]]
+question = "Decode this base64: bmVjcm9wc3k="
+accept = ["necropsy"]
+
+[[checkpoint]]
+question = "Decode this hex to text: 6332"
+accept = ["c2"]
+
+[[checkpoint]]
+question = "URL-decode: %2Fgate.php%3Fid%3D7"
+accept = ["/gate.php?id=7"]
+
+[[checkpoint]]
+question = "The byte 0x41 was XORed with the key 0x20. What is the result, in hex?"
+accept = ["0x61", "61", "0x61 (a)"]
+hint = "XOR bit by bit: 0100 0001 with 0010 0000."
+
+[[checkpoint]]
+question = "A string uses only the characters 0-9 and a-f and has an even length. Which encoding is it most likely?"
+accept = ["hex", "hexadecimal", "base16"]
