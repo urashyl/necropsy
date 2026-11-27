@@ -30,6 +30,7 @@ pub enum Nav {
     Learn,
     Library,
     Archive,
+    Search,
     Format,
     Account,
     Admin,
@@ -40,7 +41,7 @@ pub enum Nav {
 
 pub async fn today(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Response {
     match state.today_daily() {
-        Some(p) => puzzle_page(&state, viewer.as_ref(), p).into_response(),
+        Some(p) => puzzle_page(&state, viewer.as_ref(), p, &*state.stats().await).into_response(),
         // No daily has been released yet: start at the beginning.
         None => Redirect::to("/learn").into_response(),
     }
@@ -53,13 +54,35 @@ pub async fn puzzle(
 ) -> Response {
     let v = viewer.as_ref();
     match state.get(&id) {
-        Some(p) => puzzle_page(&state, v, p).into_response(),
+        Some(p) => puzzle_page(&state, v, p, &*state.stats().await).into_response(),
         None => not_found_page(&state, v).into_response(),
     }
 }
 
-fn pack_row(state: &AppState, p: &RenderedPack) -> Markup {
+/// `m:ss`, or `h:mm:ss` from an hour up.
+fn clock(secs: f64) -> String {
+    let s = secs.round().max(0.0) as i64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s % 3600 / 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+type Stats = std::collections::HashMap<String, crate::db::PackStats>;
+
+/// How many solved it, and how long it took on average, for a list row.
+fn stats_text(st: Option<&crate::db::PackStats>) -> Option<String> {
+    let st = st.filter(|s| s.solves > 0)?;
+    Some(match st.avg_seconds.filter(|_| st.timed > 0) {
+        Some(avg) => format!("{} solved · {} average", st.solves, clock(avg)),
+        None => format!("{} solved", st.solves),
+    })
+}
+
+fn pack_row(state: &AppState, p: &RenderedPack, stats: &Stats) -> Markup {
     let m = &p.pack.meta;
+    let solved_by = stats_text(stats.get(&m.id));
     html! {
         li.work-row {
             a.work-link.archive-link href={"/p/" (m.id)} data-pack-id=(m.id) {
@@ -69,6 +92,7 @@ fn pack_row(state: &AppState, p: &RenderedPack) -> Markup {
                 span.work-desc {
                     @if let Some(d) = &m.date { span.date { (d) } " · " }
                     (m.tags.join(", "))
+                    @if let Some(t) = &solved_by { " · " (t) }
                 }
                 span.work-meta {
                     @if state.is_today(p) { span.badge { "Today" } " " }
@@ -81,17 +105,18 @@ fn pack_row(state: &AppState, p: &RenderedPack) -> Markup {
 }
 
 pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
+    let stats = state.stats().await;
     let body = html! {
         section.wrap.page-head {
             h1 { "Learn" }
             p.page-lead {
-                "Four short puzzles that cover what the daily ones assume: reading a log, decoding, "
-                "deobfuscating and following a chain. Do them in order, or skip ahead."
+                "Four short puzzles on the basics: reading a log, decoding, deobfuscating, "
+                "following a chain."
             }
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for p in state.intros() { (pack_row(&state, p)) }
+                @for p in state.intros() { (pack_row(&state, p, &stats)) }
             }
             @if state.today_daily().is_some() {
                 p.after-list { a href="/" { "Then: today's puzzle →" } }
@@ -114,18 +139,15 @@ pub async fn library_list(
     State(state): State<Arc<AppState>>,
     MaybeUser(viewer): MaybeUser,
 ) -> Markup {
+    let stats = state.stats().await;
     let body = html! {
         section.wrap.page-head {
             h1 { "Library" }
-            p.page-lead {
-                "Puzzles that are not part of the daily rotation. They are always available, in any "
-                "order, and the library grows as we add to it. Some run as a server made just for you: "
-                "you need an account to start one."
-            }
+            p.page-lead { "Puzzles outside the daily rotation. Always available, in any order." }
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for p in state.library() { (pack_row(&state, p)) }
+                @for p in state.library() { (pack_row(&state, p, &stats)) }
             }
             @if viewer.is_none() {
                 p.after-list { a href="/login" { "Log in" } " or " a href="/register" { "register" } " to start one." }
@@ -143,7 +165,141 @@ pub async fn library_list(
     )
 }
 
+/// `%XX`-encodes everything but unreserved characters, for a query value.
+fn urlencode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+fn search_form(q: &str) -> Markup {
+    html! {
+        form.search-form method="get" action="/search" role="search" {
+            input name="q" type="search" value=(q) placeholder="Search puzzles" aria-label="Search puzzles"
+                maxlength="100" autocomplete="off";
+            button.button type="submit" { "Search" }
+        }
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct SearchQuery {
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    tag: String,
+}
+
+/// Puzzles whose title, tags, id or brief contain every word of the query, best match
+/// first. Only puzzles the player can open are searched, and never explainers or hints,
+/// which hold the answer.
+fn search_matches<'a>(state: &'a AppState, q: &str, tag: &str) -> Vec<&'a RenderedPack> {
+    let words: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
+    let tag = tag.trim().to_lowercase();
+    let mut hits: Vec<(u8, &RenderedPack)> = Vec::new();
+    for p in state.visible_packs() {
+        let m = &p.pack.meta;
+        if !tag.is_empty() && !m.tags.iter().any(|t| t.to_lowercase() == tag) {
+            continue;
+        }
+        let title = m.title.to_lowercase();
+        let tags = m.tags.join(" ").to_lowercase();
+        let id = m.id.to_lowercase();
+        let brief = p.pack.brief_md.to_lowercase();
+        let mut score = 0u8;
+        let mut all = true;
+        for w in &words {
+            let s = if title.contains(w) {
+                4
+            } else if tags.contains(w) || id.contains(w) {
+                3
+            } else if brief.contains(w) {
+                1
+            } else {
+                0
+            };
+            if s == 0 {
+                all = false;
+                break;
+            }
+            score = score.saturating_add(s);
+        }
+        if all {
+            hits.push((score, p));
+        }
+    }
+    // Best first; the puzzle order breaks ties.
+    hits.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+    hits.into_iter().map(|(_, p)| p).take(100).collect()
+}
+
+pub async fn search(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+    axum::extract::Query(sq): axum::extract::Query<SearchQuery>,
+) -> Markup {
+    let stats = state.stats().await;
+    let q: String = sq.q.chars().take(100).collect();
+    let tag: String = sq.tag.chars().take(50).collect();
+    let searching = !q.trim().is_empty() || !tag.trim().is_empty();
+    let found = if searching {
+        search_matches(&state, &q, &tag)
+    } else {
+        Vec::new()
+    };
+    // Every tag on a puzzle the player can open, with how many carry it.
+    let mut tags: std::collections::BTreeMap<String, (String, usize)> = Default::default();
+    if !searching {
+        for p in state.visible_packs() {
+            for t in &p.pack.meta.tags {
+                tags.entry(t.to_lowercase())
+                    .or_insert_with(|| (t.clone(), 0))
+                    .1 += 1;
+            }
+        }
+    }
+    let body = html! {
+        section.wrap.page-head {
+            h1 { "Search" }
+            (search_form(&q))
+        }
+        section.wrap.section-tight {
+            @if searching {
+                p.muted {
+                    @if !tag.trim().is_empty() { "Tagged " strong { (tag.trim()) } ". " }
+                    (found.len()) @if found.len() == 1 { " puzzle." } @else { " puzzles." }
+                    " " a href="/search" { "All tags" }
+                }
+                ul.work-list {
+                    @for p in &found { (pack_row(&state, p, &stats)) }
+                }
+            } @else {
+                ul.tag-list {
+                    @for (_, (name, n)) in &tags {
+                        li { a.tag href={"/search?tag=" (urlencode(name))} { (name) " " span.muted { (n) } } }
+                    }
+                }
+            }
+        }
+    };
+    layout(
+        &state,
+        viewer.as_ref(),
+        "Search",
+        "Search puzzles by title, tag or brief.",
+        Nav::Search,
+        "/search",
+        body,
+    )
+}
+
 pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
+    let stats = state.stats().await;
     let mut dailies = state.released_dailies();
     dailies.reverse();
     let body = html! {
@@ -153,7 +309,7 @@ pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): Mayb
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for p in dailies { (pack_row(&state, p)) }
+                @for p in dailies { (pack_row(&state, p, &stats)) }
             }
         }
     };
@@ -276,10 +432,7 @@ fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Mar
     html! {
         section #live.live-panel data-sitekey=[captcha_key] {
             h2 { "Live instance" }
-            p.muted {
-                "This puzzle is a real server, started just for you. It lives for "
-                (ttl) " minutes, and the flag it holds is yours alone."
-            }
+            p.muted { "Runs for " (ttl) " minutes." }
             @if viewer.is_none() {
                 p.notice { a href="/login" { "Sign in" } " to start an instance." }
             } @else {
@@ -308,7 +461,12 @@ fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Mar
     }
 }
 
-fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+fn puzzle_page(
+    state: &AppState,
+    viewer: Option<&User>,
+    rp: &RenderedPack,
+    stats: &Stats,
+) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
     let share_url = format!("{}/p/{}", state.base_url, m.id);
@@ -391,11 +549,7 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
 
                     @if !m.hints.is_empty() {
                         section #hints.hints {
-                            ol #hint-list.hint-list {
-                                @for h in &m.hints {
-                                    li.hidden { (h) }
-                                }
-                            }
+                            ol #hint-list.hint-list {}
                             button #hint-btn.link-button type="button" { "Show a hint" }
                         }
                     }
@@ -420,11 +574,27 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                         div { dt { "Difficulty" } dd { (difficulty(m.difficulty)) } }
                         div { dt { "Files" } dd { (rp.files.len()) } }
                         @if !m.tags.is_empty() {
-                            div { dt { "Tags" } dd { (m.tags.join(", ")) } }
+                            div { dt { "Tags" } dd.tag-links {
+                                @for (i, t) in m.tags.iter().enumerate() {
+                                    @if i > 0 { ", " }
+                                    a href={"/search?tag=" (urlencode(t))} { (t) }
+                                }
+                            } }
                         }
                         div { dt { "Time" } dd #stat-time.tabular { "0:00" } }
                         @if !m.hints.is_empty() {
                             div { dt { "Hints used" } dd #stat-hints.tabular { "0" } }
+                        }
+                    }
+                    @if let Some(st) = stats.get(&m.id).filter(|s| s.solves > 0) {
+                        dl.facts.facts-stats {
+                            div { dt { "Solved by" } dd.tabular { (st.solves) } }
+                            @if let (Some(avg), true) = (st.avg_seconds, st.timed > 0) {
+                                div { dt { "Average time" } dd.tabular { (clock(avg)) } }
+                            }
+                            @if let (Some(avg), false, true) = (st.avg_hints, m.hints.is_empty(), st.timed > 0) {
+                                div { dt { "Average hints" } dd.tabular { (format!("{avg:.1}")) } }
+                            }
                         }
                     }
                     div #share.share.hidden {
@@ -497,7 +667,7 @@ pub fn layout(
                 a.skip-link href="#main" { "Skip to content" }
                 header.site-header {
                     div.wrap.header-inner {
-                        a.site-name href="/" {
+                        a.site-name href="/" aria-label="necropsy" {
                             svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" {
                                 rect width="32" height="32" rx="8" fill="var(--accent)" {}
                                 rect x="7" y="8.5" width="14" height="3.5" rx="1.75" fill="var(--accent-ink)" {}
@@ -518,7 +688,7 @@ pub fn layout(
                         }
                         div.header-tools {
                             @if let Some(u) = viewer {
-                                a.user-link href="/account" aria-current=[current(Nav::Account)] { (u.username) }
+                                a.user-link.user-name href="/account" title=(u.username) aria-current=[current(Nav::Account)] { (u.username) }
                                 @if u.is_admin {
                                     a.user-link href="/admin" aria-current=[current(Nav::Admin)] { "Admin" }
                                 }
@@ -526,6 +696,15 @@ pub fn layout(
                                 a.user-link href="/login" { "Log in" }
                             }
                             a #streak-chip.streak.hidden href="/archive" title="Days in a row with a solved puzzle" {}
+                            a.icon-btn href="/search" aria-label="Search" title="Search"
+                                aria-current=[current(Nav::Search)] {
+                                svg.icon width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    aria-hidden="true" {
+                                    circle cx="11" cy="11" r="7" {}
+                                    path d="m20 20-3.5-3.5" {}
+                                }
+                            }
                             button #theme-toggle.icon-btn type="button"
                                 aria-label="Switch color theme" title="Switch color theme" {
                                 svg.icon width="18" height="18" viewBox="0 0 24 24" fill="none"

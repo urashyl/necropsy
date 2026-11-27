@@ -106,7 +106,7 @@ class Lab:
         lines = [blob[i : i + 76] for i in range(0, len(blob), 76)]
         body = "\n".join(f'    "{ln}"' for ln in lines)
         return (
-            "# helper-update.py - recovered from WS-0412 (renamed so it cannot run by accident)\n"
+            "# helper-update.py - recovered from WS-0412\n"
             "import base64, zlib\n"
             "exec(zlib.decompress(base64.b64decode(\n" + body + "\n)))\n"
         )
@@ -194,15 +194,13 @@ protocol.</p>
 <h2>Evidence</h2>
 <table>
 <tr><th>Item</th><th></th></tr>
-<tr><td><a href="/samples/helper-update.py.txt">helper-update.py.txt</a></td><td>The file EDR kept (renamed so it cannot run by accident). sha256 <code>@@SHA@@</code></td></tr>
+<tr><td><a href="/samples/helper-update.py.txt">helper-update.py.txt</a></td><td>The file EDR kept. sha256 <code>@@SHA@@</code></td></tr>
 <tr><td><a href="/captures/ws0412.cap">ws0412.cap</a></td><td>One captured beacon cycle, three days old</td></tr>
 </table>
 <h2>Analyst notes</h2>
 <ul>
 <li>The traffic is base64url, never plain JSON, and every POST body is different even for the same request.</li>
-<li>The sample talks to <code>updates.fontcdn.invalid</code>, which does not resolve. Speak to this server instead, with the same paths.</li>
 <li>The operator rotates the key it shares with the implant after each collection. We believe they are careless about what they put in that message.</li>
-<li>Do not run the sample on a machine you care about. You will not need to.</li>
 </ul>
 </body></html>
 """

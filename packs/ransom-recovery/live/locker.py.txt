@@ -1,4 +1,4 @@
-# locker.py - encryptor (demonstration build: only touches the folder in argv[1])
+# locker.py - encryptor
 import hashlib, os, sys
 
 SALT = "r3d-herring"

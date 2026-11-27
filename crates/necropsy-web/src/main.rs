@@ -17,7 +17,9 @@ mod ipnet;
 mod live;
 mod mail;
 mod markdown;
+mod mfa;
 mod pages;
+mod progress;
 mod state;
 
 use std::net::SocketAddr;
@@ -319,6 +321,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
         .route("/learn", get(pages::learn))
         .route("/library", get(pages::library_list))
+        .route("/search", get(pages::search))
         .route(
             "/live",
             get(|| async { axum::response::Redirect::permanent("/library") }),
@@ -335,6 +338,11 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/login",
             get(accounts::login_get).post(accounts::login_post),
         )
+        .route(
+            "/login/verify",
+            get(mfa::login_verify_get).post(mfa::login_verify_post),
+        )
+        .route("/login/verify/email", post(mfa::login_verify_email_post))
         .route("/logout", post(accounts::logout_post))
         .route(
             "/forgot",
@@ -349,6 +357,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/account/username", post(accounts::account_username_post))
         .route("/account/email", post(accounts::account_email_post))
         .route("/account/delete", post(accounts::account_delete_post))
+        .route("/account/mfa/totp/start", post(mfa::totp_start_post))
+        .route("/account/mfa/totp/confirm", post(mfa::totp_confirm_post))
+        .route("/account/mfa/totp/remove", post(mfa::totp_remove_post))
+        .route("/account/mfa/email/enable", post(mfa::email_enable_post))
+        .route("/account/mfa/email/disable", post(mfa::email_disable_post))
+        .route("/account/mfa/recovery", post(mfa::recovery_post))
         .route("/email/confirm", get(accounts::email_confirm_get))
         // admin
         .route("/admin", get(admin::admin_get))
@@ -367,6 +381,14 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(check_answer).layer(DefaultBodyLimit::max(2 * 1024)),
         )
         .route("/api/p/{id}/explainer", get(explainer))
+        .route(
+            "/api/p/{id}/beat",
+            post(progress::beat).layer(DefaultBodyLimit::max(256)),
+        )
+        .route(
+            "/api/p/{id}/hint",
+            post(progress::hint).layer(DefaultBodyLimit::max(256)),
+        )
         .route(
             "/api/p/{id}/instance",
             get(live::instance_get).post(live::instance_post),
@@ -476,11 +498,9 @@ async fn security_headers(req: Request, next: Next) -> Response {
 /// $remote_addr;`). A header holding a list, like `X-Forwarded-For`, uses its
 /// last entry, the one your proxy appended. A value that is not an IP address
 /// is ignored, so a client cannot make up arbitrary keys.
-async fn client_ip_layer(
-    State(state): State<Arc<AppState>>,
-    mut req: Request,
-    next: Next,
-) -> Response {
+/// The client's address as the rate limits see it: the proxy's header when the peer
+/// is a trusted proxy, otherwise the peer itself.
+pub(crate) fn client_ip_for(state: &AppState, req: &Request) -> String {
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -498,10 +518,18 @@ async fn client_ip_layer(
                 .and_then(|v| v.rsplit(',').next())
                 .and_then(|s| s.trim().parse::<std::net::IpAddr>().ok())
         });
-    let ip = from_header
+    from_header
         .or(peer)
         .map(|ip| ip.to_canonical().to_string())
-        .unwrap_or_else(|| "unknown".into());
+        .unwrap_or_else(|| "unknown".into())
+}
+
+async fn client_ip_layer(
+    State(state): State<Arc<AppState>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let ip = client_ip_for(&state, &req);
     req.extensions_mut().insert(ClientIp(ip));
     next.run(req).await
 }
@@ -545,7 +573,8 @@ fn same_origin(headers: &HeaderMap, base_url: &str) -> bool {
 #[derive(Deserialize)]
 struct AnswerReq {
     answer: String,
-    /// Reported by the browser for the signed-in user's own history.
+    /// What the browser counted. Used only for a solve the server has no record of,
+    /// such as one imported from a browser that was signed out when it was made.
     #[serde(default)]
     seconds: i64,
     #[serde(default)]
@@ -558,6 +587,11 @@ struct AnswerRes {
     /// Rendered explainer HTML, only present when `correct`.
     #[serde(skip_serializing_if = "Option::is_none")]
     explainer_html: Option<String>,
+    /// The signed-in player's recorded time and hints for this solve.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hints: Option<i64>,
 }
 
 async fn check_answer(
@@ -574,6 +608,8 @@ async fn check_answer(
         return Json(AnswerRes {
             correct: false,
             explainer_html: None,
+            seconds: None,
+            hints: None,
         })
         .into_response();
     }
@@ -585,22 +621,60 @@ async fn check_answer(
     } else {
         p.pack.check(&req.answer)
     };
+    let mut recorded = None;
     if correct {
         if let Some(user) = viewer {
-            let seconds = req.seconds.clamp(0, 7 * 86_400);
-            let hints = req.hints.clamp(0, p.pack.meta.hints.len() as i64);
+            let total = p.pack.meta.hints.len() as i64;
+            // The server's own time and hints, when it has been keeping them.
+            let kept = state
+                .db
+                .progress_finish(user.id, id.clone(), progress::TIME_CAP)
+                .await
+                .ok()
+                .flatten();
+            let (seconds, hints, timed) = match kept {
+                Some(k) => (k.seconds, k.hints.min(total), true),
+                None => (
+                    req.seconds.clamp(0, 7 * 86_400),
+                    req.hints.clamp(0, total),
+                    false,
+                ),
+            };
             if let Err(e) = state
                 .db
-                .record_solve(user.id, id, seconds, hints, state::client_tz_min())
+                .record_solve(
+                    user.id,
+                    id.clone(),
+                    seconds,
+                    hints,
+                    state::client_tz_min(),
+                    timed,
+                )
                 .await
             {
                 tracing::error!("recording solve failed: {e}");
             }
+            state.forget_stats();
+            // The puzzle is done, so its server is no longer needed: free the player's
+            // instance (and its container) now rather than when its time runs out.
+            if p.pack.is_live() {
+                live::stop_instances(&state, user.id, &p.pack).await;
+            }
+            // Report what is on record, which is the first solve if there was one.
+            recorded = state
+                .db
+                .solve_of(user.id, id)
+                .await
+                .ok()
+                .flatten()
+                .map(|s| (s.seconds, s.hints));
         }
     }
     Json(AnswerRes {
         correct,
         explainer_html: correct.then(|| p.explainer_html.clone()),
+        seconds: recorded.map(|r| r.0),
+        hints: recorded.map(|r| r.1),
     })
     .into_response()
 }
@@ -619,6 +693,8 @@ async fn explainer(
         Ok(true) => Json(AnswerRes {
             correct: true,
             explainer_html: Some(p.explainer_html.clone()),
+            seconds: None,
+            hints: None,
         })
         .into_response(),
         _ => StatusCode::NOT_FOUND.into_response(),

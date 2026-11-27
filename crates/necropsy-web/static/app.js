@@ -17,7 +17,7 @@
 
   // ---- local storage -------------------------------------------------------
 
-  const empty = () => ({ solved: {}, hints: {}, time: {} });
+  const empty = () => ({ solved: {}, hints: {}, time: {}, started: {} });
 
   function load() {
     try {
@@ -111,14 +111,18 @@
   }
 
   function formatTime(seconds) {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
+    const ss = String(s).padStart(2, "0");
+    return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
   }
 
   function formatTimeWords(seconds) {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
+    if (h) return `${h}h ${String(m).padStart(2, "0")}m`;
     return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
   }
 
@@ -193,17 +197,47 @@
   const timeEl = document.getElementById("stat-time");
   const hintsEl = document.getElementById("stat-hints");
   const hintBtn = document.getElementById("hint-btn");
-  const hintItems = document.querySelectorAll("#hint-list li");
+  const hintList = document.getElementById("hint-list");
   const share = document.getElementById("share");
   const shareBtn = document.getElementById("share-btn");
   const shareMsg = document.getElementById("share-msg");
 
   let solved = !!state.solved[id];
-  let seconds = state.solved[id]?.seconds ?? state.time[id] ?? 0;
+  // The time on a puzzle is the wall-clock time since it was first opened, up to three
+  // hours, so closing the tab or sleeping the laptop does not pause it. For a signed-in
+  // player the server keeps the clock and this only displays it; signed out, it is kept
+  // here from the first time the page was opened.
+  // On a live puzzle the clock starts when the player starts an instance, so it stays at
+  // zero until the server says it is running.
+  const TIME_CAP = 3 * 3600;
+  const isLive = !!document.getElementById("live");
+  const clock = { base: null, at: 0, frozen: false };
+  if (!isLive && !state.solved[id] && !state.started[id]) {
+    state.started[id] = Date.now();
+    save(state);
+  }
+  function elapsed() {
+    const since = (ms) => Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    if (clock.base !== null) return clock.frozen ? clock.base : Math.min(clock.base + since(clock.at), TIME_CAP);
+    if (isLive) return 0;
+    return Math.min(since(state.started[id] || Date.now()), TIME_CAP);
+  }
+  let seconds = state.solved[id]?.seconds ?? elapsed();
   let hintsShown = state.solved[id]?.hints ?? state.hints[id] ?? 0;
+  // The hints revealed so far. Their text is not in the page: the server sends each
+  // one when asked, and counts it.
+  let hintTexts = [];
 
   function renderHints() {
-    hintItems.forEach((li, i) => li.classList.toggle("hidden", i >= hintsShown));
+    if (hintList) {
+      hintList.replaceChildren(
+        ...hintTexts.map((t) => {
+          const li = document.createElement("li");
+          li.textContent = t;
+          return li;
+        }),
+      );
+    }
     if (hintsEl) hintsEl.textContent = String(hintsShown);
     if (hintBtn) {
       hintBtn.classList.toggle("hidden", hintTotal - hintsShown <= 0 || solved);
@@ -257,12 +291,63 @@
     } catch {}
   });
 
+  // ---- time and hints, kept by the server for a signed-in player -------------
+
+  /**
+   * Asks the server for this puzzle's state: a beat counts the time the page has been
+   * open, a hint reveals the next one. A signed-in player's time and hint count come
+   * back from the server and replace the browser's. A signed-out player's stay in
+   * the browser, and the server only supplies the hint text.
+   */
+  async function sync(path) {
+    const res = await fetch(`/api/p/${encodeURIComponent(id)}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ have: hintsShown, peek: solved && !server.solved[id] }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    const s = await res.json();
+    if (s.user && typeof s.seconds === "number") {
+      seconds = s.seconds;
+      clock.base = s.seconds;
+      clock.at = Date.now();
+      clock.frozen = !!s.solved || !s.running;
+    }
+    hintsShown = s.hints;
+    hintTexts = s.texts;
+    if (!solved) state.hints[id] = hintsShown;
+    renderHints();
+    renderTime();
+    return s;
+  }
+
+  // The first beat starts the server's clock and brings back any hints already shown. A
+  // puzzle this browser solved while signed out only reads its hints, and starts no clock.
+  // A beat a minute keeps the display in step with the server.
+  ready.then(() => sync("beat").catch(() => {}));
+  setInterval(() => {
+    if (!solved) sync("beat").catch(() => {});
+  }, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !solved) sync("beat").catch(() => {});
+  });
+  // Starting an instance starts the clock on a live puzzle.
+  document.addEventListener("necropsy:instance-started", () => {
+    if (!solved) sync("beat").catch(() => {});
+  });
+
   if (hintBtn) {
-    hintBtn.addEventListener("click", () => {
-      if (hintsShown >= hintTotal) return;
-      hintsShown += 1;
-      state.hints[id] = hintsShown;
-      save(state);
+    hintBtn.addEventListener("click", async () => {
+      if (hintsShown >= hintTotal || solved) return;
+      hintBtn.disabled = true;
+      try {
+        await sync("hint");
+      } catch {
+        msg.textContent = "Could not get a hint. Try again.";
+        msg.classList.add("err-text");
+      }
+      hintBtn.disabled = false;
       renderHints();
     });
   }
@@ -280,10 +365,14 @@
       const r = await postAnswer(id, answer, seconds, hintsShown);
       if (r.correct) {
         const ontime = releaseDay !== null && localDay() === releaseDay;
+        // A signed-in player's time and hints are the ones the server recorded.
+        if (typeof r.seconds === "number") seconds = r.seconds;
+        if (typeof r.hints === "number") hintsShown = r.hints;
         state.solved[id] = { answer, seconds, hints: hintsShown, day: localDay(), ontime };
         state.time[id] = seconds;
         save(state);
         renderStreak();
+        document.dispatchEvent(new Event("necropsy:solved"));
         msg.textContent = "Correct.";
         showSolved(r.explainer_html);
         explainer.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -298,22 +387,11 @@
     submit.disabled = false;
   });
 
-  // Time counts only while the tab is visible and the puzzle is unsolved.
-  let ticks = 0;
   setInterval(() => {
-    if (solved || document.hidden) return;
-    seconds += 1;
+    if (solved || clock.frozen) return;
+    seconds = elapsed();
     renderTime();
-    if (++ticks % 5 === 0) persistTime();
   }, 1000);
-
-  function persistTime() {
-    if (solved) return;
-    state.time[id] = seconds;
-    save(state);
-  }
-  document.addEventListener("visibilitychange", () => document.hidden && persistTime());
-  addEventListener("pagehide", persistTime);
 
   // ---- live instance -------------------------------------------------------
 
@@ -327,7 +405,9 @@
     const logEl = document.getElementById("live-log");
     const liveMsg = document.getElementById("live-msg");
     const api = `/api/p/${encodeURIComponent(id)}/instance`;
-    let left = 0;
+    // When the instance ends, as a clock time, so the countdown is right even after
+    // the tab was in the background.
+    let deadline = 0;
 
     // Everything below is written with textContent: log lines are made of
     // whatever the player sent.
@@ -338,7 +418,7 @@
       if (!on) return;
       urlEl.textContent = v.url;
       urlEl.href = v.url;
-      left = v.seconds_left;
+      deadline = Date.now() + v.seconds_left * 1000;
       renderLeft();
       logEl.textContent = v.log
         .map((e) => `${new Date(e.t * 1000).toLocaleTimeString()}  ${e.status}  ${e.method} ${e.path}`)
@@ -346,7 +426,7 @@
     }
 
     function renderLeft() {
-      leftEl.textContent = formatTime(Math.max(left, 0));
+      leftEl.textContent = formatTime(Math.max(Math.ceil((deadline - Date.now()) / 1000), 0));
     }
 
     // Starting an instance needs a Cloudflare Turnstile token when the site
@@ -370,7 +450,7 @@
     async function startWithCaptcha() {
       if (!siteKey) return call("POST");
       liveStart.disabled = true;
-      liveMsg.textContent = "Checking you are not a robot...";
+      liveMsg.textContent = "Checking...";
       try {
         await loadTurnstile();
       } catch {
@@ -401,6 +481,7 @@
         const r = await fetch(api + path, { method, headers, credentials: "same-origin" });
         if (!r.ok) throw new Error(await r.text());
         renderInstance(await r.json());
+        if (method === "POST" && path === "") document.dispatchEvent(new Event("necropsy:instance-started"));
       } catch (e) {
         liveMsg.textContent = e.message || "Something went wrong.";
         liveMsg.classList.add("err-text");
@@ -408,6 +489,8 @@
     }
 
     liveStart.addEventListener("click", startWithCaptcha);
+    // Solving stops the instance on the server. Show that.
+    document.addEventListener("necropsy:solved", () => call("GET"));
     document.getElementById("live-stop").addEventListener("click", () => call("POST", "/stop"));
     document.getElementById("live-copy").addEventListener("click", async () => {
       try {
@@ -419,12 +502,16 @@
     });
 
     call("GET");
+    let polls = 0;
     setInterval(() => {
-      if (document.hidden || active.classList.contains("hidden")) return;
-      left -= 1;
+      if (active.classList.contains("hidden")) return;
       renderLeft();
-      if (left % 3 === 0) call("GET");
+      // The request log refreshes every 3 seconds while the tab is showing.
+      if (!document.hidden && ++polls % 3 === 0) call("GET");
     }, 1000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && !active.classList.contains("hidden")) call("GET");
+    });
   }
 
   // ---- share ---------------------------------------------------------------

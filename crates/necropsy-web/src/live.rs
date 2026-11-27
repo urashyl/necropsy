@@ -118,6 +118,9 @@ const MAX_BODY: usize = 1024 * 1024;
 /// Requests an instance answers per rate window.
 const RATE_MAX: u32 = 100;
 const RATE_WINDOW: Duration = Duration::from_secs(10);
+/// How many unknown labels one client may ask for in a minute.
+const MISS_MAX: u32 = 20;
+const MISS_WINDOW: Duration = Duration::from_secs(60);
 /// Log entries kept per instance.
 const LOG_KEEP: usize = 100;
 /// Running instances one account may have at once.
@@ -137,6 +140,8 @@ pub struct LogEntry {
 pub struct LiveHub {
     logs: Mutex<HashMap<String, VecDeque<LogEntry>>>,
     rate: Mutex<HashMap<String, (Instant, u32)>>,
+    /// Lookups of labels that do not exist, per client address.
+    misses: Mutex<HashMap<String, (Instant, u32)>>,
 }
 
 impl LiveHub {
@@ -166,6 +171,27 @@ impl LiveHub {
         e.1 <= RATE_MAX
     }
 
+    /// Whether this client may look up another label: false once it has asked for
+    /// too many that do not exist. Labels are three words, a guessable space for a
+    /// patient scanner, so guessing is throttled per client (the limit applies to
+    /// every lookup from that client while it lasts, not only to the wrong ones).
+    fn may_look_up(&self, ip: &str) -> bool {
+        let m = self.misses.lock().unwrap_or_else(|p| p.into_inner());
+        match m.get(ip) {
+            Some((t, n)) if t.elapsed() <= MISS_WINDOW => *n < MISS_MAX,
+            _ => true,
+        }
+    }
+
+    fn missed(&self, ip: &str) {
+        let mut m = self.misses.lock().unwrap_or_else(|p| p.into_inner());
+        let e = m.entry(ip.to_owned()).or_insert((Instant::now(), 0));
+        if e.0.elapsed() > MISS_WINDOW {
+            *e = (Instant::now(), 0);
+        }
+        e.1 += 1;
+    }
+
     /// Drops counters and logs of instances that no longer exist.
     pub fn prune(&self, keep: impl Fn(&str) -> bool) {
         self.logs
@@ -176,6 +202,10 @@ impl LiveHub {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .retain(|_, (t, _)| t.elapsed() <= RATE_WINDOW);
+        self.misses
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .retain(|_, (t, _)| t.elapsed() <= MISS_WINDOW);
     }
 }
 
@@ -511,11 +541,18 @@ pub async fn handle(state: Arc<AppState>, label: String, req: Request) -> Respon
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_ascii_lowercase();
+    let ip = crate::client_ip_for(&state, &req);
+    if !state.hub.may_look_up(&ip) {
+        return plain(StatusCode::TOO_MANY_REQUESTS, "Slow down.\n");
+    }
     let (parts, body) = req.into_parts();
 
     let inst = match state.db.live_by_label(label.clone()).await {
         Ok(Some(i)) => i,
-        Ok(None) => return plain(StatusCode::NOT_FOUND, "No such instance.\n"),
+        Ok(None) => {
+            state.hub.missed(&ip);
+            return plain(StatusCode::NOT_FOUND, "No such instance.\n");
+        }
         Err(e) => {
             tracing::error!("live lookup failed: {e}");
             return plain(StatusCode::INTERNAL_SERVER_ERROR, "Server error.\n");
@@ -991,20 +1028,27 @@ pub async fn instance_post(
         Err(e) => return server_error(e),
     }
     match create_instance(&state, uid, pack).await {
-        Ok(inst) => Json(view(&state, Some(&inst))).into_response(),
+        Ok(inst) => {
+            // The player's clock on this puzzle starts with their first instance.
+            if let Err(e) = state.db.progress_start(uid, pack.meta.id.clone()).await {
+                tracing::error!("starting the clock failed: {e}");
+            }
+            Json(view(&state, Some(&inst))).into_response()
+        }
         Err(refusal) => refusal.into_response(),
     }
 }
 
-/// The EFF large diceware word list (CC BY 3.0, https://www.eff.org/dice), without
-/// the few hyphenated words: 7772 words.
+/// The words of the EFF large diceware list (CC BY 3.0, https://www.eff.org/dice) that
+/// are 3 to 5 letters long: 1476 short, easy to say and type words.
 const WORDS: &str = include_str!("wordlist.txt");
 
-/// An instance label: four random diceware words joined with hyphens, such as
-/// `plank-orbit-velvet-cargo`. About 51 bits, easy to read out and to type.
+/// An instance label: three random short words joined with hyphens, such as
+/// `plank-orbit-cargo`. About 31.6 bits: short enough to read out and type, and made
+/// safe from guessing by throttling a client that asks for labels that do not exist.
 pub fn random_label() -> String {
     let words: Vec<&str> = WORDS.lines().collect();
-    (0..4)
+    (0..3)
         .map(|_| words[random_index(words.len())])
         .collect::<Vec<_>>()
         .join("-")
@@ -1110,14 +1154,16 @@ mod label_tests {
     use super::*;
 
     #[test]
-    fn labels_are_four_diceware_words() {
+    fn labels_are_three_short_diceware_words() {
         let words: std::collections::HashSet<&str> = WORDS.lines().collect();
-        assert!(words.len() > 7000);
+        assert!(words.len() > 1400);
+        assert!(words.iter().all(|w| (3..=5).contains(&w.len())));
         for _ in 0..200 {
             let l = random_label();
             assert!(valid_label(&l), "{l}");
             let parts: Vec<&str> = l.split('-').collect();
-            assert_eq!(parts.len(), 4, "{l}");
+            assert_eq!(parts.len(), 3, "{l}");
+            assert!(l.len() <= 17, "{l}");
             assert!(parts.iter().all(|p| words.contains(p)), "{l}");
         }
         assert_ne!(random_label(), random_label());
@@ -1125,7 +1171,7 @@ mod label_tests {
 
     #[test]
     fn label_validation_is_a_dns_label() {
-        assert!(valid_label("plank-orbit-velvet-cargo"));
+        assert!(valid_label("plank-orbit-cargo"));
         assert!(valid_label("w5pbqgyhxv"));
         for bad in [
             "",

@@ -1814,6 +1814,13 @@ async fn c2_gate_can_be_solved_and_flags_are_per_player() {
     assert!(p.contains(r#""id":"c2-gate""#), "{p}");
 }
 
+async fn instance_running(s: &Site, cookie: &str, pack: &str) -> bool {
+    s.get(&format!("/api/p/{pack}/instance"), Some(cookie))
+        .await
+        .body
+        .contains("\"active\":true")
+}
+
 #[tokio::test]
 async fn kit_left_open_leaks_in_order() {
     let s = live_site().await;
@@ -1871,6 +1878,23 @@ async fn kit_left_open_leaks_in_order() {
         .split("</code>")
         .next()
         .unwrap();
+    assert!(
+        instance_running(&s, &cookie, "kit-left-open").await,
+        "the instance is running before the solve"
+    );
+    assert!(submit(&s, &cookie, "kit-left-open", flag).await);
+    assert!(
+        !instance_running(&s, &cookie, "kit-left-open").await,
+        "solving stops the instance"
+    );
+    // And its address no longer answers.
+    assert_ne!(
+        live_send(&s, &l, "GET", "/robots.txt", &[], "")
+            .await
+            .status,
+        StatusCode::OK
+    );
+    // The flag still checks afterwards, so a second submit is not an error.
     assert!(submit(&s, &cookie, "kit-left-open", flag).await);
 }
 
@@ -3716,4 +3740,1049 @@ fn no_server_timezone_is_used() {
     let cargo =
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
     assert!(!cargo.contains(&["chr", "ono"].concat()));
+}
+
+#[tokio::test]
+async fn guessing_instance_labels_is_throttled() {
+    let s = live_site().await;
+    let (_, label) = spin_up(&s, "scanner", "kit-left-open").await;
+    // A real instance answers.
+    assert_eq!(
+        live_send(&s, &label, "GET", "/robots.txt", &[], "")
+            .await
+            .status,
+        StatusCode::OK
+    );
+    // A client that keeps asking for labels that do not exist is cut off...
+    let mut limited = false;
+    for i in 0..40 {
+        let r = live_send(&s, &format!("guess-{i}-word"), "GET", "/", &[], "").await;
+        if r.status == StatusCode::TOO_MANY_REQUESTS {
+            limited = true;
+            break;
+        }
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
+    }
+    assert!(limited, "guessing was never throttled");
+    // ...and while it lasts, so is a lookup that would have been right.
+    assert_eq!(
+        live_send(&s, &label, "GET", "/robots.txt", &[], "")
+            .await
+            .status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}
+
+// -------------------------------------------------------- two-step verification
+
+mod mfa_flow {
+    use super::*;
+    use crate::mfa::{totp_code, unbase32};
+
+    fn now_secs() -> i64 {
+        crate::db::now()
+    }
+
+    fn between<'a>(s: &'a str, from: &str, to: &str) -> &'a str {
+        let a = s.find(from).unwrap_or_else(|| panic!("no {from:?} in {s}")) + from.len();
+        let b = a + s[a..].find(to).unwrap();
+        &s[a..b]
+    }
+
+    /// A registered, logged-in user. Returns the session cookie.
+    async fn user(s: &Site, name: &str) -> String {
+        s.register_verified(name, &format!("{name}@example.org"))
+            .await;
+        s.login_cookie(name).await
+    }
+
+    /// Turns on the authenticator for the session. Returns the secret and the
+    /// recovery codes shown. The confirming code is the current one.
+    async fn enable_totp(s: &Site, cookie: &str) -> (Vec<u8>, Vec<String>) {
+        let r = s
+            .post(
+                "/account/mfa/totp/start",
+                &[("password", PASSWORD)],
+                Some(cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        assert!(r.body.contains("<svg"), "a QR code is shown");
+        assert!(!r.body.contains("<?xml"), "no XML header inline");
+        let secret = between(&r.body, "class=\"totp-secret\">", "<").to_owned();
+        let key = unbase32(&secret).unwrap();
+        let code = totp_code(&key, now_secs());
+        let r = s
+            .post(
+                "/account/mfa/totp/confirm",
+                &[("code", &code)],
+                Some(cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let codes: Vec<String> = between(&r.body, "class=\"recovery-codes\">", "</pre>")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(codes.len(), 10, "{}", r.body);
+        (key, codes)
+    }
+
+    /// A password login for an account with a second step: the cookie of its challenge.
+    async fn start_login(s: &Site, name: &str) -> String {
+        let r = s.login(name, PASSWORD).await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+        assert_eq!(r.headers.get(header::LOCATION).unwrap(), "/login/verify");
+        let c = r.cookie().expect("challenge cookie");
+        assert!(c.contains("necropsy_mfa="), "{c}");
+        c
+    }
+
+    async fn signed_in(s: &Site, cookie: &str) -> bool {
+        let r = s.get("/account", Some(cookie)).await;
+        r.status == StatusCode::OK && r.body.contains("Two-step verification")
+    }
+
+    #[tokio::test]
+    async fn an_authenticator_code_completes_the_login_once() {
+        let s = site().await;
+        let cookie = user(&s, "totpuser").await;
+        let (key, _) = enable_totp(&s, &cookie).await;
+        // The account page now says it is on.
+        assert!(s
+            .get("/account", Some(&cookie))
+            .await
+            .body
+            .contains("Remove"));
+
+        // A password alone does not sign in.
+        let challenge = start_login(&s, "totpuser").await;
+        assert!(!signed_in(&s, &challenge).await);
+        let page = s.get("/login/verify", Some(&challenge)).await;
+        assert_eq!(page.status, StatusCode::OK);
+        assert!(page.body.contains("authenticator"));
+
+        let wrong = s
+            .post("/login/verify", &[("code", "000000")], Some(&challenge))
+            .await;
+        assert_eq!(wrong.status, StatusCode::UNAUTHORIZED);
+        let next = totp_code(&key, now_secs() + 30);
+        let ok = s
+            .post("/login/verify", &[("code", &next)], Some(&challenge))
+            .await;
+        assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+        let session = ok.cookie().expect("a session");
+        assert!(session.contains("necropsy_session="));
+        assert!(signed_in(&s, &session).await);
+
+        // A code is good once. The same one, and the one used to turn it on, are both spent.
+        for spent in [next, totp_code(&key, now_secs())] {
+            let again = start_login(&s, "totpuser").await;
+            let r = s
+                .post("/login/verify", &[("code", &spent)], Some(&again))
+                .await;
+            assert_eq!(
+                r.status,
+                StatusCode::UNAUTHORIZED,
+                "{spent} was accepted twice"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_challenge_allows_five_wrong_codes() {
+        let s = site().await;
+        let cookie = user(&s, "guesser").await;
+        let (key, _) = enable_totp(&s, &cookie).await;
+        let challenge = start_login(&s, "guesser").await;
+        for _ in 0..4 {
+            let r = s
+                .post("/login/verify", &[("code", "123456")], Some(&challenge))
+                .await;
+            assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+        }
+        let last = s
+            .post("/login/verify", &[("code", "123456")], Some(&challenge))
+            .await;
+        assert_eq!(last.status, StatusCode::TOO_MANY_REQUESTS);
+        // The right code no longer works on that challenge.
+        let good = totp_code(&key, now_secs() + 30);
+        let r = s
+            .post("/login/verify", &[("code", &good)], Some(&challenge))
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        assert_eq!(r.headers.get(header::LOCATION).unwrap(), "/login");
+        assert!(!r.headers.contains_key(header::SET_COOKIE) || r.cookie().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_recovery_code_works_once_and_sends_a_notice() {
+        let s = site().await;
+        let cookie = user(&s, "lostphone").await;
+        let (_, codes) = enable_totp(&s, &cookie).await;
+        let before = s.mail_count();
+        let challenge = start_login(&s, "lostphone").await;
+        let r = s
+            .post("/login/verify", &[("code", &codes[0])], Some(&challenge))
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+        assert!(signed_in(&s, &r.cookie().unwrap()).await);
+        assert_eq!(s.mail_count(), before + 1, "a notice is sent");
+        assert!(s
+            .mail
+            .lock()
+            .unwrap()
+            .last()
+            .unwrap()
+            .body
+            .contains("9 are left"));
+        // Spent. Case and dashes do not matter for another.
+        let again = start_login(&s, "lostphone").await;
+        let r = s
+            .post("/login/verify", &[("code", &codes[0])], Some(&again))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+        let loose = codes[1].to_uppercase().replace('-', " ");
+        let r = s
+            .post("/login/verify", &[("code", &loose)], Some(&again))
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    }
+
+    #[tokio::test]
+    async fn email_codes_complete_the_login() {
+        let s = site().await;
+        let cookie = user(&s, "mailuser").await;
+        let r = s
+            .post(
+                "/account/mfa/email/enable",
+                &[("password", PASSWORD)],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        assert!(
+            r.body.contains("recovery-codes"),
+            "codes are shown the first time"
+        );
+
+        let challenge = start_login(&s, "mailuser").await;
+        let page = s.get("/login/verify", Some(&challenge)).await;
+        assert!(page.body.contains("Email me a code"));
+        let r = s.post("/login/verify/email", &[], Some(&challenge)).await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        // Another straight away is refused.
+        let r = s.post("/login/verify/email", &[], Some(&challenge)).await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+
+        let mail = s.mail.lock().unwrap().last().unwrap().body.clone();
+        let code = between(&mail, "Your login code is ", ".").to_owned();
+        assert_eq!(code.len(), 6);
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        let bad = s
+            .post("/login/verify", &[("code", wrong)], Some(&challenge))
+            .await;
+        assert_eq!(bad.status, StatusCode::UNAUTHORIZED);
+        let ok = s
+            .post("/login/verify", &[("code", &code)], Some(&challenge))
+            .await;
+        assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+        assert!(signed_in(&s, &ok.cookie().unwrap()).await);
+
+        // The code was for that challenge only, and once.
+        let other = start_login(&s, "mailuser").await;
+        let r = s
+            .post("/login/verify", &[("code", &code)], Some(&other))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn turning_a_second_step_off_needs_the_password_and_a_code() {
+        let s = site().await;
+        let cookie = user(&s, "remover").await;
+        let (_, codes) = enable_totp(&s, &cookie).await;
+        let remove = |password: &'static str, code: String| {
+            let (s, cookie) = (&s, cookie.clone());
+            async move {
+                s.post(
+                    "/account/mfa/totp/remove",
+                    &[("password", password), ("code", &code)],
+                    Some(&cookie),
+                )
+                .await
+            }
+        };
+        assert_eq!(
+            remove("not the password", codes[0].clone()).await.status,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            remove(PASSWORD, "000000".into()).await.status,
+            StatusCode::FORBIDDEN
+        );
+        let r = remove(PASSWORD, codes[0].clone()).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        // With nothing left on, logging in is direct again and the codes are gone.
+        let r = s.login("remover", PASSWORD).await;
+        assert!(r.cookie().unwrap().contains("necropsy_session="));
+        let left = s
+            .state
+            .db
+            .recovery_count(
+                s.state
+                    .db
+                    .user_for_login("remover".into())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .0
+                    .id,
+            )
+            .await
+            .unwrap();
+        assert_eq!(left, 0);
+    }
+
+    #[tokio::test]
+    async fn setting_up_needs_a_correct_code_and_the_password() {
+        let s = site().await;
+        let cookie = user(&s, "setup").await;
+        let bad = s
+            .post(
+                "/account/mfa/totp/start",
+                &[("password", "nope")],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(bad.status, StatusCode::FORBIDDEN);
+        let r = s
+            .post(
+                "/account/mfa/totp/start",
+                &[("password", PASSWORD)],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK);
+        let r = s
+            .post(
+                "/account/mfa/totp/confirm",
+                &[("code", "000000")],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+        // Still off: a password login is direct.
+        let r = s.login("setup", PASSWORD).await;
+        assert!(r.cookie().unwrap().contains("necropsy_session="));
+    }
+
+    #[tokio::test]
+    async fn the_admin_can_reset_a_users_second_step() {
+        let s = site().await;
+        let cookie = user(&s, "locked").await;
+        enable_totp(&s, &cookie).await;
+        let admin = s.admin_cookie().await;
+        let id = s
+            .state
+            .db
+            .user_for_login("locked".into())
+            .await
+            .unwrap()
+            .unwrap()
+            .0
+            .id;
+        let r = s
+            .send(
+                Request::post(format!("/admin/users/{id}/reset-mfa"))
+                    .header(header::ORIGIN, ORIGIN)
+                    .header(header::COOKIE, &admin)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        let r = s.login("locked", PASSWORD).await;
+        assert!(r.cookie().unwrap().contains("necropsy_session="));
+    }
+
+    #[tokio::test]
+    async fn an_older_database_gains_the_new_tables() {
+        // A version 3 database (before two-step verification) opens and upgrades.
+        let path = std::env::temp_dir().join(format!("necropsy-mig-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let db = Db::open(path.to_str().unwrap()).unwrap();
+            db.create_user(
+                "old".into(),
+                Some("old@example.org".into()),
+                "hash".into(),
+                false,
+                true,
+            )
+            .await
+            .unwrap();
+        }
+        {
+            let c = rusqlite::Connection::open(&path).unwrap();
+            c.execute_batch(
+                "DROP INDEX solves_pack; DROP TABLE progress; ALTER TABLE solves DROP COLUMN timed;
+                 DROP TABLE recovery_codes; DROP TABLE mfa_tickets; DROP TABLE mfa_setup;
+                 ALTER TABLE users DROP COLUMN totp_secret;
+                 ALTER TABLE users DROP COLUMN totp_last_step;
+                 ALTER TABLE users DROP COLUMN mfa_email;
+                 PRAGMA user_version = 3;",
+            )
+            .unwrap();
+        }
+        let db = Db::open(path.to_str().unwrap()).unwrap();
+        let (user, _) = db.user_for_login("old".into()).await.unwrap().unwrap();
+        assert!(!user.totp && !user.mfa_email);
+        db.mfa_email_set(user.id, true).await.unwrap();
+        assert!(db.user_by_id(user.id).await.unwrap().unwrap().mfa());
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[test]
+fn no_filler_in_copy() {
+    // The standards are in docs/design.md. Phrases that mark filler, in lower case.
+    let banned = [
+        "just for you",
+        "just for them",
+        "isolated container",
+        "please note",
+        "feel free",
+        "let's ",
+        "excited",
+        "seamless",
+        "powerful",
+        "robust",
+        "journey",
+        "dive into",
+        "delve",
+        "start it below",
+        "yours alone",
+        // Boilerplate in puzzle text: the instance is the server, and samples are .txt.
+        "does not resolve",
+        "exist anywhere",
+        "to your instance",
+        "instance's link",
+        "so it cannot run",
+        "cannot run by accident",
+        "will not be run",
+    ];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for dir in ["crates/necropsy-web/src", "crates/necropsy-web/static"] {
+        for e in std::fs::read_dir(root.join(dir)).unwrap() {
+            let p = e.unwrap().path();
+            let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+            if (ext == "rs" || ext == "js") && !p.ends_with("tests.rs") {
+                files.push(p);
+            }
+        }
+    }
+    for e in std::fs::read_dir(root.join("packs")).unwrap() {
+        let d = e.unwrap().path();
+        for name in ["brief.md", "explainer.md", "pack.toml", "live.toml"] {
+            if d.join(name).exists() {
+                files.push(d.join(name));
+            }
+        }
+    }
+    // The pages the code-based labs serve.
+    for e in std::fs::read_dir(root.join("range")).unwrap() {
+        let server = e.unwrap().path().join("server.py");
+        if server.exists() {
+            files.push(server);
+        }
+    }
+    assert!(files.len() > 40);
+    for f in files {
+        let text = std::fs::read_to_string(&f).unwrap().to_lowercase();
+        for word in banned {
+            assert!(
+                !text.contains(word),
+                "{} has filler: {word:?} (see docs/design.md)",
+                f.display()
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_two_step_forms_send_the_fields_their_handlers_read() {
+    let s = site().await;
+    s.register_verified("formcheck", "formcheck@example.org")
+        .await;
+    let cookie = s.login_cookie("formcheck").await;
+    let page = s.get("/account", Some(&cookie)).await.body;
+    let forms: Vec<&str> = page.split("<form").skip(1).collect();
+    let mut seen = 0;
+    for f in forms {
+        let f = f.split("</form>").next().unwrap();
+        if f.contains("action=\"/account/mfa/") {
+            seen += 1;
+            assert!(f.contains("name=\"password\""), "no password field in: {f}");
+        }
+    }
+    // Authenticator set up, email codes on: the two forms an account without
+    // either shows.
+    assert_eq!(seen, 2);
+}
+
+// ------------------------------------------------- server-side time, hints and stats
+
+mod progress_flow {
+    use super::*;
+
+    const HINT0: &str = "Leave the failures for now.";
+    const HINT1: &str = "Two addresses fail and then get in.";
+
+    async fn call(s: &Site, cookie: Option<&str>, what: &str, body: &str) -> serde_json::Value {
+        let r = s
+            .post_json(&format!("/api/p/intro-log/{what}"), body, cookie)
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{what}: {}", r.body);
+        serde_json::from_str(&r.body).unwrap()
+    }
+
+    async fn user(s: &Site, name: &str) -> String {
+        s.register_verified(name, &format!("{name}@example.org"))
+            .await;
+        s.login_cookie(name).await
+    }
+
+    /// Pretends `secs` have passed since the last beat.
+    async fn age(s: &Site, secs: i64) {
+        s.state
+            .db
+            .run(move |c| c.execute("UPDATE progress SET started_at = started_at - ?1", [secs]))
+            .await
+            .unwrap();
+    }
+
+    async fn solve(s: &Site, cookie: &str, claimed: &str) -> serde_json::Value {
+        let r = s
+            .post_json(
+                "/api/p/intro-log/answer",
+                &format!(r#"{{"answer":"203.0.113.77",{claimed}}}"#),
+                Some(cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        serde_json::from_str(&r.body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn hints_are_not_in_the_page_and_the_server_counts_them() {
+        let s = site().await;
+        let cookie = user(&s, "hinter").await;
+        let page = s.get("/p/intro-log", Some(&cookie)).await.body;
+        assert!(
+            !page.contains(HINT0) && !page.contains(HINT1),
+            "hints are in the page"
+        );
+        assert!(page.contains("data-hints=\"2\""));
+
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(
+            (b["user"].clone(), b["hints"].clone()),
+            (true.into(), 0.into())
+        );
+        assert_eq!(b["texts"].as_array().unwrap().len(), 0);
+
+        let h = call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        assert_eq!(h["hints"], 1);
+        assert!(h["texts"][0].as_str().unwrap().starts_with(HINT0));
+        let h = call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        assert_eq!(h["hints"], 2);
+        // There are only two. Asking again reveals nothing and counts nothing.
+        let h = call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        assert_eq!(h["hints"], 2);
+        assert_eq!(h["texts"].as_array().unwrap().len(), 2);
+        // The count belongs to the account: a beat from another device sees it, and
+        // claiming fewer changes nothing.
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(b["hints"], 2);
+        assert!(b["texts"][1].as_str().unwrap().starts_with(HINT1));
+    }
+
+    #[tokio::test]
+    async fn the_clock_keeps_running_when_the_page_is_closed_and_stops_at_three_hours() {
+        let s = site().await;
+        let cookie = user(&s, "timer").await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert!(b["seconds"].as_i64().unwrap() <= 1);
+        // Nothing is sent for 50 seconds, as with the tab closed: the time still passed.
+        age(&s, 50).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert!((50..=52).contains(&b["seconds"].as_i64().unwrap()), "{b}");
+        // And for most of an hour more, with the laptop asleep.
+        age(&s, 3000).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert!(
+            (3050..=3052).contains(&b["seconds"].as_i64().unwrap()),
+            "{b}"
+        );
+        // It stops growing at three hours.
+        age(&s, 5 * 3600).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(b["seconds"], 3 * 3600);
+        // A solve then records the cap, not more.
+        let r = solve(&s, &cookie, r#""seconds":1"#).await;
+        assert_eq!(r["seconds"], 3 * 3600);
+    }
+
+    #[tokio::test]
+    async fn stopping_the_clock_by_staying_away_does_not_lower_the_time() {
+        // Open the puzzle, leave for a while, then solve without a single beat between.
+        let s = site().await;
+        let cookie = user(&s, "sneaky").await;
+        call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        age(&s, 1200).await;
+        let r = solve(&s, &cookie, r#""seconds":5"#).await;
+        assert!(
+            (1200..=1202).contains(&r["seconds"].as_i64().unwrap()),
+            "{r}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_solve_is_recorded_with_the_servers_numbers() {
+        let s = site().await;
+        let cookie = user(&s, "solver").await;
+        call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        age(&s, 90).await;
+        // The browser claims a faster time and no hints. The server ignores both.
+        let r = solve(&s, &cookie, r#""seconds":1,"hints":0"#).await;
+        assert_eq!(r["correct"], true);
+        assert!((90..=92).contains(&r["seconds"].as_i64().unwrap()), "{r}");
+        assert_eq!(r["hints"], 1);
+        let timed: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT timed FROM solves", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(timed, 1);
+        // The clock stops: later beats return the recorded solve.
+        age(&s, 500).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(b["solved"], true);
+        assert_eq!(b["seconds"], r["seconds"]);
+        assert_eq!(b["hints"], 1);
+        assert_eq!(b["texts"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_solve_the_server_never_timed_does_not_count_toward_averages() {
+        let s = site().await;
+        let cookie = user(&s, "importer").await;
+        // No beat first, as when a solve made signed out is uploaded after signing in.
+        let r = solve(&s, &cookie, r#""seconds":5,"hints":0"#).await;
+        assert_eq!(r["correct"], true);
+        assert_eq!(r["seconds"], 5, "kept as the browser said");
+        let timed: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT timed FROM solves", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(timed, 0);
+        let page = s.get("/p/intro-log", None).await.body;
+        assert!(page.contains("Solved by"), "{page}");
+        assert!(
+            !page.contains("Average time"),
+            "an untimed solve is not averaged"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_page_and_lists_show_solve_counts_and_averages() {
+        let s = site().await;
+        let none = s.get("/p/intro-log", None).await.body;
+        assert!(!none.contains("Solved by"), "nothing to show yet");
+        for (name, secs, hints) in [("avga", 60, 0), ("avgb", 120, 2)] {
+            let cookie = user(&s, name).await;
+            call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+            for _ in 0..hints {
+                call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+            }
+            age(&s, secs).await;
+            solve(&s, &cookie, "\"seconds\":0").await;
+        }
+        let page = s.get("/p/intro-log", None).await.body;
+        assert!(page.contains("Solved by"), "{page}");
+        assert!(page.contains("Average time"));
+        assert!(page.contains("1:30"), "mean of 1:00 and 2:00: {page}");
+        assert!(page.contains("Average hints") && page.contains("1.0"));
+        let learn = s.get("/learn", None).await.body;
+        assert!(learn.contains("2 solved · 1:30 average"), "{learn}");
+    }
+
+    #[tokio::test]
+    async fn signed_out_players_get_hint_text_but_the_server_keeps_nothing() {
+        let s = site().await;
+        let b = call(&s, None, "beat", r#"{"have":1}"#).await;
+        assert_eq!(b["user"], false);
+        assert_eq!(b["hints"], 1);
+        assert!(b["texts"][0].as_str().unwrap().starts_with(HINT0));
+        assert!(b.get("seconds").is_none());
+        let h = call(&s, None, "hint", r#"{"have":1}"#).await;
+        assert_eq!(h["hints"], 2);
+        let past = call(&s, None, "hint", r#"{"have":2}"#).await;
+        assert_eq!(past["hints"], 2, "no more than there are");
+        let rows: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT COUNT(*) FROM progress", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(rows, 0);
+        // An unreleased puzzle has no hints to read.
+        let r = s
+            .post_json("/api/p/password-spray/beat", r#"{"have":1}"#, None)
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "released on this fake day");
+        let early = site_on("2026-11-01").await;
+        let r = early
+            .post_json("/api/p/password-spray/hint", r#"{"have":0}"#, None)
+            .await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn peeking_starts_no_clock() {
+        let s = site().await;
+        let cookie = user(&s, "peeker").await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":1,"peek":true}"#).await;
+        assert_eq!(b["user"], false);
+        assert_eq!(b["texts"].as_array().unwrap().len(), 1);
+        let rows: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT COUNT(*) FROM progress", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(rows, 0);
+    }
+}
+
+#[tokio::test]
+async fn the_admin_is_told_to_add_an_email_before_email_codes() {
+    let s = site().await;
+    let admin = s.admin_cookie().await;
+    let page = s.get("/account", Some(&admin)).await.body;
+    assert!(page.contains("Email codes"));
+    assert!(page.contains("Add an email address under Change email first."));
+    assert!(page.contains("Change email"), "the admin can add one");
+}
+
+// ------------------------------------------------------------------------- search
+
+mod search {
+    use super::*;
+
+    async fn results(s: &Site, query: &str) -> String {
+        let r = s.get(&format!("/search?{query}"), None).await;
+        assert_eq!(r.status, StatusCode::OK);
+        r.body
+    }
+
+    #[tokio::test]
+    async fn finds_puzzles_by_title_tag_and_brief_ignoring_case() {
+        let s = site().await;
+        let by_title = results(&s, "q=PEANUTS").await;
+        assert!(by_title.contains("href=\"/p/peanuts\""), "{by_title}");
+        assert!(!by_title.contains("href=\"/p/intro-log\""));
+        let by_tag = results(&s, "tag=SSH").await;
+        assert!(by_tag.contains("href=\"/p/intro-log\""));
+        assert!(!by_tag.contains("href=\"/p/peanuts\""));
+        let by_brief = results(&s, "q=three+nights").await;
+        assert!(by_brief.contains("href=\"/p/intro-log\""), "{by_brief}");
+    }
+
+    #[tokio::test]
+    async fn every_word_has_to_match() {
+        let s = site().await;
+        assert!(results(&s, "q=ssh+logs").await.contains("/p/intro-log"));
+        let none = results(&s, "q=ssh+banana").await;
+        assert!(!none.contains("/p/intro-log"));
+        assert!(none.contains("0 puzzles"));
+        // A tag and a word together.
+        assert!(results(&s, "tag=ssh&q=nights")
+            .await
+            .contains("/p/intro-log"));
+        assert!(!results(&s, "tag=ssh&q=peanuts")
+            .await
+            .contains("/p/intro-log"));
+    }
+
+    #[tokio::test]
+    async fn explainers_and_hints_are_not_searched() {
+        let s = site().await;
+        // The first hint of intro-log, whole: it is in no title, tag or brief.
+        let hint = "Leave the failures for now. List every login that worked";
+        let r = results(&s, &format!("q={}", hint.replace(' ', "+"))).await;
+        assert!(r.contains("0 puzzles"), "a hint was searchable: {r}");
+        let explainer = s.state.get("peanuts").unwrap().pack.explainer_md.clone();
+        let phrase: String = explainer
+            .split_whitespace()
+            .take(12)
+            .collect::<Vec<_>>()
+            .join("+");
+        let r = results(&s, &format!("q={phrase}")).await;
+        assert!(!r.contains("/p/peanuts\""), "an explainer was searchable");
+    }
+
+    #[tokio::test]
+    async fn unreleased_puzzles_are_not_found() {
+        let early = site_on("2026-11-26").await;
+        let r = results(&early, "q=kerberoast").await;
+        assert!(r.contains("0 puzzles"), "{r}");
+        let later = site().await;
+        assert!(results(&later, "q=kerberoast")
+            .await
+            .contains("href=\"/p/kerberoast\""));
+    }
+
+    #[tokio::test]
+    async fn with_no_query_it_lists_tags_that_link_to_the_search() {
+        let s = site().await;
+        let page = results(&s, "").await;
+        assert!(page.contains("href=\"/search?tag=ssh\""), "{page}");
+        assert!(page.contains("href=\"/search?tag=supply%20chain\""));
+        // A puzzle's page links its tags too.
+        let p = s.get("/p/lockfile", None).await.body;
+        assert!(p.contains("href=\"/search?tag=supply%20chain\""));
+        assert!(s
+            .get("/learn", None)
+            .await
+            .body
+            .contains("href=\"/search\""));
+    }
+
+    #[tokio::test]
+    async fn the_query_is_escaped() {
+        let s = site().await;
+        let r = results(
+            &s,
+            "q=%3Cscript%3Ealert(1)%3C%2Fscript%3E&tag=%22%3E%3Cb%3E",
+        )
+        .await;
+        assert!(!r.contains("<script>alert(1)"), "{r}");
+        assert!(!r.contains("\"><b>"));
+        assert!(r.contains("&lt;script&gt;"));
+    }
+}
+
+#[test]
+fn every_doc_is_listed_in_the_readme_and_agents_names_the_rules() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
+    for e in std::fs::read_dir(root.join("docs")).unwrap() {
+        let name = e.unwrap().file_name().to_string_lossy().into_owned();
+        if name.ends_with(".md") {
+            assert!(
+                readme.contains(&format!("docs/{name}")),
+                "README.md does not list docs/{name}"
+            );
+        }
+    }
+    // The agent rules exist, point at the design standards, and require docs.
+    let agents = std::fs::read_to_string(root.join("AGENTS.md")).unwrap();
+    assert!(agents.contains("docs/design.md"));
+    assert!(agents.contains("Write docs with every change"));
+    assert!(agents.contains("Read before you change anything"));
+    // Every docs page AGENTS.md links to exists.
+    for part in agents.split("](").skip(1) {
+        let target = part.split(')').next().unwrap();
+        if target.starts_with("docs/") {
+            assert!(
+                root.join(target).exists(),
+                "AGENTS.md links to missing {target}"
+            );
+        }
+    }
+}
+
+mod live_clock {
+    use super::*;
+
+    async fn beat(s: &Site, cookie: &str) -> serde_json::Value {
+        let r = s
+            .post_json("/api/p/kit-left-open/beat", r#"{"have":0}"#, Some(cookie))
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        serde_json::from_str(&r.body).unwrap()
+    }
+
+    async fn age_started(s: &Site, secs: i64) {
+        s.state
+            .db
+            .run(move |c| {
+                c.execute(
+                    "UPDATE progress SET started_at = started_at - ?1 WHERE started_at > 0",
+                    [secs],
+                )
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn user_id(s: &Site, name: &str) -> i64 {
+        s.state
+            .db
+            .user_for_login(name.into())
+            .await
+            .unwrap()
+            .unwrap()
+            .0
+            .id
+    }
+
+    #[tokio::test]
+    async fn the_clock_on_a_live_puzzle_starts_with_the_instance() {
+        let s = live_site().await;
+        s.register_verified("liveclock", "liveclock@example.org")
+            .await;
+        let cookie = s.login_cookie("liveclock").await;
+
+        // Reading the page, and waiting, do not start it.
+        let b = beat(&s, &cookie).await;
+        assert_eq!(
+            (b["running"].clone(), b["seconds"].clone()),
+            (false.into(), 0.into())
+        );
+        age_started(&s, 600).await;
+        assert_eq!(beat(&s, &cookie).await["seconds"], 0);
+        // Nor does asking for a hint.
+        let r = s
+            .post_json("/api/p/kit-left-open/hint", r#"{"have":0}"#, Some(&cookie))
+            .await;
+        let h: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+        assert_eq!(
+            (h["hints"].clone(), h["running"].clone()),
+            (1.into(), false.into())
+        );
+
+        // Starting an instance does.
+        let (_, label) = spin_up_as(&s, &cookie).await;
+        let b = beat(&s, &cookie).await;
+        assert_eq!(b["running"], true);
+        assert!(b["seconds"].as_i64().unwrap() <= 1, "{b}");
+        assert_eq!(b["hints"], 1, "the hint is still counted");
+        age_started(&s, 90).await;
+        let b = beat(&s, &cookie).await;
+        assert!((90..=92).contains(&b["seconds"].as_i64().unwrap()), "{b}");
+
+        // Stopping and starting again does not reset it.
+        let stop = s
+            .send(
+                Request::post("/api/p/kit-left-open/instance/stop")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(stop.status, StatusCode::OK);
+        let restarted = s
+            .send(
+                Request::post("/api/p/kit-left-open/instance")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(restarted.status, StatusCode::OK, "{}", restarted.body);
+        assert_ne!(label, "");
+        assert!(beat(&s, &cookie).await["seconds"].as_i64().unwrap() >= 90);
+
+        // The solve takes the time since the instance started.
+        let uid = user_id(&s, "liveclock").await;
+        let done = s
+            .state
+            .db
+            .progress_finish(uid, "kit-left-open".into(), crate::progress::TIME_CAP)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(done.seconds >= 90 && done.hints == 1);
+    }
+
+    #[tokio::test]
+    async fn a_solve_with_no_started_clock_is_not_timed() {
+        let s = live_site().await;
+        s.register_verified("neverstarted", "neverstarted@example.org")
+            .await;
+        let cookie = s.login_cookie("neverstarted").await;
+        beat(&s, &cookie).await;
+        let uid = user_id(&s, "neverstarted").await;
+        let done = s
+            .state
+            .db
+            .progress_finish(uid, "kit-left-open".into(), crate::progress::TIME_CAP)
+            .await
+            .unwrap();
+        assert!(done.is_none(), "a clock that never started has no time");
+    }
+
+    #[tokio::test]
+    async fn an_admins_instance_does_not_start_a_players_clock() {
+        // The admin starts instances to try puzzles; that is not play.
+        let s = live_site().await;
+        let admin = s.admin_cookie().await;
+        let r = s
+            .send(
+                Request::post("/admin/live/kit-left-open/start")
+                    .header(header::ORIGIN, ORIGIN)
+                    .header(header::COOKIE, &admin)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        let rows: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT COUNT(*) FROM progress", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(rows, 0);
+    }
+
+    /// Starts an instance for the signed-in user.
+    async fn spin_up_as(s: &Site, cookie: &str) -> (String, String) {
+        let r = s
+            .send(
+                Request::post("/api/p/kit-left-open/instance")
+                    .header(header::COOKIE, cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let v: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+        (
+            cookie.to_owned(),
+            v["url"].as_str().unwrap_or_default().to_owned(),
+        )
+    }
+}
+
+#[tokio::test]
+async fn search_is_an_icon_in_the_header_so_the_nav_does_not_wrap() {
+    let s = site().await;
+    let page = s.get("/learn", None).await.body;
+    assert!(page.contains("aria-label=\"Search\""));
+    assert!(page.contains("href=\"/search\""));
+    let nav = page.split("<nav class=\"site-nav\"").nth(1).unwrap();
+    let nav = nav.split("</nav>").next().unwrap();
+    assert!(!nav.contains("Search"), "the nav has a Search word: {nav}");
 }

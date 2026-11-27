@@ -36,9 +36,13 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/p/{id}` | A puzzle by id. Unreleased dailies are "not found". |
 | `/p/{id}/files/{path}` | Raw file from the pack. Looked up by exact match against the loaded file list, never joined onto a filesystem path. |
 | `/archive` | Released dailies, newest first. |
+| `/library` | Puzzles outside the daily rotation. |
+| `/search` | `?q=words` and `?tag=name`. Puzzles whose title, tags, id or brief contain every word, best match first (title, then tags and id, then brief). With no query it lists every tag with its puzzle count. Only puzzles the player can open are searched, and explainers and hints never are, since they hold the answer. A puzzle's tags link here. |
 | `/format` | Renders `docs/pack-format.md`. |
-| `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the reported time and hints clamped to sane ranges. |
-| `/register`, `/verify`, `/login`, `/logout`, `/forgot`, `/reset`, `/account`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |
+| `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string, "seconds"?: n, "hints"?: n}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the server's own time and hints, and those two come back. The `seconds` and `hints` in the request are used only for a solve the server never timed (see [Time and hints](#time-and-hints)). |
+| `POST /api/p/{id}/beat` | `{"have": n, "peek"?: bool}`. The page is open: starts the clock on the first call and returns `{"user": bool, "seconds"?: n, "hints": n, "texts": [...], "solved": bool, "running": bool}`. |
+| `POST /api/p/{id}/hint` | `{"have": n}`. Reveals the next hint and returns the same shape. |
+| `/register`, `/verify`, `/login`, `/login/verify`, `/logout`, `/forgot`, `/reset`, `/account`, `/account/mfa/*`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |
 | `/admin` | Admin only. |
 | `GET /api/me/progress` | The signed-in user's solves, or `{"user": null}`. |
 | `GET /api/p/{id}/explainer` | The explainer, for a signed-in user who has solved the puzzle. |
@@ -46,11 +50,27 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 
 ## Player state
 
-Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. Time only counts while the tab is visible.
+Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. A signed-out player's timer is the same rule kept in the browser: time since the page was first opened, up to 3 hours.
 
 A returning player's solved answer is kept locally and re-submitted on page load to bring the explainer back.
 
 For a signed-in user the server also stores solves. On each page load `app.js` fetches `/api/me/progress`, uploads any solves that only exist in this browser (by re-submitting the saved answer), and merges both sets for the archive marks and the streak. On a new device the explainer comes from `/api/p/{id}/explainer`.
+
+## Time and hints
+
+For a signed-in player the **server** keeps the time and the hints, so the browser cannot report them.
+
+- **Time.** The clock starts the first time the player opens the puzzle (the page's first `/api/p/{id}/beat`). On a live puzzle it starts when the player starts their first instance instead, so reading the brief, asking for hints and waiting do not run it; restarting an instance does not reset it, and an admin's instance does not start anyone's clock. Until it starts, the time shows 0:00. The time is the wall-clock time since then, so closing the tab or letting the laptop sleep does not pause it: there is no way to stop the clock, find the answer and come back. It stops growing at **3 hours**. The page shows the server's number, ticks locally and re-syncs once a minute.
+- **Hints.** The hint text is not in the page. `/api/p/{id}/hint` reveals the next one and counts it. A hint is revealed once for the account, so reloading or using another device shows the same ones, and asking for more than exist counts nothing.
+- **Solving.** A correct answer is recorded with the server's time and hint count, whatever the browser sends, and the progress record is removed. A solved puzzle shows its recorded time and hints and counts nothing more.
+- **Solves the server did not time.** A solve with no progress record is stored as the browser reported it and marked untimed. That is a solve made while signed out and uploaded after signing in (a browser can only be trusted about its own history), or an answer posted without opening the page. Untimed solves count toward "solved by" but not toward averages.
+- **Signed-out players** have no server record: their time and hint count stay in the browser, and `/hint` returns hint text for the count the browser sends, without keeping anything. They can solve puzzles but do not appear in the averages.
+
+Progress records are deleted 30 days after they were started.
+
+## Statistics
+
+Each puzzle page and list row shows how many players solved it and, from the timed solves, the average time and the average number of hints. These are plain aggregates over all signed-in players and never show who. They are recalculated at most every 30 seconds and right after someone solves something. The averages only include solves whose time the server kept, so they start from when this feature was added.
 
 ## Security notes
 

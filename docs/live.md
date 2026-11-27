@@ -12,7 +12,8 @@ Everything else here (instances, links, flags, the captcha, the proxy setup) app
 ## How it works
 
 - `*.<NECROPSY_LIVE_DOMAIN>` is pointed at the same process as the site. Requests whose `Host` falls under that domain are answered from the scenario; anything else is the normal site. The two never share pages, cookies or CSRF logic.
-- An instance has a random label (the subdomain): four diceware words such as `plank-orbit-velvet-cargo`, about 51 bits, a time to live (`ttl_minutes`, at most 240), and a random seed kept in the database. The seed makes the flag, and every `{{d:name}}` value, different for every instance. Flags cannot be passed between players.
+- An instance has a random label (the subdomain): three short diceware words such as `plank-orbit-cargo`, about 31.6 bits (a client that asks for more than 20 labels that do not exist in a minute is throttled, so they cannot be guessed), a time to live (`ttl_minutes`, at most 240), and a random seed kept in the database. The seed makes the flag, and every `{{d:name}}` value, different for every instance. Flags cannot be passed between players.
+- The player's solve timer on a live puzzle starts when they start their first instance (see [web.md](web.md#time-and-hints)).
 - The player submits the flag on the puzzle page as usual. It is checked against the flags of that player's own instances of the pack, including recently expired ones, and the solve is recorded like any other.
 - Limits: one running instance per pack per player, three running in all, 100 requests per 10 seconds per instance, request bodies up to 1 MiB. The latest 100 requests are shown to the player on the puzzle page.
 
@@ -127,6 +128,6 @@ The first eight are simulated from a `live.toml`, which is cheap and needs no ra
 Conventions for new ones:
 
 - Samples are served as `.txt` attachments (`content-disposition: attachment`, a name like `invoice.bat.txt`), so a click cannot run one. The text is real; the player decides what to run and where.
-- A sample's server is a name under `.invalid`, which cannot resolve. The brief says so and tells the player to send the sample's requests to their instance link instead.
+- A sample's server is a name under `.invalid`, which cannot resolve. The brief does not say to use the instance instead: the instance is the server, and that is understood.
 - Put what the player must decode in the sample, per player, with the encoding templates (`{{rev:b64:d:gate}}`). Put what the server checks in `when` conditions and `needs`/`sets` state, so skipping a step is a 404, not a shortcut.
 - Give every puzzle a negative test (wrong header, wrong order, wrong key) as well as a walkthrough: see the `library` module in `crates/necropsy-web/src/tests.rs`.

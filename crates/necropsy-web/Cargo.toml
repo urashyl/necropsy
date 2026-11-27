@@ -16,6 +16,9 @@ maud = { version = "0.27", features = ["axum"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
+sha1 = "0.10"
+hmac = "0.12"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 syntect = { version = "5", default-features = false, features = ["html", "parsing", "default-syntaxes", "regex-fancy"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
 tower-http = { version = "0.6", features = ["compression-gzip"] }

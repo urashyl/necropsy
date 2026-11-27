@@ -10,15 +10,22 @@ ARG RUST_VERSION=1.100
 FROM rust:${RUST_VERSION}-bookworm AS build
 WORKDIR /src
 
-# A plain build of the real sources. (Pre-building dependencies from stub
-# sources is faster to rebuild but easy to get wrong: Cargo decides what is
-# stale by file times, and a stub binary can end up in the image.) CI caches
-# the layers, and the registry cache mount saves re-downloading crates.
+# A plain build of the real sources, with two cache mounts that live in BuildKit's
+# cache on the machine doing the build: the downloaded crates, and the compiled
+# `target` directory. The second is what keeps a deploy from compiling every
+# dependency again: only this repository's own crates are rebuilt (a fresh checkout
+# gives every source file a new time, so Cargo does consider them changed; registry
+# crates are keyed by version, not by time, so they are not). Cargo decides what is
+# stale for itself, so there are no stub sources to get wrong. A cache mount is not
+# part of the image, so the binary is copied out in the same step. If the cache is
+# ever cleared, the next build is simply a full one.
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY docs docs
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target,sharing=locked \
     cargo build --release --locked -p necropsy-web \
+ && install -D target/release/necropsy-web /out/necropsy-web \
  && mkdir /data
 
 # Distroless: no shell or package manager in the final image. The base image
@@ -31,7 +38,7 @@ LABEL org.opencontainers.image.title="necropsy" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.revision="${GIT_SHA}"
 
-COPY --from=build /src/target/release/necropsy-web /app/necropsy-web
+COPY --from=build /out/necropsy-web /app/necropsy-web
 COPY packs /app/packs
 # Created here so a new volume mounted at /data starts out writable by nonroot.
 COPY --from=build --chown=65532:65532 /data /data

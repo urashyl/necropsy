@@ -35,7 +35,7 @@ path = "/dl/locker.py.txt"
 status = 200
 content_type = "text/plain; charset=utf-8"
 headers = { "content-disposition" = 'attachment; filename="locker.py.txt"' }
-body = '''# locker.py - encryptor (demonstration build: only touches the folder in argv[1])
+body = '''# locker.py - encryptor
 import hashlib, os, sys
 
 SALT = "r3d-herring"

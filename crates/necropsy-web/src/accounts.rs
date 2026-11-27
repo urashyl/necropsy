@@ -45,7 +45,13 @@ pub fn format_date(ts: i64) -> String {
 
 // ---------------------------------------------------------------- helpers
 
-fn field(label: &str, name: &str, kind: &str, autocomplete: &str, hint: Option<&str>) -> Markup {
+pub(crate) fn field(
+    label: &str,
+    name: &str,
+    kind: &str,
+    autocomplete: &str,
+    hint: Option<&str>,
+) -> Markup {
     html! {
         div.field {
             label for=(name) { (label) }
@@ -56,7 +62,7 @@ fn field(label: &str, name: &str, kind: &str, autocomplete: &str, hint: Option<&
     }
 }
 
-fn form_page(
+pub(crate) fn form_page(
     state: &AppState,
     viewer: Option<&User>,
     status: StatusCode,
@@ -80,7 +86,7 @@ fn form_page(
         .into_response()
 }
 
-fn notice_page(
+pub(crate) fn notice_page(
     state: &AppState,
     viewer: Option<&User>,
     status: StatusCode,
@@ -106,7 +112,7 @@ fn notice_page(
         .into_response()
 }
 
-fn too_many(state: &AppState, viewer: Option<&User>) -> Response {
+pub(crate) fn too_many(state: &AppState, viewer: Option<&User>) -> Response {
     notice_page(
         state,
         viewer,
@@ -156,7 +162,7 @@ async fn issue_token(
     Ok(token)
 }
 
-async fn start_session(state: &AppState, user_id: i64) -> Result<String, ()> {
+pub(crate) async fn start_session(state: &AppState, user_id: i64) -> Result<String, ()> {
     let token = new_token();
     state
         .db
@@ -167,7 +173,7 @@ async fn start_session(state: &AppState, user_id: i64) -> Result<String, ()> {
 }
 
 /// Best-effort notice to the address on file. Failures are logged, not shown.
-async fn notify(state: &AppState, user_id: i64, subject: &str, body: String) {
+pub(crate) async fn notify(state: &AppState, user_id: i64, subject: &str, body: String) {
     let Ok(Some(to)) = state.db.email_of(user_id).await else {
         return;
     };
@@ -496,6 +502,9 @@ pub async fn login_post(
             Some("Verify your email first. The link was sent when you registered."),
         );
     }
+    if user.mfa() {
+        return crate::mfa::begin_login(&state, &user).await;
+    }
     match start_session(&state, user.id).await {
         Ok(cookie) => ([(header::SET_COOKIE, cookie)], Redirect::to("/")).into_response(),
         Err(()) => server_error(&state, None),
@@ -761,6 +770,8 @@ pub async fn account_page(
                     }
                 }
 
+                (crate::mfa::settings_section(state, user).await)
+
                 form.logout method="post" action="/logout" {
                     button.button.button-quiet type="submit" { "Log out" }
                 }
@@ -803,7 +814,7 @@ pub async fn account_get(
 
 /// Re-checks the current password for settings changes, with its own limit
 /// so a stolen session cannot be used to guess the password.
-async fn confirm_password(
+pub(crate) async fn confirm_password(
     state: &AppState,
     user: &User,
     password: String,

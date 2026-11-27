@@ -137,7 +137,7 @@ sudo necropsy-deploy rollback      # back to the previous release
 docker logs -f necropsy-blue       # or necropsy-green, as root
 ```
 
-The server builds the image itself, so a deploy takes a couple of minutes, during which the live version keeps serving. On the very first deploy the app creates the admin account and prints its credentials once:
+The server builds the image itself, so a deploy takes a couple of minutes, during which the live version keeps serving. The first build on a machine compiles every dependency; later ones reuse them from BuildKit's cache on that machine (the downloaded crates and the compiled `target` directory are cache mounts in the `Dockerfile`), so only this repository's own crates are rebuilt. Clearing the Docker build cache, or the weekly prune of unused cache, makes the next build a full one. On the very first deploy the app creates the admin account and prints its credentials once:
 
 ```bash
 docker logs necropsy-blue 2>&1 | grep -A4 'first run'
