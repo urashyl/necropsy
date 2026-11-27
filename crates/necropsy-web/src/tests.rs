@@ -4786,3 +4786,72 @@ async fn search_is_an_icon_in_the_header_so_the_nav_does_not_wrap() {
     let nav = nav.split("</nav>").next().unwrap();
     assert!(!nav.contains("Search"), "the nav has a Search word: {nav}");
 }
+
+#[tokio::test]
+async fn an_instance_with_a_sample_links_it_from_its_home_page() {
+    // A player starts an instance and finds the sample from its home page.
+    let s = live_site().await;
+    s.register_verified("sampler", "sampler@example.org").await;
+    let cookie = s.login_cookie("sampler").await;
+    let post = |path: String| {
+        let (s, cookie) = (&s, cookie.clone());
+        async move {
+            s.send(
+                Request::post(path)
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, ORIGIN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+        }
+    };
+    for pack in [
+        "xor-implant",
+        "vbs-dropper",
+        "macro-stager",
+        "ps-loader",
+        "dga-sinkhole",
+        "ransom-recovery",
+    ] {
+        let r = post(format!("/api/p/{pack}/instance")).await;
+        assert_eq!(r.status, StatusCode::OK, "{pack}: {}", r.body);
+        let v: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+        let label = v["url"]
+            .as_str()
+            .unwrap()
+            .split("://")
+            .nth(1)
+            .unwrap()
+            .split('.')
+            .next()
+            .unwrap()
+            .to_owned();
+        let home = live_send(&s, &label, "GET", "/", &[], "").await;
+        assert_eq!(
+            home.status,
+            StatusCode::OK,
+            "{pack}: the home page is not a 404"
+        );
+        let toml = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../packs")
+                .join(pack)
+                .join("live.toml"),
+        )
+        .unwrap();
+        let sample = toml
+            .lines()
+            .filter_map(|l| l.strip_prefix("path = \""))
+            .find(|p| p.starts_with("/dl/"))
+            .map(|p| p.trim_end_matches('"').to_owned())
+            .unwrap_or_else(|| panic!("{pack} serves no /dl/ sample"));
+        assert!(
+            home.body.contains(&sample),
+            "{pack}: its home page does not link {sample}"
+        );
+        let file = live_send(&s, &label, "GET", &sample, &[], "").await;
+        assert_eq!(file.status, StatusCode::OK, "{pack}: {sample}");
+        post(format!("/api/p/{pack}/instance/stop")).await;
+    }
+}

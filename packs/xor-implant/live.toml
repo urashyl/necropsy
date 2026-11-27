@@ -5,9 +5,12 @@ flag_prefix = "bot"
 method = "GET"
 path = "/"
 [route.respond]
-status = 404
-content_type = "text/plain; charset=utf-8"
-body = '''Not Found'''
+status = 200
+content_type = "text/html; charset=utf-8"
+body = '''<!doctype html><html><head><meta charset="utf-8"><title>Case file</title></head>
+<body style="font-family:sans-serif;max-width:32rem;margin:3rem auto"><h2>Case file</h2>
+<p>Recovered from the infected laptop: <a href="/dl/implant.py.txt">implant.py.txt</a></p></body></html>
+'''
 
 [[route]]
 method = "GET"
