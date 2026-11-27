@@ -364,6 +364,7 @@
         state.time[id] = seconds;
         save(state);
         renderStreak();
+        document.dispatchEvent(new Event("necropsy:solved"));
         msg.textContent = "Correct.";
         showSolved(r.explainer_html);
         explainer.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -479,6 +480,8 @@
     }
 
     liveStart.addEventListener("click", startWithCaptcha);
+    // Solving stops the instance on the server. Show that.
+    document.addEventListener("necropsy:solved", () => call("GET"));
     document.getElementById("live-stop").addEventListener("click", () => call("POST", "/stop"));
     document.getElementById("live-copy").addEventListener("click", async () => {
       try {

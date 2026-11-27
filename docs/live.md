@@ -127,6 +127,6 @@ The first eight are simulated from a `live.toml`, which is cheap and needs no ra
 Conventions for new ones:
 
 - Samples are served as `.txt` attachments (`content-disposition: attachment`, a name like `invoice.bat.txt`), so a click cannot run one. The text is real; the player decides what to run and where.
-- A sample's server is a name under `.invalid`, which cannot resolve. The brief says so and tells the player to send the sample's requests to their instance link instead.
+- A sample's server is a name under `.invalid`, which cannot resolve. The brief does not say to use the instance instead: the instance is the server, and that is understood.
 - Put what the player must decode in the sample, per player, with the encoding templates (`{{rev:b64:d:gate}}`). Put what the server checks in `when` conditions and `needs`/`sets` state, so skipping a step is a 404, not a shortcut.
 - Give every puzzle a negative test (wrong header, wrong order, wrong key) as well as a walkthrough: see the `library` module in `crates/necropsy-web/src/tests.rs`.

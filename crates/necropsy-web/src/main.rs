@@ -654,6 +654,11 @@ async fn check_answer(
                 tracing::error!("recording solve failed: {e}");
             }
             state.forget_stats();
+            // The puzzle is done, so its server is no longer needed: free the player's
+            // instance (and its container) now rather than when its time runs out.
+            if p.pack.is_live() {
+                live::stop_instances(&state, user.id, &p.pack).await;
+            }
             // Report what is on record, which is the first solve if there was one.
             recorded = state
                 .db

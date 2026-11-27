@@ -1814,6 +1814,13 @@ async fn c2_gate_can_be_solved_and_flags_are_per_player() {
     assert!(p.contains(r#""id":"c2-gate""#), "{p}");
 }
 
+async fn instance_running(s: &Site, cookie: &str, pack: &str) -> bool {
+    s.get(&format!("/api/p/{pack}/instance"), Some(cookie))
+        .await
+        .body
+        .contains("\"active\":true")
+}
+
 #[tokio::test]
 async fn kit_left_open_leaks_in_order() {
     let s = live_site().await;
@@ -1871,6 +1878,23 @@ async fn kit_left_open_leaks_in_order() {
         .split("</code>")
         .next()
         .unwrap();
+    assert!(
+        instance_running(&s, &cookie, "kit-left-open").await,
+        "the instance is running before the solve"
+    );
+    assert!(submit(&s, &cookie, "kit-left-open", flag).await);
+    assert!(
+        !instance_running(&s, &cookie, "kit-left-open").await,
+        "solving stops the instance"
+    );
+    // And its address no longer answers.
+    assert_ne!(
+        live_send(&s, &l, "GET", "/robots.txt", &[], "")
+            .await
+            .status,
+        StatusCode::OK
+    );
+    // The flag still checks afterwards, so a second submit is not an error.
     assert!(submit(&s, &cookie, "kit-left-open", flag).await);
 }
 

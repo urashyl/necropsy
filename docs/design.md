@@ -15,7 +15,7 @@ Rules for anything a player reads or touches: pages, forms, emails, puzzle brief
 ### Puzzle text
 
 - A brief has the situation in two or three sentences, what the player has, what to do, and what to submit. No scene-setting that carries no fact, no "Start it below" (the page has the button), no reassurance that the sandbox is isolated (the docs say so once).
-- Say once, plainly, when a sample's server name does not resolve and the player should use their instance instead.
+- Do not tell the player to use their instance in place of a sample's server, or that a `.invalid` name does not resolve. The instance is the server; that is understood. A brief names a server only when the puzzle depends on it.
 - An explainer teaches the technique and what a defender takes from it. It does not congratulate.
 - Hints go from a nudge to nearly the answer. They never repeat the brief.
 
