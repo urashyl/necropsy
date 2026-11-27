@@ -19,7 +19,7 @@ Your own reverse proxy stays yours: it terminates TLS and forwards to one loopba
 
 The old color is stopped, not deleted, so a rollback takes seconds. If the new color never becomes healthy, or Caddy rejects its config, or the site does not answer after the switch, the deploy stops and traffic stays exactly where it was. A bad release never takes the site down.
 
-The image contains the binary and the packs, so each image is a complete release. The database lives in the `necropsy-data` Docker volume, shared by both colors.
+The image contains the binary, the packs, the [Learn](learn.md) modules and the workspace's [toolkit](toolkit.md) (downloaded by `toolkit/fetch.sh` in a build stage of its own, about 160 MB), so each image is a complete release. Building it needs network access to `registry.npmjs.org`, `github.com` and `release-assets.githubusercontent.com`; a changed download fails the build. The database lives in the `necropsy-data` Docker volume, shared by both colors.
 
 ## Who can do what
 
@@ -93,7 +93,7 @@ That chain sees the port inside the container, which is always 8080, so keep `--
 
 ### Headers
 
-Caddy passes the `Host` header through unchanged, which the app needs. The `X-Real-IP` line is what lets rate limits see the real visitor: the proxy container believes that header only from your proxy's address (the Docker gateway and loopback by default, `NECROPSY_EDGE_TRUSTED` in `deploy.env` to change it). Your proxy should always set it itself, as above, and never forward one from a visitor.
+Caddy passes the `Host` header through unchanged, which the app needs, and WebSocket upgrades (the workspace's request console) with no extra settings. The `X-Real-IP` line is what lets rate limits see the real visitor: the proxy container believes that header only from your proxy's address (the Docker gateway and loopback by default, `NECROPSY_EDGE_TRUSTED` in `deploy.env` to change it). Your proxy should always set it itself, as above, and never forward one from a visitor.
 
 ## Several stacks on one host
 
@@ -123,6 +123,7 @@ These are fixed by the container and cannot be overridden in `necropsy.env`:
 | `NECROPSY_CLIENT_IP_HEADER` | `X-Real-IP` |
 | `NECROPSY_TRUSTED_PROXIES` | the containers' private subnet, so only the proxy container can set it |
 | `NECROPSY_PACKS`, `NECROPSY_DB` | the packs baked into the image, and `/data/necropsy.db` |
+| `NECROPSY_LEARN`, `NECROPSY_TOOLKIT` | `/app/learn` and `/app/toolkit`, baked into the image |
 
 Deploy options (bind address, port, subnet, drain time, repository, branch) go in `/etc/necropsy/deploy.env`, see `deploy/bluegreen/deploy.env.example`. Quote a value in `necropsy.env` that contains `$` with single quotes, since Compose expands `$` in environment files.
 

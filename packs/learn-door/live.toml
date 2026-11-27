@@ -1,0 +1,34 @@
+ttl_minutes = 60
+flag_prefix = "door"
+
+# 1. The check-in, as the implant sends it.
+[[route]]
+method = "POST"
+path = "/cdn/v3/collect"
+sets = ["checked_in"]
+[route.when]
+header = { "user-agent" = "Updater/5.1 (x64; channel=stable)", "x-session" = "re:^[0-9a-f]{16}$" }
+body = "re:^[A-Za-z0-9+/]{12,}={0,2}$"
+[route.respond]
+content_type = "application/json"
+headers = { server = "cloudflare" }
+body = '{"ok":1,"next":"2f63646e2f76332f6a2f{{hex:d:task}}","wait":120}'
+
+# 2. The tasking, for an implant that has checked in.
+[[route]]
+method = "GET"
+path = "/cdn/v3/j/{{d:task}}"
+needs = ["checked_in"]
+[route.when]
+header = { "user-agent" = "Updater/5.1 (x64; channel=stable)" }
+[route.respond]
+content_type = "application/json"
+headers = { server = "cloudflare" }
+body = '{"cmd":"key","enc":"base64,reversed","v":"{{rev:b64:flag}}"}'
+
+# Everyone else sees a CDN that has nothing.
+[fallback]
+status = 404
+content_type = "text/html"
+headers = { server = "cloudflare" }
+body = "<html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>cloudflare</center></body></html>\n"

@@ -11,7 +11,7 @@ workspace = true
 
 [dependencies]
 necropsy-pack = { path = "../necropsy-pack" }
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 maud = { version = "0.27", features = ["axum"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 serde = { version = "1", features = ["derive"] }
@@ -20,7 +20,9 @@ sha1 = "0.10"
 hmac = "0.12"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 syntect = { version = "5", default-features = false, features = ["html", "parsing", "default-syntaxes", "regex-fancy"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs", "io-util"] }
+tokio-util = { version = "0.7", features = ["io"] }
+httparse = "1"
 tower-http = { version = "0.6", features = ["compression-gzip"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -34,4 +36,6 @@ regex = "1"
 lettre = { version = "0.11.24", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
 
 [dev-dependencies]
+tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 tower = { version = "0.5", features = ["util"] }

@@ -28,6 +28,16 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
  && install -D target/release/necropsy-web /out/necropsy-web \
  && mkdir /data
 
+# The in-browser toolkit's third-party builds (Wiregasm, Pyodide, CyberChef),
+# downloaded and checked against the SHA-256 sums in toolkit/sources.txt. A stage
+# of its own, so it is cached until sources.txt or fetch.sh change.
+FROM debian:bookworm-slim AS toolkit
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl unzip gzip \
+ && rm -rf /var/lib/apt/lists/*
+COPY toolkit/sources.txt toolkit/fetch.sh /src/toolkit/
+RUN /src/toolkit/fetch.sh /out/toolkit
+
 # Distroless: no shell or package manager in the final image. The base image
 # already provides the unprivileged "nonroot" user (uid 65532).
 FROM gcr.io/distroless/cc-debian12:nonroot
@@ -40,11 +50,15 @@ LABEL org.opencontainers.image.title="necropsy" \
 
 COPY --from=build /out/necropsy-web /app/necropsy-web
 COPY packs /app/packs
+COPY learn /app/learn
+COPY --from=toolkit /out/toolkit /app/toolkit
 # Created here so a new volume mounted at /data starts out writable by nonroot.
 COPY --from=build --chown=65532:65532 /data /data
 
 ENV NECROPSY_ADDR=0.0.0.0:8080 \
     NECROPSY_PACKS=/app/packs \
+    NECROPSY_LEARN=/app/learn \
+    NECROPSY_TOOLKIT=/app/toolkit \
     NECROPSY_DB=/data/necropsy.db
 
 EXPOSE 8080

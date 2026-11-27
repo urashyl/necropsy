@@ -1,0 +1,23 @@
+id = "scripting"
+number = 7
+tier = 3
+title = "Scripting the boring parts"
+summary = "Python and curl in a loop: replay requests, follow chains and decode in bulk."
+practice = ["learn-replay"]
+
+[[checkpoint]]
+question = "In Python's requests library, which keyword argument of requests.get sets the request headers?"
+accept = ["headers", "headers="]
+
+[[checkpoint]]
+question = "A JSON response r has a field next. Which Python expression reads it, using the requests library?"
+accept = ["r.json()['next']", "r.json()[\"next\"]", "r.json().get('next')", "r.json().get(\"next\")"]
+
+[[checkpoint]]
+question = "Write a curl command that sends https://c2.example.test/api/export/2 a GET with the header X-Api-Key: k1."
+kind = "curl"
+curl = "curl -H 'X-Api-Key: k1' https://c2.example.test/api/export/2"
+
+[[checkpoint]]
+question = "In learn-replay, how many pages does the export have?"
+accept = ["30", "thirty"]

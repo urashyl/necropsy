@@ -212,6 +212,85 @@
     );
   }
 
+  // ---- learn ---------------------------------------------------------------
+  //
+  // Checkpoints passed while signed out are kept here, with the answers, and sent
+  // to the server once the player signs in (it checks them again), like solves.
+
+  const LEARN_KEY = "necropsy:learn:v1";
+
+  function loadLearn() {
+    try {
+      const s = JSON.parse(localStorage.getItem(LEARN_KEY));
+      if (s && typeof s === "object" && s.passed && typeof s.passed === "object") return s;
+    } catch {}
+    return { passed: {} };
+  }
+
+  function saveLearn(l) {
+    try {
+      localStorage.setItem(LEARN_KEY, JSON.stringify(l));
+    } catch {}
+  }
+
+  const learnModule = document.getElementById("learn-module");
+  const learnIndex = document.getElementById("learn");
+  if (learnModule || learnIndex) {
+    const local = loadLearn();
+    // A checkpoint just passed on this page: keep its answers.
+    if (learnModule && learnModule.hasAttribute("data-passed")) {
+      const inputs = [...learnModule.querySelectorAll(".checkpoint input, .checkpoint textarea")];
+      if (inputs.length && inputs.every((i) => i.value.trim())) {
+        local.passed[learnModule.dataset.module] = inputs.map((i) => i.value);
+        saveLearn(local);
+      }
+    }
+    if (learnModule && local.passed[learnModule.dataset.module]) {
+      learnModule.querySelector(".passed-note")?.classList.remove("hidden");
+    }
+    const markIndex = (extra) => {
+      if (!learnIndex) return;
+      const passed = new Set([...(learnIndex.dataset.passed || "").split(",").filter(Boolean), ...extra]);
+      for (const a of learnIndex.querySelectorAll("[data-module]")) {
+        a.querySelector(".passed-mark")?.classList.toggle("hidden", !passed.has(a.dataset.module));
+      }
+      for (const t of learnIndex.querySelectorAll(".tier")) {
+        const mods = [...t.querySelectorAll("[data-module]")].map((a) => a.dataset.module);
+        t.querySelector(".tier-badge")?.classList.toggle("hidden", !mods.every((m) => passed.has(m)));
+      }
+    };
+    markIndex(Object.keys(local.passed));
+    (async () => {
+      try {
+        const r = await fetch("/api/me/learn", { credentials: "same-origin" });
+        if (!r.ok) return;
+        const me = await r.json();
+        if (!me.user) return;
+        const onServer = new Set(me.passed);
+        for (const [mod, answers] of Object.entries(local.passed)) {
+          if (onServer.has(mod) || !me.modules.includes(mod)) {
+            delete local.passed[mod];
+            continue;
+          }
+          const res = await fetch(`/api/learn/${encodeURIComponent(mod)}/checkpoint`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ answers }),
+          });
+          if (res.ok) {
+            const out = await res.json();
+            // Passed is now on the server; a wrong answer means the checkpoint changed.
+            delete local.passed[mod];
+            if (out.passed) onServer.add(mod);
+          }
+        }
+        saveLearn(local);
+        markIndex(onServer);
+      } catch {}
+    })();
+  }
+
   // ---- puzzle page ---------------------------------------------------------
 
   const puzzle = document.getElementById("puzzle");
@@ -268,7 +347,18 @@
       hintList.replaceChildren(
         ...hintTexts.map((t) => {
           const li = document.createElement("li");
-          li.textContent = t;
+          // A hint can end with {decoder: <CyberChef recipe>}: a link that opens the
+          // workspace's decoder with that recipe (see docs/pack-format.md).
+          const m = /^([\s\S]*?)\s*\{decoder:\s*([\s\S]+)\}\s*$/.exec(t);
+          if (m) {
+            li.append(m[1], " ");
+            const a = document.createElement("a");
+            a.href = `/w/${encodeURIComponent(id)}#decoder=${encodeURIComponent(m[2].trim())}`;
+            a.textContent = "Open in the decoder";
+            li.append(a);
+          } else {
+            li.textContent = t;
+          }
           return li;
         }),
       );

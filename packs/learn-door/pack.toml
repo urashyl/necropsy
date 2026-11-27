@@ -1,0 +1,11 @@
+id = "learn-door"
+track = "intro"
+number = 12
+title = "Answer the door"
+difficulty = 3
+modes = ["web", "live"]
+tags = ["c2", "pcap", "curl", "hex", "base64", "live", "learn"]
+hints = [
+  "The capture has the implant's check-in. Copy it exactly: method, path, User-Agent, X-Session and a body in the same format. Anything else gets the CDN's 404.",
+  "The reply's next field is hex: decode it to get a path. Ask for that path with the same User-Agent. The key comes back base64-encoded and reversed.",
+]

@@ -6,6 +6,7 @@ title = "Second stage"
 difficulty = 3
 modes = ["web", "live"]
 tags = ["npm", "supply chain", "javascript", "live"]
+learn = ["curl-by-hand", "answering-the-door"]
 hints = [
   "npm runs a package's install scripts when it is installed. Look at what changed between 2.4.0 and 2.4.1, and at `package.json` first.",
   "The script builds its target from pieces: part of it is base64, part is written backwards, and the platform is read at run time. Work out what it would request on an Ubuntu x86-64 runner. Node reports that as `linux` and `x64`.",

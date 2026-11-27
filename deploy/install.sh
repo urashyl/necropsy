@@ -25,6 +25,7 @@ set -euo pipefail
 usage() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
+warn() { echo "warning: $*" >&2; }
 
 linger=1 start=1 systemd=1 uninstall=0 fixed_runtime_dir=0
 for arg in "$@"; do
@@ -54,13 +55,15 @@ unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
 bin="$bin_dir/necropsy-web"
 packs="$data_dir/packs"
+learn="$data_dir/learn"
+toolkit="$data_dir/toolkit"
 db="$state_dir/necropsy.db"
 env_file="$config_dir/necropsy.env"
 unit="$unit_dir/necropsy.service"
 
 # Unit files treat whitespace, quotes and % specially. Refuse rather than
 # write a unit that quietly means something else.
-for p in "$bin" "$packs" "$db" "$env_file" "$state_dir"; do
+for p in "$bin" "$packs" "$learn" "$toolkit" "$db" "$env_file" "$state_dir"; do
   case "$p" in
     *[[:space:]\"\'\\%]*) die "path contains a space, quote, backslash or %: $p" ;;
   esac
@@ -163,6 +166,21 @@ cp -R "$repo/packs" "$packs.new"
 rm -rf "$packs"
 mv "$packs.new" "$packs"
 
+# The Learn modules, the same way.
+if [ -d "$repo/learn" ]; then
+  rm -rf "$learn.new"
+  cp -R "$repo/learn" "$learn.new"
+  rm -rf "$learn"
+  mv "$learn.new" "$learn"
+fi
+
+# The in-browser toolkit (docs/toolkit.md). Versions already there are kept, so
+# this only downloads after toolkit/sources.txt changes. Without it the site
+# runs and the workspace says the tools are missing.
+if ! "$repo/toolkit/fetch.sh" "$toolkit"; then
+  warn "could not fetch the in-browser toolkit; run $repo/toolkit/fetch.sh $toolkit later"
+fi
+
 # The environment file holds settings and possibly the SMTP password: create
 # it once, private, and never overwrite it.
 if [ ! -e "$env_file" ]; then
@@ -177,6 +195,8 @@ sed \
   -e "s|@BIN@|$bin|g" \
   -e "s|@STATE_DIR@|$state_dir|g" \
   -e "s|@PACKS@|$packs|g" \
+  -e "s|@LEARN@|$learn|g" \
+  -e "s|@TOOLKIT@|$toolkit|g" \
   -e "s|@DB@|$db|g" \
   -e "s|@ENV_FILE@|$env_file|g" \
   "$repo/deploy/necropsy.service.in" > "$unit.new"

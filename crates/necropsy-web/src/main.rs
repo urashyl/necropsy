@@ -15,6 +15,7 @@ mod captcha;
 mod cards;
 mod db;
 mod ipnet;
+mod learn;
 mod live;
 mod mail;
 mod markdown;
@@ -22,6 +23,9 @@ mod mfa;
 mod pages;
 mod progress;
 mod state;
+mod toolkit;
+mod workspace;
+mod wsconsole;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -115,7 +119,36 @@ async fn main() {
         _ => {}
     }
 
-    let state = Arc::new(AppState::new(packs, config, db, mailer));
+    let learn_dir = PathBuf::from(env_or("NECROPSY_LEARN", "learn"));
+    let modules = match necropsy_pack::learn::load_all(&learn_dir, &packs) {
+        Ok(m) => m,
+        Err(e) => fail(&format!(
+            "cannot load the Learn modules from {}: {e}",
+            learn_dir.display()
+        )),
+    };
+    tracing::info!(
+        "loaded {} Learn modules from {}",
+        modules.len(),
+        learn_dir.display()
+    );
+    let mut state = AppState::new(packs, config, db, mailer);
+    state.set_learn(modules);
+    let toolkit_dir = PathBuf::from(env_or("NECROPSY_TOOLKIT", "toolkit/dist"));
+    state.toolkit = toolkit::Toolkit::load(&toolkit_dir);
+    if state.toolkit.complete() {
+        tracing::info!(
+            "toolkit: {} files from {}",
+            state.toolkit.file_count(),
+            toolkit_dir.display()
+        );
+    } else {
+        tracing::warn!(
+            "toolkit: not every tool is in {} (run toolkit/fetch.sh); the workspace says which are missing",
+            toolkit_dir.display()
+        );
+    }
+    let state = Arc::new(state);
     spawn_housekeeping(state.clone());
     // Say at startup whether the range can be reached from here, which is where a
     // misconfigured network or firewall shows up first.
@@ -320,7 +353,21 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(pages::today))
         .route("/p/{id}", get(pages::puzzle))
         .route("/p/{id}/files/{*path}", get(pages::raw_file))
-        .route("/learn", get(pages::learn))
+        .route("/learn", get(learn::index))
+        .route(
+            "/learn/path",
+            post(learn::set_path).layer(DefaultBodyLimit::max(1024)),
+        )
+        .route("/learn/{id}", get(learn::module))
+        .route(
+            "/learn/{id}/checkpoint",
+            post(learn::checkpoint_form).layer(DefaultBodyLimit::max(32 * 1024)),
+        )
+        .route(
+            "/api/learn/{id}/checkpoint",
+            post(learn::checkpoint_api).layer(DefaultBodyLimit::max(32 * 1024)),
+        )
+        .route("/api/me/learn", get(learn::progress))
         .route("/library", get(pages::library_list))
         .route("/search", get(pages::search))
         .route(
@@ -403,6 +450,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/p/{id}/instance/stop", post(live::instance_stop))
         .route("/api/me/progress", get(progress))
+        .route("/w/{id}", get(workspace::page))
+        .route("/api/live/{label}/ws", get(wsconsole::ws))
+        .route("/toolkit/{*path}", get(toolkit::file))
+        .route("/static/toolkit/{file}", get(workspace::static_file))
         .route("/healthz", get(|| async { "ok" }))
         .route("/static/app.css", get(pages::static_css))
         .route("/static/app.js", get(pages::static_js))
@@ -473,8 +524,9 @@ async fn live_dispatch(State(state): State<Arc<AppState>>, req: Request, next: N
 async fn security_headers(req: Request, next: Next) -> Response {
     let mut res = next.run(req).await;
     let h = res.headers_mut();
-    h.insert(
-        header::CONTENT_SECURITY_POLICY,
+    // A handler that serves something else than a page (the toolkit's files,
+    // its workers) sets its own policy, and keeps it.
+    h.entry(header::CONTENT_SECURITY_POLICY).or_insert(
         HeaderValue::from_static(
             "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' https://fonts.googleapis.com; \
              font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; \
@@ -491,7 +543,8 @@ async fn security_headers(req: Request, next: Next) -> Response {
         header::REFERRER_POLICY,
         HeaderValue::from_static("same-origin"),
     );
-    h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    h.entry(header::X_FRAME_OPTIONS)
+        .or_insert(HeaderValue::from_static("DENY"));
     if !h.contains_key(header::CACHE_CONTROL) {
         h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }

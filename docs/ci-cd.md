@@ -4,7 +4,7 @@ Two GitHub Actions workflows live in `.github/workflows/`.
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| `ci.yml` | pull requests, pushes to any branch except `main` and `dev` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, pack validation, script syntax and the installer tests; and with real Docker: the image, the deploy program (two deploys under load, rollback), and the range (the real spawner with two tenants: every lab comes up locked down, passes its own test, is reaped, and tenants cannot touch each other) |
+| `ci.yml` | pull requests, pushes to any branch except `main` and `dev` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, pack and Learn validation, the workspace scripts' tests (`node --test`) and syntax, script syntax and the installer tests; and with real Docker: the image, the deploy program (two deploys under load, rollback), and the range (the real spawner with two tenants: every lab comes up locked down, passes its own test, is reaped, and tenants cannot touch each other) |
 | `deploy.yml` | pushes to `main` or `dev`, manual run | runs `ci.yml`, then deploys over SSH only if it passed: `main` to the `production` environment, `dev` to `development` |
 
 Deploys of the same branch never overlap: a second push waits for the running one instead of cancelling it. A manual run from a branch other than `main` or `dev` does nothing.

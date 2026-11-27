@@ -1,0 +1,11 @@
+id = "learn-replay"
+track = "intro"
+number = 11
+title = "Page by page"
+difficulty = 2
+modes = ["web", "live"]
+tags = ["python", "scripting", "curl", "live", "learn"]
+hints = [
+  "GET /api/export first. It gives you the key and the first page. Every page has a next link, and each needs the X-Api-Key header.",
+  "Thirty requests by hand is slow. In the notebook: r = await request(\"GET\", path, headers={\"X-Api-Key\": key}); data = r.json(); path = data[\"next\"], in a loop until next is None.",
+]

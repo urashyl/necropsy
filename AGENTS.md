@@ -12,6 +12,8 @@ Rules for AI agents and contributors. They are short on purpose: follow them.
 | Pages, routes, the JSON API, player state, time, hints, stats, search | [`docs/web.md`](docs/web.md) |
 | Accounts, login, two-step verification, abuse limits, the database | [`docs/accounts.md`](docs/accounts.md) |
 | Puzzle packs and their format | [`docs/pack-format.md`](docs/pack-format.md) |
+| The workspace: pcap viewer, decoder, request console, notebook | [`docs/toolkit.md`](docs/toolkit.md) |
+| The Learn track and its practice puzzles | [`docs/learn.md`](docs/learn.md) |
 | Live puzzles, the Library, writing a sample | [`docs/live.md`](docs/live.md) |
 | Container labs, the range VM, the spawner | [`docs/range.md`](docs/range.md) |
 | Building and running the image | [`docs/docker.md`](docs/docker.md) |
@@ -40,6 +42,7 @@ No filler, no narration, no padding, in pages, forms, emails, puzzle briefs, exp
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
+node --test crates/necropsy-web/tests-js/*.test.mjs
 cargo run -q --bin pack-tool -- validate packs
 deploy/test/common.sh && deploy/test/install-site.sh && deploy/test/install-range.sh && deploy/test/range-update.sh
 deploy/bluegreen/test/run.sh && range/local-test.sh

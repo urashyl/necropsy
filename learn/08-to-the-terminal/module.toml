@@ -1,0 +1,23 @@
+id = "to-the-terminal"
+number = 8
+tier = 4
+title = "To the terminal"
+summary = "Difficulty 4 and 5 need tools on your own computer. Install Wireshark, tshark, curl and Python, and redo two earlier puzzles with them."
+practice = ["learn-first-capture", "learn-knock"]
+
+[[checkpoint]]
+question = "Which tshark option takes a display filter, like Wireshark's filter bar?"
+accept = ["-Y"]
+
+[[checkpoint]]
+question = "Which tshark option reads a capture file?"
+accept = ["-r"]
+
+[[checkpoint]]
+question = "In Windows PowerShell, what do you type to run the real curl instead of the Invoke-WebRequest alias?"
+accept = ["curl.exe"]
+
+[[checkpoint]]
+question = "Write the tshark command that lists only HTTP requests in capture.pcap."
+accept = ["tshark -r capture.pcap -Y http.request", "tshark -Y http.request -r capture.pcap", "tshark -r capture.pcap -Y 'http.request'", "tshark -r capture.pcap -Y \"http.request\""]
+hint = "-r for the file, -Y for the filter."

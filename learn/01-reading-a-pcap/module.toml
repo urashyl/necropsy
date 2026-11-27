@@ -1,0 +1,29 @@
+id = "reading-a-pcap"
+number = 1
+tier = 1
+title = "Reading a pcap"
+summary = "What a packet capture holds, how to filter it, and how to follow one conversation from start to end."
+practice = ["learn-first-capture"]
+more = ["intro-log"]
+
+[[checkpoint]]
+question = "Which display filter shows only HTTP requests, and none of the responses?"
+kind = "filter"
+accept = ["http.request"]
+hint = "HTTP fields start with http. Requests and responses each have a field that is true only for them."
+
+[[checkpoint]]
+question = "Which display filter shows only the packets of TCP conversation number 3?"
+kind = "filter"
+accept = ["tcp.stream == 3", "tcp.stream eq 3"]
+hint = "Wireshark numbers every TCP conversation from 0, in the field tcp.stream."
+
+[[checkpoint]]
+question = "A request line reads GET /s/8fk2Lq/invoice_0921.zip HTTP/1.1. Which header of the same request names the server it was sent to?"
+accept = ["Host", "Host:", "the Host header"]
+hint = "The request line has only the method, the path and the version."
+
+[[checkpoint]]
+question = "In learn-first-capture, which IP address did dl.quickdocs-share.test resolve to?"
+accept = ["192.0.2.77"]
+hint = "Filter on dns, or look at the Destination column of the download's packets."

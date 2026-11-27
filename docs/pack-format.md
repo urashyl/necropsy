@@ -25,7 +25,8 @@ phone-home/
 | `difficulty` | integer | 1 (easy) to 5 (hard). |
 | `modes` | list | `web`, `cli`, `live`. Defaults to `["web"]`. A pack with `live` is a [live puzzle](live.md): it has a `live.toml` and no `answer` file. |
 | `tags` | list | Free text, shown on the puzzle page. |
-| `hints` | list | Revealed one at a time, in order. |
+| `hints` | list | Revealed one at a time, in order. See [Hints](#hints). |
+| `learn` | list | Learn module ids this puzzle is a worked example for, shown on those modules once a daily has closed. See [learn.md](learn.md#worked-examples). |
 
 Unknown keys are rejected.
 
@@ -33,7 +34,7 @@ Unknown keys are rejected.
 
 There are three tracks of puzzles: `intro`, `daily` and `library`.
 
-- **`intro`** stages are always available, in order. They teach the techniques the dailies assume, and the last one leads on to today's puzzle.
+- **`intro`** stages are always available, in order. They are the [Learn](learn.md) track's practice puzzles: each module names its own, numbered in module order. The last one leads on to today's puzzle. A live `intro` pack is hidden, like any live pack, on a site without live puzzles; the "Intro N of M" count skips hidden ones.
 - **`daily`** puzzles have a release `date`. The latest one released is today's puzzle, earlier ones stay playable from the archive, and later ones are hidden everywhere: their page, files, answer check and explainer all answer "not found" until their day, so nothing can be read early. To add a daily, give it a date after the last one.
 
 - **`library`** puzzles are not part of the daily rotation. They are always available, in order, with no release `date` (a date is an error), listed on the Library page, not in the archive, and they never become today's puzzle. They can be any kind of puzzle, [live](live.md) or not, so the Library is where a collection grows without waiting for a date. A new one can be played, and tried by the admin, the moment it is deployed. (A live puzzle that should be one day's puzzle is just a `daily` with the `live` mode: there is no separate place for live puzzles.)
@@ -71,6 +72,22 @@ The loader rejects:
 - files over 1 MiB, packs over 8 MiB, more than 256 files, or nesting deeper than 8 levels
 
 The web site shows text files with line numbers and highlighting by file extension. Binary files are offered as downloads.
+
+### Hints
+
+Hints go from a nudge to nearly the answer. A hint can end with a link that opens the [workspace](toolkit.md)'s decoder with a CyberChef recipe:
+
+```toml
+hints = [
+  "After base64 you have %-escapes, then hex, then XOR with K. {decoder: From_Base64('A-Za-z0-9+/=',true,false)URL_Decode(true)From_Hex('Auto')}",
+]
+```
+
+The recipe is everything from `{decoder:` to the hint's last `}`, in CyberChef's own recipe syntax (copy it from CyberChef's URL after `recipe=`, decoded). It must end the hint and be printable ASCII; the loader rejects it otherwise. The page shows the text before it, then **Open in the decoder**.
+
+### Files in the workspace
+
+Every file is also available in the puzzle's workspace (`/w/<id>`): `.pcap`, `.pcapng` and `.cap` files open in the pcap viewer, text files can be sent to the decoder, and any file opens in the hex viewer and the notebook. A capture for a difficulty 1 to 3 puzzle must open there: classic pcap or pcapng, Ethernet, HTTP only. `tools/learn/pcaplib.py` writes such captures.
 
 ### explainer.md and brief.md
 

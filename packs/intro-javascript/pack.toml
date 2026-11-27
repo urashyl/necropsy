@@ -1,6 +1,6 @@
 id = "intro-javascript"
 track = "intro"
-number = 3
+number = 8
 title = "Hidden in numbers"
 difficulty = 2
 modes = ["web"]

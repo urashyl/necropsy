@@ -16,6 +16,7 @@ Everything else here (instances, links, flags, the captcha, the proxy setup) app
 - The player's solve timer on a live puzzle starts when they start their first instance (see [web.md](web.md#time-and-hints)).
 - The player submits the flag on the puzzle page as usual. It is checked against the flags of that player's own instances of the pack, including recently expired ones, and the solve is recorded like any other.
 - Limits: one running instance per pack per player, three running in all, 100 requests per 10 seconds per instance, request bodies up to 1 MiB. The latest 100 requests are shown to the player on the puzzle page.
+- The workspace's request console and notebook reach the instance over a WebSocket on the main site, which hands each request to the same handler as the subdomain, with the same limits and log. That is how a browser sets `User-Agent`, `Host` and `Cookie`. See [toolkit.md](toolkit.md#request-console).
 
 ## Setting it up
 

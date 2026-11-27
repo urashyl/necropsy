@@ -6,6 +6,7 @@ title = "Peanuts"
 difficulty = 4
 modes = ["web"]
 tags = ["chromium", "cookies", "decryption"]
+learn = ["crypto-basics"]
 hints = [
   "`763130` is ASCII for `v10`. On Linux, that means Chromium had no keyring to keep its key in and used one built into the browser. It has been public for years.",
   "If you decrypt it and get 32 bytes of junk in front of something readable, look at `version` in the meta table and find out what changed in version 24.",

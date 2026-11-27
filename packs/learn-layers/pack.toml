@@ -1,0 +1,11 @@
+id = "learn-layers"
+track = "intro"
+number = 6
+title = "Layers"
+difficulty = 2
+modes = ["web"]
+tags = ["base64", "hex", "url-encoding", "xor", "learn"]
+hints = [
+  "unpack() takes the string apart in four steps, in order. Join the lines of CFG into one string first. {decoder: From_Base64('A-Za-z0-9+/=',true,false)}",
+  "After base64 you have %-escapes: URL decode them. Then the text is hex: From Hex. Then every byte is XORed with K. {decoder: From_Base64('A-Za-z0-9+/=',true,false)URL_Decode(true)From_Hex('Auto')XOR({'option':'Hex','string':'37'},'Standard',false)}",
+]

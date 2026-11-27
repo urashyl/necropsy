@@ -1,0 +1,23 @@
+id = "strings-and-binaries"
+number = 6
+tier = 3
+title = "Strings and binary triage"
+summary = "Get the useful parts out of a binary without running it: strings, markers, string tables and embedded data blobs."
+practice = ["learn-string-table"]
+
+[[checkpoint]]
+question = "Decoded data starts with the bytes 1f 8b. What format is it?"
+accept = ["gzip", "gz"]
+
+[[checkpoint]]
+question = "Decoded data starts with the bytes 78 9c. What format is it?"
+accept = ["zlib", "deflate", "zlib stream"]
+
+[[checkpoint]]
+question = "Which two bytes start a Windows executable (the MZ header), in hex?"
+accept = ["4d 5a", "4d5a", "0x4d5a", "4d 5a (MZ)"]
+
+[[checkpoint]]
+question = "In learn-string-table, every string in the STRTABLE table is XORed with one byte. Which one, in hex?"
+accept = ["0x1f", "1f"]
+hint = "The byte right after STRTABLE is the key; the next is the count."

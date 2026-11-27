@@ -1,0 +1,11 @@
+id = "learn-first-capture"
+track = "intro"
+number = 1
+title = "First capture"
+difficulty = 1
+modes = ["web"]
+tags = ["pcap", "http", "learn"]
+hints = [
+  "Open the capture in the workspace's pcap viewer and type http.request in the filter box. Each row is one request the workstation made.",
+  "The Info column shows the method and path. One path ends in .zip. Select that row and look at the Host line of the HTTP section, or use Follow HTTP stream.",
+]

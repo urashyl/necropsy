@@ -1,6 +1,6 @@
 id = "intro-log"
 track = "intro"
-number = 1
+number = 2
 title = "Who got in?"
 difficulty = 1
 modes = ["web"]

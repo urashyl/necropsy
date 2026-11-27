@@ -1,0 +1,11 @@
+id = "learn-string-table"
+track = "intro"
+number = 10
+title = "String table"
+difficulty = 3
+modes = ["web"]
+tags = ["strings", "binary", "base64", "zlib", "learn"]
+hints = [
+  "Open the file in the hex viewer and switch the view to Strings. Most of it is noise, but two markers stand out: STRTABLE and PRF1.",
+  "Everything after PRF1: up to the next zero byte is base64. Decoded, it starts with 0x78: that is a zlib stream. Inflate it to get JSON. {decoder: From_Base64('A-Za-z0-9+/=',true,false)Zlib_Inflate(0,0,'Adaptive',false,false)}",
+]

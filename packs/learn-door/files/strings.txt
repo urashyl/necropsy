@@ -1,0 +1,10 @@
+# strings -n 8 updater.exe (selected)
+Updater/5.1 (x64; channel=stable)
+X-Session
+%016llx
+%s|%s|%s
+/cdn/v3/collect
+next
+wait
+key
+base64

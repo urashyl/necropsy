@@ -1,0 +1,26 @@
+id = "curl-by-hand"
+number = 3
+tier = 2
+title = "curl by hand"
+summary = "Write an HTTP request yourself: method, headers, body and query, and read what comes back."
+practice = ["learn-knock"]
+
+[[checkpoint]]
+question = "Write a curl command that asks for https://c2.example.test/status?id=7 with the header X-Key: abc. Type it, do not use blocks."
+kind = "curl"
+curl = "curl -H 'X-Key: abc' 'https://c2.example.test/status?id=7'"
+hint = "The query goes in the URL after ?. Quote the URL. A header is -H 'Name: value'."
+
+[[checkpoint]]
+question = "Write a curl command that sends a POST to https://c2.example.test/gate with the User-Agent Pebble/2.4 and the form body id=7&st=idle."
+kind = "curl"
+curl = "curl -X POST -H 'User-Agent: Pebble/2.4' --data 'id=7&st=idle' https://c2.example.test/gate"
+hint = "--data sends the body (and makes it a POST). The User-Agent is a header like any other."
+
+[[checkpoint]]
+question = "Which curl flag shows the response's status line and headers as well as its body?"
+accept = ["-i", "--include", "-i or --include"]
+
+[[checkpoint]]
+question = "A server answers 405 Method Not Allowed. Which part of your request was wrong?"
+accept = ["method", "the method", "the http method", "-X", "verb"]
