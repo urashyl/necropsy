@@ -85,6 +85,35 @@ fn generator_dirs(packs: &Path, ids: &[&str]) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+/// The `cargo build` for a generator. Variables a surrounding `cargo run` sets
+/// are removed: `RUSTUP_TOOLCHAIN` above all, which would make the build use
+/// the caller's toolchain instead of the one `packs/rust-toolchain.toml` pins.
+fn cargo_command(gen_dir: &Path, target: &Path, rustflags: &str) -> Command {
+    let mut c = Command::new("cargo");
+    c.current_dir(gen_dir)
+        .args([
+            "build",
+            "--release",
+            "--locked",
+            "--target",
+            "wasm32-unknown-unknown",
+        ])
+        .env("CARGO_TARGET_DIR", target)
+        .env("RUSTFLAGS", rustflags);
+    for var in [
+        "RUSTUP_TOOLCHAIN",
+        "RUSTC",
+        "RUSTC_WRAPPER",
+        "RUSTC_WORKSPACE_WRAPPER",
+        "CARGO",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "CARGO_BUILD_TARGET",
+    ] {
+        c.env_remove(var);
+    }
+    c
+}
+
 /// Builds one generator to WebAssembly and returns the module's bytes. The
 /// toolchain is the one `packs/rust-toolchain.toml` pins (cargo runs in the
 /// generator's directory), and paths are remapped, so the same source builds
@@ -98,18 +127,7 @@ fn build(dir: &Path) -> Result<Vec<u8>, String> {
     let repo = root.to_string_lossy();
     let rustflags =
         format!("--remap-path-prefix={repo}=/necropsy --remap-path-prefix={cargo_home}=/cargo");
-    let status = Command::new("cargo")
-        .current_dir(&gen_dir)
-        .args([
-            "build",
-            "--release",
-            "--locked",
-            "--target",
-            "wasm32-unknown-unknown",
-        ])
-        .env("CARGO_TARGET_DIR", &target)
-        .env("RUSTFLAGS", rustflags)
-        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+    let status = cargo_command(&gen_dir, &target, &rustflags)
         .status()
         .map_err(|e| format!("cannot run cargo: {e}"))?;
     if !status.success() {
@@ -366,5 +384,33 @@ fn main() -> ExitCode {
         ["gen", dir, id, seed, out] => gen_one(dir, id, seed, Some(out)),
         ["check-gen", dir, ids @ ..] => check_gen(dir, ids),
         _ => usage(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A regression: run under `cargo run`, the build inherited RUSTUP_TOOLCHAIN
+    /// and used the caller's toolchain, not the pinned one.
+    #[test]
+    fn the_build_uses_the_pinned_toolchain_whoever_runs_it() {
+        let c = cargo_command(Path::new("g"), Path::new("t"), "f");
+        let envs: Vec<(String, Option<String>)> = c
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().into_owned(),
+                    v.map(|v| v.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        for var in ["RUSTUP_TOOLCHAIN", "RUSTC", "CARGO"] {
+            assert!(
+                envs.contains(&(var.to_owned(), None)),
+                "{var} is not removed"
+            );
+        }
+        assert_eq!(c.get_current_dir(), Some(Path::new("g")));
     }
 }
