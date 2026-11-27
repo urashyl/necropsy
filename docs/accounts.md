@@ -68,7 +68,7 @@ Rules: usernames are 3 to 24 characters of letters, digits, `-` and `_`, case-in
 An account can add a second step to login, from the Account page. Two kinds, either or both:
 
 - **Authenticator app:** TOTP (RFC 6238: HMAC-SHA1, 6 digits, 30-second steps), so any authenticator app works. Setup shows a QR code and the key to type by hand, and turns on only after the player enters a code from the app. Setup is open for 15 minutes.
-- **Email codes:** a 6-digit code emailed on request at the login prompt. It works for 10 minutes and only for that login. Up to 3 are sent per login, 30 seconds apart. Needs mail configured and an account with an email address, so the generated admin cannot use it.
+- **Email codes:** a 6-digit code emailed on request at the login prompt. It works for 10 minutes and only for that login. Up to 3 are sent per login, 30 seconds apart. Needs mail configured and an email address on the account. The generated admin starts without one and can add it under Change email, then turn this on.
 
 The first time a second step is turned on, the player is shown **10 recovery codes** (`abcd-efgh`, case and dashes ignored). They are shown once, each works once, and using one sends a notice email. A player can make a new set, which replaces the old.
 
@@ -121,7 +121,7 @@ Every state-changing request must come from the site's own origin. `main.rs` rej
 
 ## Data
 
-SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves`, and for two-step verification `recovery_codes`, `mfa_tickets` and `mfa_setup`. The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly.
+SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves`, `progress` (a signed-in player's time and hints on a puzzle in progress, see [web.md](web.md#time-and-hints)), and for two-step verification `recovery_codes`, `mfa_tickets` and `mfa_setup`. The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly.
 
 Requests are not logged by default. With `NECROPSY_LOG_REQUESTS=1` the log records the method, path and status of each request, never the query string, because email links carry one-time tokens there.
 

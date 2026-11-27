@@ -40,7 +40,7 @@ pub enum Nav {
 
 pub async fn today(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Response {
     match state.today_daily() {
-        Some(p) => puzzle_page(&state, viewer.as_ref(), p).into_response(),
+        Some(p) => puzzle_page(&state, viewer.as_ref(), p, &*state.stats().await).into_response(),
         // No daily has been released yet: start at the beginning.
         None => Redirect::to("/learn").into_response(),
     }
@@ -53,13 +53,35 @@ pub async fn puzzle(
 ) -> Response {
     let v = viewer.as_ref();
     match state.get(&id) {
-        Some(p) => puzzle_page(&state, v, p).into_response(),
+        Some(p) => puzzle_page(&state, v, p, &*state.stats().await).into_response(),
         None => not_found_page(&state, v).into_response(),
     }
 }
 
-fn pack_row(state: &AppState, p: &RenderedPack) -> Markup {
+/// `m:ss`, or `h:mm:ss` from an hour up.
+fn clock(secs: f64) -> String {
+    let s = secs.round().max(0.0) as i64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s % 3600 / 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+type Stats = std::collections::HashMap<String, crate::db::PackStats>;
+
+/// How many solved it, and how long it took on average, for a list row.
+fn stats_text(st: Option<&crate::db::PackStats>) -> Option<String> {
+    let st = st.filter(|s| s.solves > 0)?;
+    Some(match st.avg_seconds.filter(|_| st.timed > 0) {
+        Some(avg) => format!("{} solved · {} average", st.solves, clock(avg)),
+        None => format!("{} solved", st.solves),
+    })
+}
+
+fn pack_row(state: &AppState, p: &RenderedPack, stats: &Stats) -> Markup {
     let m = &p.pack.meta;
+    let solved_by = stats_text(stats.get(&m.id));
     html! {
         li.work-row {
             a.work-link.archive-link href={"/p/" (m.id)} data-pack-id=(m.id) {
@@ -69,6 +91,7 @@ fn pack_row(state: &AppState, p: &RenderedPack) -> Markup {
                 span.work-desc {
                     @if let Some(d) = &m.date { span.date { (d) } " · " }
                     (m.tags.join(", "))
+                    @if let Some(t) = &solved_by { " · " (t) }
                 }
                 span.work-meta {
                     @if state.is_today(p) { span.badge { "Today" } " " }
@@ -81,6 +104,7 @@ fn pack_row(state: &AppState, p: &RenderedPack) -> Markup {
 }
 
 pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
+    let stats = state.stats().await;
     let body = html! {
         section.wrap.page-head {
             h1 { "Learn" }
@@ -91,7 +115,7 @@ pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeU
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for p in state.intros() { (pack_row(&state, p)) }
+                @for p in state.intros() { (pack_row(&state, p, &stats)) }
             }
             @if state.today_daily().is_some() {
                 p.after-list { a href="/" { "Then: today's puzzle →" } }
@@ -114,6 +138,7 @@ pub async fn library_list(
     State(state): State<Arc<AppState>>,
     MaybeUser(viewer): MaybeUser,
 ) -> Markup {
+    let stats = state.stats().await;
     let body = html! {
         section.wrap.page-head {
             h1 { "Library" }
@@ -121,7 +146,7 @@ pub async fn library_list(
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for p in state.library() { (pack_row(&state, p)) }
+                @for p in state.library() { (pack_row(&state, p, &stats)) }
             }
             @if viewer.is_none() {
                 p.after-list { a href="/login" { "Log in" } " or " a href="/register" { "register" } " to start one." }
@@ -140,6 +165,7 @@ pub async fn library_list(
 }
 
 pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Markup {
+    let stats = state.stats().await;
     let mut dailies = state.released_dailies();
     dailies.reverse();
     let body = html! {
@@ -149,7 +175,7 @@ pub async fn archive(State(state): State<Arc<AppState>>, MaybeUser(viewer): Mayb
         }
         section.wrap.section-tight {
             ul.work-list {
-                @for p in dailies { (pack_row(&state, p)) }
+                @for p in dailies { (pack_row(&state, p, &stats)) }
             }
         }
     };
@@ -301,7 +327,12 @@ fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Mar
     }
 }
 
-fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+fn puzzle_page(
+    state: &AppState,
+    viewer: Option<&User>,
+    rp: &RenderedPack,
+    stats: &Stats,
+) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
     let share_url = format!("{}/p/{}", state.base_url, m.id);
@@ -384,11 +415,7 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
 
                     @if !m.hints.is_empty() {
                         section #hints.hints {
-                            ol #hint-list.hint-list {
-                                @for h in &m.hints {
-                                    li.hidden { (h) }
-                                }
-                            }
+                            ol #hint-list.hint-list {}
                             button #hint-btn.link-button type="button" { "Show a hint" }
                         }
                     }
@@ -418,6 +445,17 @@ fn puzzle_page(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Ma
                         div { dt { "Time" } dd #stat-time.tabular { "0:00" } }
                         @if !m.hints.is_empty() {
                             div { dt { "Hints used" } dd #stat-hints.tabular { "0" } }
+                        }
+                    }
+                    @if let Some(st) = stats.get(&m.id).filter(|s| s.solves > 0) {
+                        dl.facts.facts-stats {
+                            div { dt { "Solved by" } dd.tabular { (st.solves) } }
+                            @if let (Some(avg), true) = (st.avg_seconds, st.timed > 0) {
+                                div { dt { "Average time" } dd.tabular { (clock(avg)) } }
+                            }
+                            @if let (Some(avg), false, true) = (st.avg_hints, m.hints.is_empty(), st.timed > 0) {
+                                div { dt { "Average hints" } dd.tabular { (format!("{avg:.1}")) } }
+                            }
                         }
                     }
                     div #share.share.hidden {

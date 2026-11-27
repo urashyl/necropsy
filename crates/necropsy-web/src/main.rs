@@ -19,6 +19,7 @@ mod mail;
 mod markdown;
 mod mfa;
 mod pages;
+mod progress;
 mod state;
 
 use std::net::SocketAddr;
@@ -380,6 +381,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/p/{id}/explainer", get(explainer))
         .route(
+            "/api/p/{id}/beat",
+            post(progress::beat).layer(DefaultBodyLimit::max(256)),
+        )
+        .route(
+            "/api/p/{id}/hint",
+            post(progress::hint).layer(DefaultBodyLimit::max(256)),
+        )
+        .route(
             "/api/p/{id}/instance",
             get(live::instance_get).post(live::instance_post),
         )
@@ -563,7 +572,8 @@ fn same_origin(headers: &HeaderMap, base_url: &str) -> bool {
 #[derive(Deserialize)]
 struct AnswerReq {
     answer: String,
-    /// Reported by the browser for the signed-in user's own history.
+    /// What the browser counted. Used only for a solve the server has no record of,
+    /// such as one imported from a browser that was signed out when it was made.
     #[serde(default)]
     seconds: i64,
     #[serde(default)]
@@ -576,6 +586,11 @@ struct AnswerRes {
     /// Rendered explainer HTML, only present when `correct`.
     #[serde(skip_serializing_if = "Option::is_none")]
     explainer_html: Option<String>,
+    /// The signed-in player's recorded time and hints for this solve.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hints: Option<i64>,
 }
 
 async fn check_answer(
@@ -592,6 +607,8 @@ async fn check_answer(
         return Json(AnswerRes {
             correct: false,
             explainer_html: None,
+            seconds: None,
+            hints: None,
         })
         .into_response();
     }
@@ -603,22 +620,55 @@ async fn check_answer(
     } else {
         p.pack.check(&req.answer)
     };
+    let mut recorded = None;
     if correct {
         if let Some(user) = viewer {
-            let seconds = req.seconds.clamp(0, 7 * 86_400);
-            let hints = req.hints.clamp(0, p.pack.meta.hints.len() as i64);
+            let total = p.pack.meta.hints.len() as i64;
+            // The server's own time and hints, when it has been keeping them.
+            let kept = state
+                .db
+                .progress_finish(user.id, id.clone(), progress::GAP_CAP)
+                .await
+                .ok()
+                .flatten();
+            let (seconds, hints, timed) = match kept {
+                Some(k) => (k.seconds, k.hints.min(total), true),
+                None => (
+                    req.seconds.clamp(0, 7 * 86_400),
+                    req.hints.clamp(0, total),
+                    false,
+                ),
+            };
             if let Err(e) = state
                 .db
-                .record_solve(user.id, id, seconds, hints, state::client_tz_min())
+                .record_solve(
+                    user.id,
+                    id.clone(),
+                    seconds,
+                    hints,
+                    state::client_tz_min(),
+                    timed,
+                )
                 .await
             {
                 tracing::error!("recording solve failed: {e}");
             }
+            state.forget_stats();
+            // Report what is on record, which is the first solve if there was one.
+            recorded = state
+                .db
+                .solve_of(user.id, id)
+                .await
+                .ok()
+                .flatten()
+                .map(|s| (s.seconds, s.hints));
         }
     }
     Json(AnswerRes {
         correct,
         explainer_html: correct.then(|| p.explainer_html.clone()),
+        seconds: recorded.map(|r| r.0),
+        hints: recorded.map(|r| r.1),
     })
     .into_response()
 }
@@ -637,6 +687,8 @@ async fn explainer(
         Ok(true) => Json(AnswerRes {
             correct: true,
             explainer_html: Some(p.explainer_html.clone()),
+            seconds: None,
+            hints: None,
         })
         .into_response(),
         _ => StatusCode::NOT_FOUND.into_response(),

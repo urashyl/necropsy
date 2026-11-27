@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 /// Two-step verification (version 4): an authenticator-app secret and the last
 /// time step accepted from it, email codes, one-time recovery codes, the short-lived
@@ -43,6 +43,24 @@ CREATE TABLE mfa_setup (
     secret     TEXT NOT NULL,
     expires_at INTEGER NOT NULL
 );
+";
+
+/// Server-side progress (version 5): when a signed-in player is on a puzzle, the active
+/// time and the hints revealed so far are kept here, so neither can be reported by the
+/// browser. `solves.timed` is 1 when a solve was recorded from this, 0 when the time
+/// and hints were only the browser's word (an import of a solve made while signed out).
+const PROGRESS_SCHEMA: &str = "
+CREATE TABLE progress (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_id     TEXT NOT NULL,
+    started_at  INTEGER NOT NULL,
+    active_secs INTEGER NOT NULL DEFAULT 0,
+    last_beat   INTEGER NOT NULL,
+    hints       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, pack_id)
+);
+ALTER TABLE solves ADD COLUMN timed INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX solves_pack ON solves(pack_id);
 ";
 
 const SCHEMA: &str = "
@@ -123,6 +141,24 @@ impl User {
     pub fn mfa(&self) -> bool {
         self.totp || self.mfa_email
     }
+}
+
+/// A signed-in player's time and hints on a puzzle, as the server keeps them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Progress {
+    pub seconds: i64,
+    pub hints: i64,
+}
+
+/// What players have done on a puzzle, in aggregate.
+#[derive(Clone, Debug)]
+pub struct PackStats {
+    /// Everyone who solved it.
+    pub solves: i64,
+    /// Those whose time the server kept; the averages are over these.
+    pub timed: i64,
+    pub avg_seconds: Option<f64>,
+    pub avg_hints: Option<f64>,
 }
 
 /// A password login waiting for its second step.
@@ -242,6 +278,9 @@ impl Db {
         }
         if version < 4 {
             conn.execute_batch(MFA_SCHEMA)?;
+        }
+        if version < 5 {
+            conn.execute_batch(PROGRESS_SCHEMA)?;
         }
         if version != SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -564,7 +603,8 @@ impl Db {
 
     // ---- solves ------------------------------------------------------------
 
-    /// Records a first solve. Later solves of the same pack change nothing.
+    /// Records a first solve. Later solves of the same pack change nothing. `timed`
+    /// says the time and hints come from the server's own progress record.
     pub async fn record_solve(
         &self,
         user_id: i64,
@@ -572,14 +612,167 @@ impl Db {
         seconds: i64,
         hints: i64,
         tz: i64,
+        timed: bool,
     ) -> rusqlite::Result<()> {
         self.run(move |c| {
             c.execute(
-                "INSERT INTO solves (user_id, pack_id, solved_at, seconds, hints, tz)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING",
-                params![user_id, pack_id, now(), seconds, hints, tz],
+                "INSERT INTO solves (user_id, pack_id, solved_at, seconds, hints, tz, timed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT DO NOTHING",
+                params![user_id, pack_id, now(), seconds, hints, tz, timed],
             )
             .map(|_| ())
+        })
+        .await
+    }
+
+    /// The user's solve of one puzzle, if they have one.
+    pub async fn solve_of(&self, user_id: i64, pack_id: String) -> rusqlite::Result<Option<Solve>> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT pack_id, solved_at, seconds, hints, tz FROM solves WHERE user_id = ?1 AND pack_id = ?2",
+                params![user_id, pack_id],
+                |r| {
+                    Ok(Solve {
+                        pack_id: r.get(0)?,
+                        solved_at: r.get(1)?,
+                        seconds: r.get(2)?,
+                        hints: r.get(3)?,
+                        tz: r.get(4)?,
+                    })
+                },
+            )
+            .optional()
+        })
+        .await
+    }
+
+    // ---- progress ----------------------------------------------------------
+
+    /// Notes that the player is on this puzzle now. Time since their last beat is
+    /// added to the active time, up to `gap_cap` seconds, so a closed tab or a
+    /// sleeping machine does not count. The first beat starts the clock.
+    pub async fn progress_beat(
+        &self,
+        user_id: i64,
+        pack_id: String,
+        gap_cap: i64,
+    ) -> rusqlite::Result<Progress> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            let t = now();
+            let row = tx
+                .query_row(
+                    "SELECT active_secs, last_beat, hints FROM progress WHERE user_id = ?1 AND pack_id = ?2",
+                    params![user_id, pack_id],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
+                )
+                .optional()?;
+            let p = match row {
+                None => {
+                    tx.execute(
+                        "INSERT INTO progress (user_id, pack_id, started_at, active_secs, last_beat, hints)
+                         VALUES (?1, ?2, ?3, 0, ?3, 0)",
+                        params![user_id, pack_id, t],
+                    )?;
+                    Progress { seconds: 0, hints: 0 }
+                }
+                Some((secs, last, hints)) => {
+                    let secs = secs + (t - last).clamp(0, gap_cap);
+                    tx.execute(
+                        "UPDATE progress SET active_secs = ?3, last_beat = ?4 WHERE user_id = ?1 AND pack_id = ?2",
+                        params![user_id, pack_id, secs, t],
+                    )?;
+                    Progress { seconds: secs, hints }
+                }
+            };
+            tx.commit()?;
+            Ok(p)
+        })
+        .await
+    }
+
+    /// Reveals the next hint (up to `total`) and returns the progress after it.
+    pub async fn progress_hint(
+        &self,
+        user_id: i64,
+        pack_id: String,
+        total: i64,
+        gap_cap: i64,
+    ) -> rusqlite::Result<Progress> {
+        let p = self
+            .progress_beat(user_id, pack_id.clone(), gap_cap)
+            .await?;
+        if p.hints >= total {
+            return Ok(p);
+        }
+        self.run(move |c| {
+            c.execute(
+                "UPDATE progress SET hints = hints + 1 WHERE user_id = ?1 AND pack_id = ?2 AND hints < ?3",
+                params![user_id, pack_id, total],
+            )?;
+            Ok(Progress {
+                seconds: p.seconds,
+                hints: (p.hints + 1).min(total),
+            })
+        })
+        .await
+    }
+
+    /// The final progress for a solve, which removes the record: the time up to now
+    /// (capped as in a beat) and the hints revealed. None if there was no record.
+    pub async fn progress_finish(
+        &self,
+        user_id: i64,
+        pack_id: String,
+        gap_cap: i64,
+    ) -> rusqlite::Result<Option<Progress>> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            let row = tx
+                .query_row(
+                    "SELECT active_secs, last_beat, hints FROM progress WHERE user_id = ?1 AND pack_id = ?2",
+                    params![user_id, pack_id],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
+                )
+                .optional()?;
+            let out = row.map(|(secs, last, hints)| Progress {
+                seconds: secs + (now() - last).clamp(0, gap_cap),
+                hints,
+            });
+            tx.execute(
+                "DELETE FROM progress WHERE user_id = ?1 AND pack_id = ?2",
+                params![user_id, pack_id],
+            )?;
+            tx.commit()?;
+            Ok(out)
+        })
+        .await
+    }
+
+    /// Solve counts and averages for every puzzle, from solves whose time was kept by
+    /// the server. Aggregates only.
+    pub async fn pack_stats(
+        &self,
+    ) -> rusqlite::Result<std::collections::HashMap<String, PackStats>> {
+        self.run(|c| {
+            let mut st = c.prepare(
+                "SELECT pack_id, COUNT(*), SUM(timed),
+                        AVG(CASE WHEN timed = 1 THEN seconds END),
+                        AVG(CASE WHEN timed = 1 THEN hints END)
+                 FROM solves GROUP BY pack_id",
+            )?;
+            let rows = st.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    PackStats {
+                        solves: r.get(1)?,
+                        timed: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                        avg_seconds: r.get::<_, Option<f64>>(3)?,
+                        avg_hints: r.get::<_, Option<f64>>(4)?,
+                    },
+                ))
+            })?;
+            rows.collect()
         })
         .await
     }
@@ -1007,6 +1200,10 @@ impl Db {
             c.execute("DELETE FROM email_tokens WHERE expires_at <= ?1", [t])?;
             c.execute("DELETE FROM mfa_tickets WHERE expires_at <= ?1", [t])?;
             c.execute("DELETE FROM mfa_setup WHERE expires_at <= ?1", [t])?;
+            c.execute(
+                "DELETE FROM progress WHERE last_beat <= ?1",
+                [t - 30 * 24 * 3600],
+            )?;
             c.execute(
                 "DELETE FROM live_instances WHERE expires_at <= ?1",
                 [t - LIVE_KEEP_SECS],

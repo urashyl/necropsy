@@ -193,7 +193,7 @@
   const timeEl = document.getElementById("stat-time");
   const hintsEl = document.getElementById("stat-hints");
   const hintBtn = document.getElementById("hint-btn");
-  const hintItems = document.querySelectorAll("#hint-list li");
+  const hintList = document.getElementById("hint-list");
   const share = document.getElementById("share");
   const shareBtn = document.getElementById("share-btn");
   const shareMsg = document.getElementById("share-msg");
@@ -201,9 +201,20 @@
   let solved = !!state.solved[id];
   let seconds = state.solved[id]?.seconds ?? state.time[id] ?? 0;
   let hintsShown = state.solved[id]?.hints ?? state.hints[id] ?? 0;
+  // The hints revealed so far. Their text is not in the page: the server sends each
+  // one when asked, and counts it.
+  let hintTexts = [];
 
   function renderHints() {
-    hintItems.forEach((li, i) => li.classList.toggle("hidden", i >= hintsShown));
+    if (hintList) {
+      hintList.replaceChildren(
+        ...hintTexts.map((t) => {
+          const li = document.createElement("li");
+          li.textContent = t;
+          return li;
+        }),
+      );
+    }
     if (hintsEl) hintsEl.textContent = String(hintsShown);
     if (hintBtn) {
       hintBtn.classList.toggle("hidden", hintTotal - hintsShown <= 0 || solved);
@@ -257,12 +268,53 @@
     } catch {}
   });
 
+  // ---- time and hints, kept by the server for a signed-in player -------------
+
+  /**
+   * Asks the server for this puzzle's state: a beat counts the time the page has been
+   * open, a hint reveals the next one. A signed-in player's time and hint count come
+   * back from the server and replace the browser's. A signed-out player's stay in
+   * the browser, and the server only supplies the hint text.
+   */
+  async function sync(path) {
+    const res = await fetch(`/api/p/${encodeURIComponent(id)}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ have: hintsShown, peek: solved && !server.solved[id] }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    const s = await res.json();
+    if (s.user && typeof s.seconds === "number") seconds = s.seconds;
+    hintsShown = s.hints;
+    hintTexts = s.texts;
+    if (!solved) state.hints[id] = hintsShown;
+    renderHints();
+    renderTime();
+    return s;
+  }
+
+  // The first beat starts the clock and brings back any hints already shown. A puzzle
+  // this browser solved while signed out only reads its hints, and starts no clock.
+  ready.then(() => sync("beat").catch(() => {}));
+  setInterval(() => {
+    if (!solved) sync("beat").catch(() => {});
+  }, 15000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !solved) sync("beat").catch(() => {});
+  });
+
   if (hintBtn) {
-    hintBtn.addEventListener("click", () => {
-      if (hintsShown >= hintTotal) return;
-      hintsShown += 1;
-      state.hints[id] = hintsShown;
-      save(state);
+    hintBtn.addEventListener("click", async () => {
+      if (hintsShown >= hintTotal || solved) return;
+      hintBtn.disabled = true;
+      try {
+        await sync("hint");
+      } catch {
+        msg.textContent = "Could not get a hint. Try again.";
+        msg.classList.add("err-text");
+      }
+      hintBtn.disabled = false;
       renderHints();
     });
   }
@@ -280,6 +332,9 @@
       const r = await postAnswer(id, answer, seconds, hintsShown);
       if (r.correct) {
         const ontime = releaseDay !== null && localDay() === releaseDay;
+        // A signed-in player's time and hints are the ones the server recorded.
+        if (typeof r.seconds === "number") seconds = r.seconds;
+        if (typeof r.hints === "number") hintsShown = r.hints;
         state.solved[id] = { answer, seconds, hints: hintsShown, day: localDay(), ontime };
         state.time[id] = seconds;
         save(state);

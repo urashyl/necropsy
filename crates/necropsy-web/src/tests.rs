@@ -4102,7 +4102,8 @@ mod mfa_flow {
         {
             let c = rusqlite::Connection::open(&path).unwrap();
             c.execute_batch(
-                "DROP TABLE recovery_codes; DROP TABLE mfa_tickets; DROP TABLE mfa_setup;
+                "DROP INDEX solves_pack; DROP TABLE progress; ALTER TABLE solves DROP COLUMN timed;
+                 DROP TABLE recovery_codes; DROP TABLE mfa_tickets; DROP TABLE mfa_setup;
                  ALTER TABLE users DROP COLUMN totp_secret;
                  ALTER TABLE users DROP COLUMN totp_last_step;
                  ALTER TABLE users DROP COLUMN mfa_email;
@@ -4190,4 +4191,234 @@ async fn the_two_step_forms_send_the_fields_their_handlers_read() {
     // Authenticator set up, email codes on: the two forms an account without
     // either shows.
     assert_eq!(seen, 2);
+}
+
+// ------------------------------------------------- server-side time, hints and stats
+
+mod progress_flow {
+    use super::*;
+
+    const HINT0: &str = "Leave the failures for now.";
+    const HINT1: &str = "Two addresses fail and then get in.";
+
+    async fn call(s: &Site, cookie: Option<&str>, what: &str, body: &str) -> serde_json::Value {
+        let r = s
+            .post_json(&format!("/api/p/intro-log/{what}"), body, cookie)
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{what}: {}", r.body);
+        serde_json::from_str(&r.body).unwrap()
+    }
+
+    async fn user(s: &Site, name: &str) -> String {
+        s.register_verified(name, &format!("{name}@example.org"))
+            .await;
+        s.login_cookie(name).await
+    }
+
+    /// Pretends `secs` have passed since the last beat.
+    async fn age(s: &Site, secs: i64) {
+        s.state
+            .db
+            .run(move |c| c.execute("UPDATE progress SET last_beat = last_beat - ?1", [secs]))
+            .await
+            .unwrap();
+    }
+
+    async fn solve(s: &Site, cookie: &str, claimed: &str) -> serde_json::Value {
+        let r = s
+            .post_json(
+                "/api/p/intro-log/answer",
+                &format!(r#"{{"answer":"203.0.113.77",{claimed}}}"#),
+                Some(cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        serde_json::from_str(&r.body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn hints_are_not_in_the_page_and_the_server_counts_them() {
+        let s = site().await;
+        let cookie = user(&s, "hinter").await;
+        let page = s.get("/p/intro-log", Some(&cookie)).await.body;
+        assert!(
+            !page.contains(HINT0) && !page.contains(HINT1),
+            "hints are in the page"
+        );
+        assert!(page.contains("data-hints=\"2\""));
+
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(
+            (b["user"].clone(), b["hints"].clone()),
+            (true.into(), 0.into())
+        );
+        assert_eq!(b["texts"].as_array().unwrap().len(), 0);
+
+        let h = call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        assert_eq!(h["hints"], 1);
+        assert!(h["texts"][0].as_str().unwrap().starts_with(HINT0));
+        let h = call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        assert_eq!(h["hints"], 2);
+        // There are only two. Asking again reveals nothing and counts nothing.
+        let h = call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        assert_eq!(h["hints"], 2);
+        assert_eq!(h["texts"].as_array().unwrap().len(), 2);
+        // The count belongs to the account: a beat from another device sees it, and
+        // claiming fewer changes nothing.
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(b["hints"], 2);
+        assert!(b["texts"][1].as_str().unwrap().starts_with(HINT1));
+    }
+
+    #[tokio::test]
+    async fn the_server_counts_active_time_and_a_long_gap_adds_a_few_minutes() {
+        let s = site().await;
+        let cookie = user(&s, "timer").await;
+        call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        age(&s, 50).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert!((50..=52).contains(&b["seconds"].as_i64().unwrap()), "{b}");
+        // Away for most of an hour: only the cap is added.
+        age(&s, 3000).await;
+        let b2 = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        let added = b2["seconds"].as_i64().unwrap() - b["seconds"].as_i64().unwrap();
+        assert!(
+            (crate::progress::GAP_CAP..=crate::progress::GAP_CAP + 2).contains(&added),
+            "{added}"
+        );
+        // Beating faster than time passes does not add time.
+        let b3 = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert!(b3["seconds"].as_i64().unwrap() - b2["seconds"].as_i64().unwrap() <= 1);
+    }
+
+    #[tokio::test]
+    async fn a_solve_is_recorded_with_the_servers_numbers() {
+        let s = site().await;
+        let cookie = user(&s, "solver").await;
+        call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+        age(&s, 90).await;
+        // The browser claims a faster time and no hints. The server ignores both.
+        let r = solve(&s, &cookie, r#""seconds":1,"hints":0"#).await;
+        assert_eq!(r["correct"], true);
+        assert!((90..=92).contains(&r["seconds"].as_i64().unwrap()), "{r}");
+        assert_eq!(r["hints"], 1);
+        let timed: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT timed FROM solves", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(timed, 1);
+        // The clock stops: later beats return the recorded solve.
+        age(&s, 500).await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+        assert_eq!(b["solved"], true);
+        assert_eq!(b["seconds"], r["seconds"]);
+        assert_eq!(b["hints"], 1);
+        assert_eq!(b["texts"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_solve_the_server_never_timed_does_not_count_toward_averages() {
+        let s = site().await;
+        let cookie = user(&s, "importer").await;
+        // No beat first, as when a solve made signed out is uploaded after signing in.
+        let r = solve(&s, &cookie, r#""seconds":5,"hints":0"#).await;
+        assert_eq!(r["correct"], true);
+        assert_eq!(r["seconds"], 5, "kept as the browser said");
+        let timed: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT timed FROM solves", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(timed, 0);
+        let page = s.get("/p/intro-log", None).await.body;
+        assert!(page.contains("Solved by"), "{page}");
+        assert!(
+            !page.contains("Average time"),
+            "an untimed solve is not averaged"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_page_and_lists_show_solve_counts_and_averages() {
+        let s = site().await;
+        let none = s.get("/p/intro-log", None).await.body;
+        assert!(!none.contains("Solved by"), "nothing to show yet");
+        for (name, secs, hints) in [("avga", 60, 0), ("avgb", 120, 2)] {
+            let cookie = user(&s, name).await;
+            call(&s, Some(&cookie), "beat", r#"{"have":0}"#).await;
+            for _ in 0..hints {
+                call(&s, Some(&cookie), "hint", r#"{"have":0}"#).await;
+            }
+            age(&s, secs).await;
+            solve(&s, &cookie, "\"seconds\":0").await;
+        }
+        let page = s.get("/p/intro-log", None).await.body;
+        assert!(page.contains("Solved by"), "{page}");
+        assert!(page.contains("Average time"));
+        assert!(page.contains("1:30"), "mean of 1:00 and 2:00: {page}");
+        assert!(page.contains("Average hints") && page.contains("1.0"));
+        let learn = s.get("/learn", None).await.body;
+        assert!(learn.contains("2 solved · 1:30 average"), "{learn}");
+    }
+
+    #[tokio::test]
+    async fn signed_out_players_get_hint_text_but_the_server_keeps_nothing() {
+        let s = site().await;
+        let b = call(&s, None, "beat", r#"{"have":1}"#).await;
+        assert_eq!(b["user"], false);
+        assert_eq!(b["hints"], 1);
+        assert!(b["texts"][0].as_str().unwrap().starts_with(HINT0));
+        assert!(b.get("seconds").is_none());
+        let h = call(&s, None, "hint", r#"{"have":1}"#).await;
+        assert_eq!(h["hints"], 2);
+        let past = call(&s, None, "hint", r#"{"have":2}"#).await;
+        assert_eq!(past["hints"], 2, "no more than there are");
+        let rows: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT COUNT(*) FROM progress", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(rows, 0);
+        // An unreleased puzzle has no hints to read.
+        let r = s
+            .post_json("/api/p/password-spray/beat", r#"{"have":1}"#, None)
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "released on this fake day");
+        let early = site_on("2026-11-01").await;
+        let r = early
+            .post_json("/api/p/password-spray/hint", r#"{"have":0}"#, None)
+            .await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn peeking_starts_no_clock() {
+        let s = site().await;
+        let cookie = user(&s, "peeker").await;
+        let b = call(&s, Some(&cookie), "beat", r#"{"have":1,"peek":true}"#).await;
+        assert_eq!(b["user"], false);
+        assert_eq!(b["texts"].as_array().unwrap().len(), 1);
+        let rows: i64 = s
+            .state
+            .db
+            .run(|c| c.query_row("SELECT COUNT(*) FROM progress", [], |r| r.get(0)))
+            .await
+            .unwrap();
+        assert_eq!(rows, 0);
+    }
+}
+
+#[tokio::test]
+async fn the_admin_is_told_to_add_an_email_before_email_codes() {
+    let s = site().await;
+    let admin = s.admin_cookie().await;
+    let page = s.get("/account", Some(&admin)).await.body;
+    assert!(page.contains("Email codes"));
+    assert!(page.contains("Add an email address under Change email first."));
+    assert!(page.contains("Change email"), "the admin can add one");
 }

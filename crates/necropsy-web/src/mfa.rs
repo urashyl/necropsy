@@ -515,9 +515,11 @@ pub async fn settings_section(state: &AppState, user: &User) -> Markup {
             }
         }
 
-        @if has_email || user.mfa_email {
+        @if state.mailer.enabled() {
             h3 { "Email codes" }
-            @if user.mfa_email {
+            @if !has_email && !user.mfa_email {
+                p { "Add an email address under Change email first." }
+            } @else if user.mfa_email {
                 p { "On." }
                 form method="post" action="/account/mfa/email/disable" {
                     (password_field("email-off-password"))
@@ -854,7 +856,7 @@ pub async fn email_enable_post(
         return account_page(
             &state,
             &user,
-            Some((false, "This account has no email address to send codes to.")),
+            Some((false, "Add an email address under Change email first.")),
             StatusCode::BAD_REQUEST,
         )
         .await;

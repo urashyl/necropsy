@@ -2,13 +2,14 @@
 //! Shared, read-only server state: packs rendered once at startup.
 
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use necropsy_pack::{Pack, Track};
 use sha2::{Digest, Sha256};
 
 use crate::auth::{hash_password_blocking, RateLimiter};
-use crate::db::Db;
+use crate::db::{Db, PackStats};
 use crate::mail::Mailer;
 use crate::markdown::{line_count, render_markdown, Highlighter};
 
@@ -29,6 +30,9 @@ pub struct RenderedPack {
     pub explainer_html: String,
     pub files: Vec<RenderedFile>,
 }
+
+/// Solve counts and averages by puzzle id.
+pub type StatsMap = HashMap<String, PackStats>;
 
 /// Deployment settings read from the environment in `main`.
 pub struct Config {
@@ -77,6 +81,9 @@ pub struct AppState {
     /// Treat this as the current UTC time (seconds since the epoch). For tests of
     /// timezones.
     pub clock_override: Option<i64>,
+    /// Solve counts and averages per puzzle, recomputed at most every 30 seconds and
+    /// whenever someone solves something.
+    stats_cache: Mutex<Option<(Instant, Arc<StatsMap>)>>,
     pub base_url: String,
     /// Cookies get the `Secure` attribute when the site is served over https.
     pub secure_cookies: bool,
@@ -139,6 +146,7 @@ impl AppState {
             index,
             today_override: None,
             clock_override: None,
+            stats_cache: Mutex::new(None),
             secure_cookies: config.base_url.starts_with("https://"),
             base_url: config.base_url.trim_end_matches('/').to_owned(),
             client_ip_header: config.client_ip_header,
@@ -156,6 +164,27 @@ impl AppState {
             js_v: short_hash(crate::pages::JS),
             theme_v: short_hash(crate::pages::THEME_JS),
         }
+    }
+
+    /// Solve counts and averages for every puzzle.
+    pub async fn stats(&self) -> Arc<StatsMap> {
+        {
+            let cache = self.stats_cache.lock().unwrap_or_else(|p| p.into_inner());
+            if let Some((at, s)) = cache.as_ref() {
+                if at.elapsed() < Duration::from_secs(30) {
+                    return s.clone();
+                }
+            }
+        }
+        let fresh = Arc::new(self.db.pack_stats().await.unwrap_or_default());
+        *self.stats_cache.lock().unwrap_or_else(|p| p.into_inner()) =
+            Some((Instant::now(), fresh.clone()));
+        fresh
+    }
+
+    /// Drops the cached statistics, after something that changes them.
+    pub fn forget_stats(&self) {
+        *self.stats_cache.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
 
     /// Today for the viewer making this request, as a day number (days since
