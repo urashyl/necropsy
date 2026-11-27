@@ -19,6 +19,7 @@ Nothing is hardcoded. Paths come from the XDG variables, falling back to their d
 | Learn modules | the same, then `necropsy/learn` |
 | Toolkit | the same, then `necropsy/toolkit`: downloaded by `toolkit/fetch.sh` (needs `curl`, `unzip`, `gzip` and network). If it fails, the installer warns and carries on; run it again by hand. See [toolkit.md](toolkit.md). |
 | Database | `$XDG_STATE_HOME` or `~/.local/state`, then `necropsy/necropsy.db` |
+| Server secret | beside the database, `necropsy/server-secret`, made on first start (see [generators.md](generators.md#the-server-secret)) |
 | Settings | `$XDG_CONFIG_HOME` or `~/.config`, then `necropsy/necropsy.env` (mode 0600, never overwritten) |
 | Unit | `$XDG_CONFIG_HOME` or `~/.config`, then `systemd/user/necropsy.service` |
 

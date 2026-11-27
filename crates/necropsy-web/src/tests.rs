@@ -4224,7 +4224,8 @@ mod mfa_flow {
         {
             let c = rusqlite::Connection::open(&path).unwrap();
             c.execute_batch(
-                "DROP TABLE discussions; DROP TABLE learn_passed; ALTER TABLE users DROP COLUMN learn_path;
+                "DROP TABLE gen_seeds; ALTER TABLE live_instances DROP COLUMN keyed;
+                 DROP TABLE discussions; DROP TABLE learn_passed; ALTER TABLE users DROP COLUMN learn_path;
                  DROP INDEX solves_share; ALTER TABLE solves DROP COLUMN share;
                  DROP INDEX solves_pack; DROP TABLE progress; ALTER TABLE solves DROP COLUMN timed;
                  DROP TABLE recovery_codes; DROP TABLE mfa_tickets; DROP TABLE mfa_setup;
@@ -5183,6 +5184,7 @@ mod cards_flow {
     }
 }
 
+mod generated_flow;
 mod learn_flow;
 mod learn_live;
 mod phase1_flow;

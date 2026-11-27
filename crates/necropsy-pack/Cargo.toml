@@ -15,3 +15,9 @@ sha2 = "0.10"
 thiserror = "2"
 toml = "0.8"
 regex = "1"
+wasmi = "2"
+hmac = "0.12"
+
+[dev-dependencies]
+necropsy-gen-sdk = { path = "../necropsy-gen-sdk" }
+wat = "1"

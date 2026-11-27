@@ -7,3 +7,4 @@ target
 *.db-wal
 deploy
 toolkit/dist
+packs/*/generator/target

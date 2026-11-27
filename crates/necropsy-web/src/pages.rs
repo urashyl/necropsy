@@ -6,14 +6,14 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::auth::MaybeUser;
 use crate::db::User;
 use crate::markdown::render_markdown;
-use crate::state::{AppState, RenderedPack};
+use crate::state::{AppState, RenderedFile, RenderedPack};
 use necropsy_pack::Track;
 
 pub const CSS: &str = include_str!("../static/app.css");
@@ -39,9 +39,13 @@ pub enum Nav {
 
 // ---------------------------------------------------------------- handlers
 
-pub async fn today(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeUser) -> Response {
+pub async fn today(
+    State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+    headers: HeaderMap,
+) -> Response {
     match state.today_daily() {
-        Some(p) => puzzle_page(&state, viewer.as_ref(), p, &*state.stats().await).into_response(),
+        Some(p) => puzzle_response(&state, viewer.as_ref(), &headers, p).await,
         // No daily has been released yet: start at the beginning.
         None => Redirect::to("/learn").into_response(),
     }
@@ -50,13 +54,76 @@ pub async fn today(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeU
 pub async fn puzzle(
     State(state): State<Arc<AppState>>,
     MaybeUser(viewer): MaybeUser,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
     let v = viewer.as_ref();
     match state.get(&id) {
-        Some(p) => puzzle_page(&state, v, p, &*state.stats().await).into_response(),
+        Some(p) => puzzle_response(&state, v, &headers, p).await,
         None => not_found_page(&state, v).into_response(),
     }
+}
+
+/// The files a viewer gets for a puzzle: the pack's own, or, for a generated
+/// pack, theirs (see generated.rs).
+pub(crate) enum ViewerFiles<'a> {
+    Pack(&'a [RenderedFile]),
+    Generated(Arc<crate::generated::Generated>),
+    /// The generator failed: the page says so instead of showing files.
+    Failed,
+}
+
+impl ViewerFiles<'_> {
+    pub(crate) fn list(&self) -> &[RenderedFile] {
+        match self {
+            ViewerFiles::Pack(f) => f,
+            ViewerFiles::Generated(g) => &g.rendered,
+            ViewerFiles::Failed => &[],
+        }
+    }
+}
+
+/// [`ViewerFiles`] for this request, and a `Set-Cookie` when a signed-out
+/// browser needs an id for its seed.
+pub(crate) async fn viewer_files<'a>(
+    state: &AppState,
+    viewer: Option<&User>,
+    headers: &HeaderMap,
+    rp: &'a RenderedPack,
+) -> (ViewerFiles<'a>, Option<String>) {
+    if !rp.pack.is_generated() {
+        return (ViewerFiles::Pack(&rp.files), None);
+    }
+    let (seeds, cookie) = crate::generated::seeds_for(state, viewer, headers, &rp.pack, true).await;
+    let Some(seed) = seeds.first() else {
+        return (ViewerFiles::Failed, cookie);
+    };
+    match state.generator.output(state, &rp.pack, seed).await {
+        Ok(g) => (ViewerFiles::Generated(g), cookie),
+        Err(e) => {
+            tracing::error!("generator for {} failed: {e}", rp.pack.meta.id);
+            (ViewerFiles::Failed, cookie)
+        }
+    }
+}
+
+/// Adds a `Set-Cookie` to a response, when there is one.
+pub(crate) fn with_cookie(mut res: Response, cookie: Option<String>) -> Response {
+    if let Some(c) = cookie.and_then(|c| header::HeaderValue::from_str(&c).ok()) {
+        res.headers_mut().append(header::SET_COOKIE, c);
+    }
+    res
+}
+
+async fn puzzle_response(
+    state: &AppState,
+    viewer: Option<&User>,
+    headers: &HeaderMap,
+    rp: &RenderedPack,
+) -> Response {
+    let (files, cookie) = viewer_files(state, viewer, headers, rp).await;
+    let page = puzzle_page(state, viewer, rp, &*state.stats().await, &files).into_response();
+    with_cookie(page, cookie)
 }
 
 /// `m:ss`, or `h:mm:ss` from an hour up.
@@ -318,11 +385,35 @@ pub async fn format(State(state): State<Arc<AppState>>, MaybeUser(viewer): Maybe
 /// the pack loader found, never by joining a request path onto a directory.
 pub async fn raw_file(
     State(state): State<Arc<AppState>>,
+    MaybeUser(viewer): MaybeUser,
+    headers: HeaderMap,
     Path((id, path)): Path<(String, String)>,
 ) -> Response {
-    let Some(file) = state.get(&id).and_then(|p| p.pack.file(&path)) else {
+    let Some(rp) = state.get(&id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    if rp.pack.is_generated() {
+        let (files, cookie) = viewer_files(&state, viewer.as_ref(), &headers, rp).await;
+        let ViewerFiles::Generated(g) = files else {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "The file could not be made. Try again in a minute.",
+            )
+                .into_response();
+        };
+        let Some(file) = g.output.files.iter().find(|f| f.path == path) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+        // Each player's files differ, so no shared cache may keep one.
+        return with_cookie(file_response(file), cookie);
+    }
+    let Some(file) = rp.pack.file(&path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    file_response(file)
+}
+
+fn file_response(file: &necropsy_pack::PackFile) -> Response {
     match file.text() {
         Some(text) => (
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
@@ -436,6 +527,7 @@ fn puzzle_page(
     viewer: Option<&User>,
     rp: &RenderedPack,
     stats: &Stats,
+    files: &ViewerFiles,
 ) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
@@ -477,7 +569,7 @@ fn puzzle_page(
                         (live_panel(state, viewer, rp))
                     }
 
-                    (file_figures(rp))
+                    (file_figures(&m.id, files))
 
                     (answer_block(rp))
 
@@ -509,7 +601,7 @@ fn puzzle_page(
                 }
 
                 aside.case-side {
-                    (side_facts(rp, stats))
+                    (side_facts(rp, stats, files.list().len()))
                 }
             }
         }
@@ -568,14 +660,19 @@ fn position(list: &[&RenderedPack], rp: &RenderedPack) -> usize {
 
 /// Each file of the puzzle: text inline with line numbers, anything else as a
 /// download.
-pub(crate) fn file_figures(rp: &RenderedPack) -> Markup {
-    let m = &rp.pack.meta;
+pub(crate) fn file_figures(id: &str, files: &ViewerFiles) -> Markup {
     html! {
-        @for f in &rp.files {
+        @if matches!(files, ViewerFiles::Failed) {
+            p.notice { "This puzzle's files could not be made. Reload in a minute." }
+        }
+        @if matches!(files, ViewerFiles::Generated(_)) {
+            p.muted { "These files are yours: other players get different ones, with a different answer." }
+        }
+        @for f in files.list() {
             figure.codefile {
                 figcaption.codefile-head {
                     span.codefile-name { (f.path) }
-                    a href={"/p/" (m.id) "/files/" (f.path)} { "Raw" }
+                    a href={"/p/" (id) "/files/" (f.path)} { "Raw" }
                 }
                 @if let Some((hl, lines)) = &f.inline {
                     div.codefile-body tabindex="0" role="region"
@@ -588,7 +685,7 @@ pub(crate) fn file_figures(rp: &RenderedPack) -> Markup {
                 } @else {
                     p.codefile-bin {
                         "Binary or large file, " (f.size) " bytes. "
-                        a href={"/p/" (m.id) "/files/" (f.path)} { "Download" }
+                        a href={"/p/" (id) "/files/" (f.path)} { "Download" }
                     }
                 }
             }
@@ -628,12 +725,12 @@ pub(crate) fn answer_block(rp: &RenderedPack) -> Markup {
 }
 
 /// Difficulty, files, tags, the clock, the solve statistics and the share buttons.
-pub(crate) fn side_facts(rp: &RenderedPack, stats: &Stats) -> Markup {
+pub(crate) fn side_facts(rp: &RenderedPack, stats: &Stats, file_count: usize) -> Markup {
     let m = &rp.pack.meta;
     html! {
         dl.facts {
             div { dt { "Difficulty" } dd { (difficulty(m.difficulty)) } }
-            div { dt { "Files" } dd { (rp.files.len()) } }
+            div { dt { "Files" } dd { (file_count) } }
             @if !m.tags.is_empty() {
                 div { dt { "Tags" } dd.tag-links {
                     @for (i, t) in m.tags.iter().enumerate() {

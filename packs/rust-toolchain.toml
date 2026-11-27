@@ -1,0 +1,7 @@
+# The toolchain pack generators are built with (pack-tool gen-build). Pinned, so
+# a generator.wasm can be rebuilt byte for byte from its source. See docs/generators.md.
+[toolchain]
+channel = "1.97.0"
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
+components = ["rustfmt", "clippy"]

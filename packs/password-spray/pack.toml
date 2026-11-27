@@ -6,6 +6,8 @@ title = "One password, everyone"
 difficulty = 3
 modes = ["web"]
 tags = ["cloud", "identity", "logs"]
+# The answer is an account name, so it is in the log by design.
+answer_in_files = true
 hints = [
   "Ignore the user with lots of failures in a row. A spray tries one password against many users, a few minutes apart, from many addresses.",
   "Look at how each sprayed attempt signed in, not only whether it failed. Some protocols can't do MFA.",

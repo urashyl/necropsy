@@ -10,6 +10,8 @@ phone-home/
   answer          sha256 of the normalized answer
   live.toml       live puzzles only, see live.md and range.md
   live/           live puzzles only, files a scenario can send
+  generator/      generated packs only: the generator's source, see generators.md
+  generator.wasm  generated packs only: built from generator/
   explainer.md    the real finding, shown after solving
 ```
 
@@ -26,6 +28,7 @@ phone-home/
 | `modes` | list | `web`, `cli`, `live`. Defaults to `["web"]`. A pack with `live` is a [live puzzle](live.md): it has a `live.toml` and no `answer` file. |
 | `tags` | list | Free text, shown on the puzzle page. |
 | `hints` | list | Revealed one at a time, in order. See [Hints](#hints). |
+| `answer_in_files` | bool | Generated packs only: the answer is meant to be read off the files as it is (a user name in a log), so `check-gen` allows it there. See [generators.md](generators.md#rules). |
 | `learn` | list | Learn module ids this puzzle is a worked example for, shown on those modules once a daily has closed. See [learn.md](learn.md#worked-examples). |
 
 Unknown keys are rejected.
@@ -40,6 +43,10 @@ There are three tracks of puzzles: `intro`, `daily` and `library`.
 - **`library`** puzzles are not part of the daily rotation. They are always available, in order, with no release `date` (a date is an error), listed on the Library page, not in the archive, and they never become today's puzzle. They can be any kind of puzzle, [live](live.md) or not, so the Library is where a collection grows without waiting for a date. A new one can be played, and tried by the admin, the moment it is deployed. (A live puzzle that should be one day's puzzle is just a `daily` with the `live` mode: there is no separate place for live puzzles.)
 
 Streaks count only dailies solved on their own release day, so replaying old puzzles or the intro stages does not extend one.
+
+### Generated packs
+
+A pack with `generator.wasm` (and its source in `generator/`) is **generated**: each player's files and answer come from the generator, run with their own seed. It has no `answer` file, and `files/` holds only what every player shares, if anything. It cannot also be live. The generator's local build output, `generator/target/`, is skipped. See [generators.md](generators.md).
 
 ### answer
 

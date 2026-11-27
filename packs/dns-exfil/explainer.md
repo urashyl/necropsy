@@ -1,4 +1,4 @@
-The answer is `AKXX7Q2NEXAMPLE0000`.
+The answer is the `access_key_id` in the file the backup server sent, an S3 config. Each player's capture carries a different key.
 
 Two sets of queries look random. The `TXT` lookups under `rep.av-vendor.invalid` come from 10.20.4.40 every minute or two, and their labels are 40 hex digits split in two. That's a SHA-1, which is how antivirus products ask the vendor about a file's reputation. It decodes to bytes, not text.
 

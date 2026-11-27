@@ -1,0 +1,13 @@
+[package]
+name = "necropsy-gen-sdk"
+description = "For writing necropsy pack generators: seeded randomness, output, encodings, captures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# No dependencies: a generator compiles to a small WebAssembly module with no imports.
+[dependencies]

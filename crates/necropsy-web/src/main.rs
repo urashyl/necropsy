@@ -15,6 +15,7 @@ mod captcha;
 mod cards;
 mod community;
 mod db;
+mod generated;
 mod ipnet;
 mod learn;
 mod live;
@@ -50,6 +51,14 @@ use crate::state::{AppState, Config};
 async fn main() {
     // `necropsy-web healthcheck` is what the container's HEALTHCHECK runs, so
     // the image needs no curl or shell. It exits 0 only if /healthz answers.
+    // `necropsy-web generate` runs one pack generator for the server, in a child
+    // process with nothing in its environment (see generated.rs).
+    if std::env::args().nth(1).as_deref() == Some("generate") {
+        std::process::exit(match generated::child_main() {
+            c if c == std::process::ExitCode::SUCCESS => 0,
+            _ => 1,
+        });
+    }
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
         let addr = env_or("NECROPSY_ADDR", "127.0.0.1:8080");
         let ok = addr.parse::<SocketAddr>().map(healthcheck).unwrap_or(false);
@@ -136,6 +145,23 @@ async fn main() {
     let mut state = AppState::new(packs, config, db, mailer);
     state.set_learn(modules);
     state.community = community::from_env().unwrap_or_else(|e| fail(&e));
+    // The server secret keys every generated pack's seeds and every live flag.
+    // By default it sits next to the database; see docs/generators.md.
+    let secret_path = std::env::var("NECROPSY_SERVER_SECRET_FILE")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(&db_path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(std::path::Path::new("."))
+                .join("server-secret")
+        });
+    let secret = generated::load_secret(&secret_path).unwrap_or_else(|e| fail(&e));
+    let exe = std::env::current_exe()
+        .unwrap_or_else(|e| fail(&format!("cannot find this program's own path: {e}")));
+    state.generator = generated::Generator::new(secret, generated::Runner::Process(exe));
     let toolkit_dir = PathBuf::from(env_or("NECROPSY_TOOLKIT", "toolkit/dist"));
     state.toolkit = toolkit::Toolkit::load(&toolkit_dir);
     if state.toolkit.complete() {
@@ -668,15 +694,34 @@ struct AnswerRes {
     hints: Option<i64>,
 }
 
+/// Answers one account (or, signed out, one address) may post in [`ANSWER_WINDOW`].
+/// Lenient on purpose: answers are per player and long, so guessing is not the
+/// threat, only a flood.
+const ANSWER_MAX: usize = 10;
+const ANSWER_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
+
 async fn check_answer(
     State(state): State<Arc<AppState>>,
     MaybeUser(viewer): MaybeUser,
+    ClientIp(ip): ClientIp,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Json(req): Json<AnswerReq>,
 ) -> Response {
     let Some(p) = state.get(&id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let who = match &viewer {
+        Some(u) => format!("answer:user:{}", u.id),
+        None => format!("answer:ip:{ip}"),
+    };
+    if !state.limiter.allow(&who, ANSWER_MAX, ANSWER_WINDOW) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many answers at once. Wait a second and try again.",
+        )
+            .into_response();
+    }
     // No answer is anywhere near this long, so skip hashing it.
     if req.answer.len() > 512 {
         return Json(AnswerRes {
@@ -692,6 +737,8 @@ async fn check_answer(
             Some(u) => live::flag_matches(&state, u.id, &p.pack, &req.answer).await,
             None => false,
         }
+    } else if p.pack.is_generated() {
+        generated::answer_matches(&state, viewer.as_ref(), &headers, &p.pack, &req.answer).await
     } else {
         p.pack.check(&req.answer)
     };

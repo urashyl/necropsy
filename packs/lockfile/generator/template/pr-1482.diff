@@ -20,7 +20,7 @@ index 3c1f0a2..8e44b91 100644
 -    "typescript": "^5.6.3",
 -    "vitest": "^2.1.4"
 +    "@typescript-eslint/eslint-plugin": "^8.15.0",
-+    "@typescript_eslint/parser": "^8.15.0",
++    "@{{SQUAT}}/parser": "^8.15.0",
 +    "esbuild": "^0.24.0",
 +    "eslint": "^9.15.0",
 +    "prettier": "^3.3.3",
@@ -37,7 +37,7 @@ index 71d0e3b..c29a6f0 100644
 -        "@typescript-eslint/eslint-plugin": "^8.12.2",
 -        "@typescript-eslint/parser": "^8.12.2",
 +        "@typescript-eslint/eslint-plugin": "^8.15.0",
-+        "@typescript_eslint/parser": "^8.15.0",
++        "@{{SQUAT}}/parser": "^8.15.0",
          "esbuild": "^0.24.0",
 -        "eslint": "^9.13.0",
 +        "eslint": "^9.15.0",
@@ -108,9 +108,9 @@ index 71d0e3b..c29a6f0 100644
 +        "debug": "^4.3.4"
 +      }
 +    },
-+    "node_modules/@typescript_eslint/parser": {
++    "node_modules/@{{SQUAT}}/parser": {
 +      "version": "8.15.0",
-+      "resolved": "https://registry.npmjs.org/@typescript_eslint/parser/-/parser-8.15.0.tgz",
++      "resolved": "https://registry.npmjs.org/@{{SQUAT}}/parser/-/parser-8.15.0.tgz",
 +      "integrity": "sha512-Qm4kB0QkS6Zr3tY1dQ0pXn2GH6Dk8gF2b0w7ZcT1mJvE9yLx5uA3rN8sK4hP0eW2iV7tS9oR1qB6cD5fG3jH8A==",
 +      "dev": true,
 +      "hasInstallScript": true,

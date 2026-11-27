@@ -14,7 +14,21 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
+
+/// Generated packs (version 9): each player's random seed per pack, and which
+/// live instances have flags keyed with the server secret (all made from now
+/// on; older ones keep the flag they were made with). See docs/generators.md.
+const GEN_SCHEMA: &str = "
+CREATE TABLE gen_seeds (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_id    TEXT NOT NULL,
+    seed       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, pack_id)
+);
+ALTER TABLE live_instances ADD COLUMN keyed INTEGER NOT NULL DEFAULT 0;
+";
 
 /// Discussion threads for closed dailies (version 8): the Discord thread the
 /// site made for each. See docs/community.md.
@@ -214,9 +228,11 @@ pub struct Instance {
     pub created_at: i64,
     pub expires_at: i64,
     pub flags: Vec<String>,
+    /// The flag is keyed with the server secret (see `live::flag_of`).
+    pub keyed: bool,
 }
 
-const INSTANCE_COLS: &str = "label, user_id, pack_id, seed, created_at, expires_at, flags";
+const INSTANCE_COLS: &str = "label, user_id, pack_id, seed, created_at, expires_at, flags, keyed";
 
 fn row_instance(r: &rusqlite::Row<'_>) -> rusqlite::Result<Instance> {
     let flags: String = r.get(6)?;
@@ -232,6 +248,7 @@ fn row_instance(r: &rusqlite::Row<'_>) -> rusqlite::Result<Instance> {
             .filter(|f| !f.is_empty())
             .map(str::to_owned)
             .collect(),
+        keyed: r.get(7)?,
     })
 }
 
@@ -337,6 +354,9 @@ impl Db {
         }
         if version < 8 {
             conn.execute_batch(DISCUSSION_SCHEMA)?;
+        }
+        if version < 9 {
+            conn.execute_batch(GEN_SCHEMA)?;
         }
         if version != SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -988,6 +1008,44 @@ impl Db {
         .await
     }
 
+    /// The player's generator seed for a pack, if they have opened it.
+    pub async fn gen_seed(
+        &self,
+        user_id: i64,
+        pack_id: String,
+    ) -> rusqlite::Result<Option<String>> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT seed FROM gen_seeds WHERE user_id = ?1 AND pack_id = ?2",
+                params![user_id, pack_id],
+                |r| r.get(0),
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// The player's seed for a pack, stored as `initial` the first time.
+    pub async fn gen_seed_get_or_create(
+        &self,
+        user_id: i64,
+        pack_id: String,
+        initial: String,
+    ) -> rusqlite::Result<String> {
+        self.run(move |c| {
+            c.execute(
+                "INSERT OR IGNORE INTO gen_seeds (user_id, pack_id, seed, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![user_id, pack_id, initial, now()],
+            )?;
+            c.query_row(
+                "SELECT seed FROM gen_seeds WHERE user_id = ?1 AND pack_id = ?2",
+                params![user_id, pack_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+    }
+
     /// The discussion thread of each daily that has one.
     pub async fn discussions(&self) -> rusqlite::Result<std::collections::HashMap<String, String>> {
         self.run(|c| {
@@ -1276,15 +1334,16 @@ impl Db {
     pub async fn live_create(&self, i: Instance) -> rusqlite::Result<()> {
         self.run(move |c| {
             c.execute(
-                "INSERT INTO live_instances (label, user_id, pack_id, seed, created_at, expires_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO live_instances (label, user_id, pack_id, seed, created_at, expires_at, keyed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     i.label,
                     i.user_id,
                     i.pack_id,
                     i.seed,
                     i.created_at,
-                    i.expires_at
+                    i.expires_at,
+                    i.keyed
                 ],
             )
             .map(|_| ())
