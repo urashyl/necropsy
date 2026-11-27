@@ -1,6 +1,6 @@
 # The range: real servers for live puzzles
 
-A [live puzzle](live.md) can be backed by a real server instead of simulated routes. Each player gets their own container, started just for them, running real software: a PHP site with a working webshell, a vulnerable app, whatever the puzzle needs. They talk to it at their own `https://<label>.necropsy.urashyl.dev` link, the same as any live puzzle.
+A [live puzzle](live.md) can be backed by a real server instead of simulated routes. Each player gets their own container running real software: a PHP site with a working webshell, a vulnerable app, whatever the puzzle needs. They talk to it at their own `https://<label>.necropsy.urashyl.dev` link, the same as any live puzzle.
 
 Those containers run on a VM of their own, the **range**, shared by production and dev. The sites never run a lab themselves:
 

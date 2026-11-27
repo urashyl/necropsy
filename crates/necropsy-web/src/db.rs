@@ -14,7 +14,36 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
+
+/// Two-step verification (version 4): an authenticator-app secret and the last
+/// time step accepted from it, email codes, one-time recovery codes, the short-lived
+/// challenge a password login leaves behind, and an enrollment in progress.
+const MFA_SCHEMA: &str = "
+ALTER TABLE users ADD COLUMN totp_secret TEXT;
+ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN mfa_email INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE recovery_codes (
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    PRIMARY KEY (user_id, code_hash)
+);
+CREATE TABLE mfa_tickets (
+    token_hash    TEXT PRIMARY KEY,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at    INTEGER NOT NULL,
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    email_hash    TEXT,
+    email_expires INTEGER NOT NULL DEFAULT 0,
+    email_sent_at INTEGER NOT NULL DEFAULT 0,
+    email_sends   INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE mfa_setup (
+    user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    secret     TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+";
 
 const SCHEMA: &str = "
 CREATE TABLE users (
@@ -83,6 +112,29 @@ pub struct User {
     pub verified: bool,
     pub disabled: bool,
     pub created_at: i64,
+    /// An authenticator app is set up.
+    pub totp: bool,
+    /// Login codes are sent to the account's email.
+    pub mfa_email: bool,
+}
+
+impl User {
+    /// Whether a password login must be followed by a second step.
+    pub fn mfa(&self) -> bool {
+        self.totp || self.mfa_email
+    }
+}
+
+/// A password login waiting for its second step.
+#[derive(Debug)]
+pub struct MfaTicket {
+    pub user_id: i64,
+    pub expires_at: i64,
+    pub attempts: i64,
+    pub email_hash: Option<String>,
+    pub email_expires: i64,
+    pub email_sent_at: i64,
+    pub email_sends: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -158,10 +210,13 @@ fn row_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
         verified: r.get(3)?,
         disabled: r.get(4)?,
         created_at: r.get(5)?,
+        totp: r.get(6)?,
+        mfa_email: r.get(7)?,
     })
 }
 
-const USER_COLS: &str = "id, username, is_admin, verified, disabled, created_at";
+const USER_COLS: &str =
+    "id, username, is_admin, verified, disabled, created_at, totp_secret IS NOT NULL, mfa_email";
 
 impl Db {
     /// Opens (creating if needed) the database at `path`; `:memory:` works.
@@ -169,20 +224,27 @@ impl Db {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version == 0 {
-            conn.execute_batch(SCHEMA)?;
-            conn.execute_batch(LIVE_SCHEMA)?;
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-        } else if version == 1 || version == 2 {
-            if version == 1 {
-                conn.execute_batch(LIVE_SCHEMA)?;
-            }
-            conn.execute_batch("ALTER TABLE solves ADD COLUMN tz INTEGER NOT NULL DEFAULT 0;")?;
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-        } else if version != SCHEMA_VERSION {
+        if !(0..=SCHEMA_VERSION).contains(&version) {
             return Err(rusqlite::Error::InvalidParameterName(format!(
                 "database schema version {version} is not supported (expected {SCHEMA_VERSION})"
             )));
+        }
+        if version == 0 {
+            conn.execute_batch(SCHEMA)?;
+            conn.execute_batch(LIVE_SCHEMA)?;
+        } else {
+            if version == 1 {
+                conn.execute_batch(LIVE_SCHEMA)?;
+            }
+            if version <= 2 {
+                conn.execute_batch("ALTER TABLE solves ADD COLUMN tz INTEGER NOT NULL DEFAULT 0;")?;
+            }
+        }
+        if version < 4 {
+            conn.execute_batch(MFA_SCHEMA)?;
+        }
+        if version != SCHEMA_VERSION {
+            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         }
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -259,7 +321,7 @@ impl Db {
             c.query_row(
                 &format!("SELECT {USER_COLS}, password_hash FROM users WHERE username = ?1"),
                 [username],
-                |r| Ok((row_user(r)?, r.get(6)?)),
+                |r| Ok((row_user(r)?, r.get(8)?)),
             )
             .optional()
         })
@@ -370,13 +432,14 @@ impl Db {
         self.run(|c| {
             let mut st = c.prepare(
                 "SELECT u.id, u.username, u.is_admin, u.verified, u.disabled, u.created_at,
+                        u.totp_secret IS NOT NULL, u.mfa_email,
                         (SELECT COUNT(*) FROM solves s WHERE s.user_id = u.id)
                  FROM users u ORDER BY u.created_at DESC, u.id DESC",
             )?;
             let rows = st.query_map([], |r| {
                 Ok(AdminRow {
                     user: row_user(r)?,
-                    solves: r.get(6)?,
+                    solves: r.get(8)?,
                 })
             })?;
             rows.collect()
@@ -407,7 +470,8 @@ impl Db {
     pub async fn session_user(&self, token_hash: String) -> rusqlite::Result<Option<User>> {
         self.run(move |c| {
             c.query_row(
-                "SELECT u.id, u.username, u.is_admin, u.verified, u.disabled, u.created_at
+                "SELECT u.id, u.username, u.is_admin, u.verified, u.disabled, u.created_at,
+                        u.totp_secret IS NOT NULL, u.mfa_email
                  FROM sessions s JOIN users u ON u.id = s.user_id
                  WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND u.disabled = 0",
                 params![token_hash, now()],
@@ -546,6 +610,255 @@ impl Db {
                 })
             })?;
             rows.collect()
+        })
+        .await
+    }
+
+    // ---- two-step verification ---------------------------------------------
+
+    /// Starts a login challenge, replacing the user's earlier one and dropping any
+    /// that have expired.
+    pub async fn mfa_ticket_put(
+        &self,
+        token_hash: String,
+        user_id: i64,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            tx.execute(
+                "DELETE FROM mfa_tickets WHERE user_id = ?1 OR expires_at <= ?2",
+                params![user_id, now()],
+            )?;
+            tx.execute(
+                "INSERT INTO mfa_tickets (token_hash, user_id, expires_at) VALUES (?1, ?2, ?3)",
+                params![token_hash, user_id, expires_at],
+            )?;
+            tx.commit()
+        })
+        .await
+    }
+
+    pub async fn mfa_ticket_get(&self, token_hash: String) -> rusqlite::Result<Option<MfaTicket>> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT user_id, expires_at, attempts, email_hash, email_expires, email_sent_at, email_sends
+                 FROM mfa_tickets WHERE token_hash = ?1 AND expires_at > ?2",
+                params![token_hash, now()],
+                |r| {
+                    Ok(MfaTicket {
+                        user_id: r.get(0)?,
+                        expires_at: r.get(1)?,
+                        attempts: r.get(2)?,
+                        email_hash: r.get(3)?,
+                        email_expires: r.get(4)?,
+                        email_sent_at: r.get(5)?,
+                        email_sends: r.get(6)?,
+                    })
+                },
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// Counts a wrong code against the challenge and returns the new total.
+    pub async fn mfa_ticket_fail(&self, token_hash: String) -> rusqlite::Result<i64> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE mfa_tickets SET attempts = attempts + 1 WHERE token_hash = ?1",
+                [&token_hash],
+            )?;
+            c.query_row(
+                "SELECT attempts FROM mfa_tickets WHERE token_hash = ?1",
+                [&token_hash],
+                |r| r.get(0),
+            )
+            .optional()
+            .map(|a| a.unwrap_or(i64::MAX))
+        })
+        .await
+    }
+
+    /// Records an emailed code (as a hash) on the challenge.
+    pub async fn mfa_ticket_email(
+        &self,
+        token_hash: String,
+        code_hash: String,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE mfa_tickets SET email_hash = ?2, email_expires = ?3, email_sent_at = ?4,
+                 email_sends = email_sends + 1 WHERE token_hash = ?1",
+                params![token_hash, code_hash, expires_at, now()],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    pub async fn mfa_ticket_delete(&self, token_hash: String) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "DELETE FROM mfa_tickets WHERE token_hash = ?1",
+                [token_hash],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    /// The authenticator secret and the last time step accepted from it.
+    pub async fn totp_state(&self, user_id: i64) -> rusqlite::Result<Option<(String, i64)>> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT totp_secret, totp_last_step FROM users WHERE id = ?1 AND totp_secret IS NOT NULL",
+                [user_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// Accepts a time step once: false if that step, or a later one, was used already.
+    pub async fn totp_use_step(&self, user_id: i64, step: i64) -> rusqlite::Result<bool> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE users SET totp_last_step = ?2 WHERE id = ?1 AND totp_last_step < ?2",
+                params![user_id, step],
+            )
+            .map(|n| n == 1)
+        })
+        .await
+    }
+
+    pub async fn totp_enable(
+        &self,
+        user_id: i64,
+        secret: String,
+        step: i64,
+    ) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            tx.execute(
+                "UPDATE users SET totp_secret = ?2, totp_last_step = ?3 WHERE id = ?1",
+                params![user_id, secret, step],
+            )?;
+            tx.execute("DELETE FROM mfa_setup WHERE user_id = ?1", [user_id])?;
+            tx.commit()
+        })
+        .await
+    }
+
+    pub async fn totp_disable(&self, user_id: i64) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE users SET totp_secret = NULL, totp_last_step = 0 WHERE id = ?1",
+                [user_id],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    pub async fn mfa_email_set(&self, user_id: i64, on: bool) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "UPDATE users SET mfa_email = ?2 WHERE id = ?1",
+                params![user_id, on],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    pub async fn mfa_setup_put(
+        &self,
+        user_id: i64,
+        secret: String,
+        expires_at: i64,
+    ) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            c.execute(
+                "INSERT INTO mfa_setup (user_id, secret, expires_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(user_id) DO UPDATE SET secret = ?2, expires_at = ?3",
+                params![user_id, secret, expires_at],
+            )
+            .map(|_| ())
+        })
+        .await
+    }
+
+    pub async fn mfa_setup_get(&self, user_id: i64) -> rusqlite::Result<Option<String>> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT secret FROM mfa_setup WHERE user_id = ?1 AND expires_at > ?2",
+                params![user_id, now()],
+                |r| r.get(0),
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// Replaces the user's recovery codes with these (hashes).
+    pub async fn recovery_replace(
+        &self,
+        user_id: i64,
+        hashes: Vec<String>,
+    ) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            tx.execute("DELETE FROM recovery_codes WHERE user_id = ?1", [user_id])?;
+            for h in hashes {
+                tx.execute(
+                    "INSERT OR IGNORE INTO recovery_codes (user_id, code_hash) VALUES (?1, ?2)",
+                    params![user_id, h],
+                )?;
+            }
+            tx.commit()
+        })
+        .await
+    }
+
+    /// Uses a recovery code: true if it was there, and now it is not.
+    pub async fn recovery_use(&self, user_id: i64, hash: String) -> rusqlite::Result<bool> {
+        self.run(move |c| {
+            c.execute(
+                "DELETE FROM recovery_codes WHERE user_id = ?1 AND code_hash = ?2",
+                params![user_id, hash],
+            )
+            .map(|n| n == 1)
+        })
+        .await
+    }
+
+    pub async fn recovery_count(&self, user_id: i64) -> rusqlite::Result<i64> {
+        self.run(move |c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM recovery_codes WHERE user_id = ?1",
+                [user_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+    }
+
+    /// Removes every second step from an account: the secret, email codes, recovery
+    /// codes, an enrollment in progress and any waiting login challenge.
+    pub async fn mfa_clear(&self, user_id: i64) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            tx.execute(
+                "UPDATE users SET totp_secret = NULL, totp_last_step = 0, mfa_email = 0 WHERE id = ?1",
+                [user_id],
+            )?;
+            tx.execute("DELETE FROM recovery_codes WHERE user_id = ?1", [user_id])?;
+            tx.execute("DELETE FROM mfa_setup WHERE user_id = ?1", [user_id])?;
+            tx.execute("DELETE FROM mfa_tickets WHERE user_id = ?1", [user_id])?;
+            tx.commit()
         })
         .await
     }
@@ -692,6 +1005,8 @@ impl Db {
             let t = now();
             c.execute("DELETE FROM sessions WHERE expires_at <= ?1", [t])?;
             c.execute("DELETE FROM email_tokens WHERE expires_at <= ?1", [t])?;
+            c.execute("DELETE FROM mfa_tickets WHERE expires_at <= ?1", [t])?;
+            c.execute("DELETE FROM mfa_setup WHERE expires_at <= ?1", [t])?;
             c.execute(
                 "DELETE FROM live_instances WHERE expires_at <= ?1",
                 [t - LIVE_KEEP_SECS],

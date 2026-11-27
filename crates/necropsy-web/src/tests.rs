@@ -3748,3 +3748,446 @@ async fn guessing_instance_labels_is_throttled() {
         StatusCode::TOO_MANY_REQUESTS
     );
 }
+
+// -------------------------------------------------------- two-step verification
+
+mod mfa_flow {
+    use super::*;
+    use crate::mfa::{totp_code, unbase32};
+
+    fn now_secs() -> i64 {
+        crate::db::now()
+    }
+
+    fn between<'a>(s: &'a str, from: &str, to: &str) -> &'a str {
+        let a = s.find(from).unwrap_or_else(|| panic!("no {from:?} in {s}")) + from.len();
+        let b = a + s[a..].find(to).unwrap();
+        &s[a..b]
+    }
+
+    /// A registered, logged-in user. Returns the session cookie.
+    async fn user(s: &Site, name: &str) -> String {
+        s.register_verified(name, &format!("{name}@example.org"))
+            .await;
+        s.login_cookie(name).await
+    }
+
+    /// Turns on the authenticator for the session. Returns the secret and the
+    /// recovery codes shown. The confirming code is the current one.
+    async fn enable_totp(s: &Site, cookie: &str) -> (Vec<u8>, Vec<String>) {
+        let r = s
+            .post(
+                "/account/mfa/totp/start",
+                &[("password", PASSWORD)],
+                Some(cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        assert!(r.body.contains("<svg"), "a QR code is shown");
+        assert!(!r.body.contains("<?xml"), "no XML header inline");
+        let secret = between(&r.body, "class=\"totp-secret\">", "<").to_owned();
+        let key = unbase32(&secret).unwrap();
+        let code = totp_code(&key, now_secs());
+        let r = s
+            .post(
+                "/account/mfa/totp/confirm",
+                &[("code", &code)],
+                Some(cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        let codes: Vec<String> = between(&r.body, "class=\"recovery-codes\">", "</pre>")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(codes.len(), 10, "{}", r.body);
+        (key, codes)
+    }
+
+    /// A password login for an account with a second step: the cookie of its challenge.
+    async fn start_login(s: &Site, name: &str) -> String {
+        let r = s.login(name, PASSWORD).await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+        assert_eq!(r.headers.get(header::LOCATION).unwrap(), "/login/verify");
+        let c = r.cookie().expect("challenge cookie");
+        assert!(c.contains("necropsy_mfa="), "{c}");
+        c
+    }
+
+    async fn signed_in(s: &Site, cookie: &str) -> bool {
+        let r = s.get("/account", Some(cookie)).await;
+        r.status == StatusCode::OK && r.body.contains("Two-step verification")
+    }
+
+    #[tokio::test]
+    async fn an_authenticator_code_completes_the_login_once() {
+        let s = site().await;
+        let cookie = user(&s, "totpuser").await;
+        let (key, _) = enable_totp(&s, &cookie).await;
+        // The account page now says it is on.
+        assert!(s
+            .get("/account", Some(&cookie))
+            .await
+            .body
+            .contains("Remove"));
+
+        // A password alone does not sign in.
+        let challenge = start_login(&s, "totpuser").await;
+        assert!(!signed_in(&s, &challenge).await);
+        let page = s.get("/login/verify", Some(&challenge)).await;
+        assert_eq!(page.status, StatusCode::OK);
+        assert!(page.body.contains("authenticator"));
+
+        let wrong = s
+            .post("/login/verify", &[("code", "000000")], Some(&challenge))
+            .await;
+        assert_eq!(wrong.status, StatusCode::UNAUTHORIZED);
+        let next = totp_code(&key, now_secs() + 30);
+        let ok = s
+            .post("/login/verify", &[("code", &next)], Some(&challenge))
+            .await;
+        assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+        let session = ok.cookie().expect("a session");
+        assert!(session.contains("necropsy_session="));
+        assert!(signed_in(&s, &session).await);
+
+        // A code is good once. The same one, and the one used to turn it on, are both spent.
+        for spent in [next, totp_code(&key, now_secs())] {
+            let again = start_login(&s, "totpuser").await;
+            let r = s
+                .post("/login/verify", &[("code", &spent)], Some(&again))
+                .await;
+            assert_eq!(
+                r.status,
+                StatusCode::UNAUTHORIZED,
+                "{spent} was accepted twice"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_challenge_allows_five_wrong_codes() {
+        let s = site().await;
+        let cookie = user(&s, "guesser").await;
+        let (key, _) = enable_totp(&s, &cookie).await;
+        let challenge = start_login(&s, "guesser").await;
+        for _ in 0..4 {
+            let r = s
+                .post("/login/verify", &[("code", "123456")], Some(&challenge))
+                .await;
+            assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+        }
+        let last = s
+            .post("/login/verify", &[("code", "123456")], Some(&challenge))
+            .await;
+        assert_eq!(last.status, StatusCode::TOO_MANY_REQUESTS);
+        // The right code no longer works on that challenge.
+        let good = totp_code(&key, now_secs() + 30);
+        let r = s
+            .post("/login/verify", &[("code", &good)], Some(&challenge))
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        assert_eq!(r.headers.get(header::LOCATION).unwrap(), "/login");
+        assert!(!r.headers.contains_key(header::SET_COOKIE) || r.cookie().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_recovery_code_works_once_and_sends_a_notice() {
+        let s = site().await;
+        let cookie = user(&s, "lostphone").await;
+        let (_, codes) = enable_totp(&s, &cookie).await;
+        let before = s.mail_count();
+        let challenge = start_login(&s, "lostphone").await;
+        let r = s
+            .post("/login/verify", &[("code", &codes[0])], Some(&challenge))
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+        assert!(signed_in(&s, &r.cookie().unwrap()).await);
+        assert_eq!(s.mail_count(), before + 1, "a notice is sent");
+        assert!(s
+            .mail
+            .lock()
+            .unwrap()
+            .last()
+            .unwrap()
+            .body
+            .contains("9 are left"));
+        // Spent. Case and dashes do not matter for another.
+        let again = start_login(&s, "lostphone").await;
+        let r = s
+            .post("/login/verify", &[("code", &codes[0])], Some(&again))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+        let loose = codes[1].to_uppercase().replace('-', " ");
+        let r = s
+            .post("/login/verify", &[("code", &loose)], Some(&again))
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    }
+
+    #[tokio::test]
+    async fn email_codes_complete_the_login() {
+        let s = site().await;
+        let cookie = user(&s, "mailuser").await;
+        let r = s
+            .post(
+                "/account/mfa/email/enable",
+                &[("password", PASSWORD)],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        assert!(
+            r.body.contains("recovery-codes"),
+            "codes are shown the first time"
+        );
+
+        let challenge = start_login(&s, "mailuser").await;
+        let page = s.get("/login/verify", Some(&challenge)).await;
+        assert!(page.body.contains("Email me a code"));
+        let r = s.post("/login/verify/email", &[], Some(&challenge)).await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        // Another straight away is refused.
+        let r = s.post("/login/verify/email", &[], Some(&challenge)).await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+
+        let mail = s.mail.lock().unwrap().last().unwrap().body.clone();
+        let code = between(&mail, "Your login code is ", ".").to_owned();
+        assert_eq!(code.len(), 6);
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        let bad = s
+            .post("/login/verify", &[("code", wrong)], Some(&challenge))
+            .await;
+        assert_eq!(bad.status, StatusCode::UNAUTHORIZED);
+        let ok = s
+            .post("/login/verify", &[("code", &code)], Some(&challenge))
+            .await;
+        assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+        assert!(signed_in(&s, &ok.cookie().unwrap()).await);
+
+        // The code was for that challenge only, and once.
+        let other = start_login(&s, "mailuser").await;
+        let r = s
+            .post("/login/verify", &[("code", &code)], Some(&other))
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn turning_a_second_step_off_needs_the_password_and_a_code() {
+        let s = site().await;
+        let cookie = user(&s, "remover").await;
+        let (_, codes) = enable_totp(&s, &cookie).await;
+        let remove = |password: &'static str, code: String| {
+            let (s, cookie) = (&s, cookie.clone());
+            async move {
+                s.post(
+                    "/account/mfa/totp/remove",
+                    &[("password", password), ("code", &code)],
+                    Some(&cookie),
+                )
+                .await
+            }
+        };
+        assert_eq!(
+            remove("not the password", codes[0].clone()).await.status,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            remove(PASSWORD, "000000".into()).await.status,
+            StatusCode::FORBIDDEN
+        );
+        let r = remove(PASSWORD, codes[0].clone()).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+        // With nothing left on, logging in is direct again and the codes are gone.
+        let r = s.login("remover", PASSWORD).await;
+        assert!(r.cookie().unwrap().contains("necropsy_session="));
+        let left = s
+            .state
+            .db
+            .recovery_count(
+                s.state
+                    .db
+                    .user_for_login("remover".into())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .0
+                    .id,
+            )
+            .await
+            .unwrap();
+        assert_eq!(left, 0);
+    }
+
+    #[tokio::test]
+    async fn setting_up_needs_a_correct_code_and_the_password() {
+        let s = site().await;
+        let cookie = user(&s, "setup").await;
+        let bad = s
+            .post(
+                "/account/mfa/totp/start",
+                &[("password", "nope")],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(bad.status, StatusCode::FORBIDDEN);
+        let r = s
+            .post(
+                "/account/mfa/totp/start",
+                &[("password", PASSWORD)],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK);
+        let r = s
+            .post(
+                "/account/mfa/totp/confirm",
+                &[("code", "000000")],
+                Some(&cookie),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+        // Still off: a password login is direct.
+        let r = s.login("setup", PASSWORD).await;
+        assert!(r.cookie().unwrap().contains("necropsy_session="));
+    }
+
+    #[tokio::test]
+    async fn the_admin_can_reset_a_users_second_step() {
+        let s = site().await;
+        let cookie = user(&s, "locked").await;
+        enable_totp(&s, &cookie).await;
+        let admin = s.admin_cookie().await;
+        let id = s
+            .state
+            .db
+            .user_for_login("locked".into())
+            .await
+            .unwrap()
+            .unwrap()
+            .0
+            .id;
+        let r = s
+            .send(
+                Request::post(format!("/admin/users/{id}/reset-mfa"))
+                    .header(header::ORIGIN, ORIGIN)
+                    .header(header::COOKIE, &admin)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        let r = s.login("locked", PASSWORD).await;
+        assert!(r.cookie().unwrap().contains("necropsy_session="));
+    }
+
+    #[tokio::test]
+    async fn an_older_database_gains_the_new_tables() {
+        // A version 3 database (before two-step verification) opens and upgrades.
+        let path = std::env::temp_dir().join(format!("necropsy-mig-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let db = Db::open(path.to_str().unwrap()).unwrap();
+            db.create_user(
+                "old".into(),
+                Some("old@example.org".into()),
+                "hash".into(),
+                false,
+                true,
+            )
+            .await
+            .unwrap();
+        }
+        {
+            let c = rusqlite::Connection::open(&path).unwrap();
+            c.execute_batch(
+                "DROP TABLE recovery_codes; DROP TABLE mfa_tickets; DROP TABLE mfa_setup;
+                 ALTER TABLE users DROP COLUMN totp_secret;
+                 ALTER TABLE users DROP COLUMN totp_last_step;
+                 ALTER TABLE users DROP COLUMN mfa_email;
+                 PRAGMA user_version = 3;",
+            )
+            .unwrap();
+        }
+        let db = Db::open(path.to_str().unwrap()).unwrap();
+        let (user, _) = db.user_for_login("old".into()).await.unwrap().unwrap();
+        assert!(!user.totp && !user.mfa_email);
+        db.mfa_email_set(user.id, true).await.unwrap();
+        assert!(db.user_by_id(user.id).await.unwrap().unwrap().mfa());
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[test]
+fn no_filler_in_copy() {
+    // The standards are in docs/design.md. Phrases that mark filler, in lower case.
+    let banned = [
+        "just for you",
+        "just for them",
+        "isolated container",
+        "please note",
+        "feel free",
+        "let's ",
+        "excited",
+        "seamless",
+        "powerful",
+        "robust",
+        "journey",
+        "dive into",
+        "delve",
+        "start it below",
+        "yours alone",
+    ];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for dir in ["crates/necropsy-web/src", "crates/necropsy-web/static"] {
+        for e in std::fs::read_dir(root.join(dir)).unwrap() {
+            let p = e.unwrap().path();
+            let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+            if (ext == "rs" || ext == "js") && !p.ends_with("tests.rs") {
+                files.push(p);
+            }
+        }
+    }
+    for e in std::fs::read_dir(root.join("packs")).unwrap() {
+        let d = e.unwrap().path();
+        for name in ["brief.md", "explainer.md"] {
+            if d.join(name).exists() {
+                files.push(d.join(name));
+            }
+        }
+    }
+    assert!(files.len() > 40);
+    for f in files {
+        let text = std::fs::read_to_string(&f).unwrap().to_lowercase();
+        for word in banned {
+            assert!(
+                !text.contains(word),
+                "{} has filler: {word:?} (see docs/design.md)",
+                f.display()
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_two_step_forms_send_the_fields_their_handlers_read() {
+    let s = site().await;
+    s.register_verified("formcheck", "formcheck@example.org")
+        .await;
+    let cookie = s.login_cookie("formcheck").await;
+    let page = s.get("/account", Some(&cookie)).await.body;
+    let forms: Vec<&str> = page.split("<form").skip(1).collect();
+    let mut seen = 0;
+    for f in forms {
+        let f = f.split("</form>").next().unwrap();
+        if f.contains("action=\"/account/mfa/") {
+            seen += 1;
+            assert!(f.contains("name=\"password\""), "no password field in: {f}");
+        }
+    }
+    // Authenticator set up, email codes on: the two forms an account without
+    // either shows.
+    assert_eq!(seen, 2);
+}

@@ -48,6 +48,11 @@ fn random_bytes<const N: usize>() -> [u8; N] {
     buf
 }
 
+/// `N` random bytes, for secrets such as an authenticator key.
+pub fn random_secret_bytes<const N: usize>() -> [u8; N] {
+    random_bytes::<N>()
+}
+
 /// A fresh 256-bit token as 64 hex characters, for cookies and email links.
 pub fn new_token() -> String {
     hex(&random_bytes::<32>())
@@ -67,15 +72,16 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// A uniformly random index below `n` (`n` at most 65536), without modulo bias.
+/// A uniformly random index below `n` (`n` at most 2^32), without modulo bias.
 pub fn random_index(n: usize) -> usize {
-    assert!((1..=65_536).contains(&n));
-    let limit = 65_536 - (65_536 % n);
+    const RANGE: u64 = 1 << 32;
+    assert!((1..=RANGE as usize).contains(&n));
+    let n = n as u64;
+    let limit = RANGE - (RANGE % n);
     loop {
-        let b = random_bytes::<2>();
-        let v = u16::from_be_bytes(b) as usize;
+        let v = u64::from(u32::from_be_bytes(random_bytes::<4>()));
         if v < limit {
-            return v % n;
+            return (v % n) as usize;
         }
     }
 }

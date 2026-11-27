@@ -968,7 +968,7 @@ pre {
   max-width: 26rem;
 }
 
-.inline-form {
+.mfa-alt {
   max-width: 26rem;
   margin-top: 1rem;
 }
@@ -1051,4 +1051,51 @@ pre {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* Two-step verification */
+
+.account h3 {
+  margin: 1.25rem 0 0.25rem;
+  font-size: var(--step-0);
+}
+
+.qr {
+  display: inline-block;
+  margin: 0.5rem 0 1rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  background: #fff;
+  line-height: 0;
+}
+
+.qr svg {
+  width: 11rem;
+  height: 11rem;
+}
+
+.totp-secret {
+  display: inline-block;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+  word-break: break-all;
+  user-select: all;
+}
+
+.recovery-codes {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: var(--step-0);
+  line-height: 1.9;
+  user-select: all;
+}
+
+.mfa-alt {
+  margin-top: 0.75rem;
 }

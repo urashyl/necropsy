@@ -56,12 +56,37 @@ Registration and password reset answer the same way whether or not an address is
 ## Registration, login, reset
 
 - **Register:** username, email, password. The account is created unverified and a link is emailed. It expires in 48 hours, and unverified accounts are deleted after 48 hours, which frees the username.
-- **Login:** username and password. Unverified and disabled accounts cannot sign in. Wrong password and unknown user give the same answer, and an unknown user costs the same time as a wrong password.
+- **Login:** username and password. Unverified and disabled accounts cannot sign in. With [two-step verification](#two-step-verification) on, a second code is required. Wrong password and unknown user give the same answer, and an unknown user costs the same time as a wrong password.
 - **Password reset:** a one-hour, one-time link emailed to the address. Resetting or changing a password signs the account out everywhere.
 - **Change email:** needs the password. Available to the admin as well. A 24-hour link goes to the new address, and the old address gets a notice when it takes effect.
 - **Delete account:** needs the password. Removes the user and their solves.
 
 Rules: usernames are 3 to 24 characters of letters, digits, `-` and `_`, case-insensitively unique, and, for registration, names starting with `admin`, `root`, `necropsy`, `system`, `support`, `staff` or `moderator` are reserved. Passwords are 10 to 128 bytes. There are no composition rules.
+
+## Two-step verification
+
+An account can add a second step to login, from the Account page. Two kinds, either or both:
+
+- **Authenticator app:** TOTP (RFC 6238: HMAC-SHA1, 6 digits, 30-second steps), so any authenticator app works. Setup shows a QR code and the key to type by hand, and turns on only after the player enters a code from the app. Setup is open for 15 minutes.
+- **Email codes:** a 6-digit code emailed on request at the login prompt. It works for 10 minutes and only for that login. Up to 3 are sent per login, 30 seconds apart. Needs mail configured and an account with an email address, so the generated admin cannot use it.
+
+The first time a second step is turned on, the player is shown **10 recovery codes** (`abcd-efgh`, case and dashes ignored). They are shown once, each works once, and using one sends a notice email. A player can make a new set, which replaces the old.
+
+How a login works with it:
+
+1. A correct password does not start a session. It starts a **challenge**: a row in `mfa_tickets` named by a cookie (`necropsy_mfa`, `__Host-` over https, `HttpOnly`, 10 minutes), and the player is sent to `/login/verify`.
+2. They enter a code from their authenticator, an emailed code or a recovery code in one box. Only a correct code starts the session.
+3. A challenge allows **5 wrong codes**, then it is dropped and the player logs in again. Codes are also limited to 30 per client address and 15 per user per 15 minutes.
+
+Details that matter:
+
+- An authenticator code is accepted in a window of one step either side, and **each step works once**: a code that was used, or an earlier one, is refused, so a code seen over a shoulder or on the wire cannot be replayed.
+- A password reset does not remove or bypass the second step.
+- Turning a step off, or making new recovery codes, needs the password, plus a code if an authenticator is on. When no second step is left, the recovery codes are deleted.
+- The authenticator key is stored in the database as text, because the server must compute codes from it. Protect the database file like the rest of it. Recovery and emailed codes are stored only as hashes.
+- Setup, turn-off and new codes are plain forms that work without JavaScript.
+
+**A player who lost their device and recovery codes:** the admin can press **Reset 2FA** next to the user on the admin page, which removes every second step from the account. To reset the admin account itself, which the page will not touch, edit the database on the server: `UPDATE users SET totp_secret = NULL, totp_last_step = 0, mfa_email = 0 WHERE username = '<admin name>';`
 
 ## Sessions and tokens
 
@@ -80,6 +105,9 @@ Kept in memory and cleared on restart. Counted per 15 minutes:
 | Registrations | 5 per client address |
 | Password reset requests | 5 per client address |
 | Password confirmations in settings | 10 per user |
+| Second-step codes at login | 30 per client address, 15 per user, 5 per challenge |
+| Emailed login codes | 10 requests per client address, 3 per challenge |
+| Authenticator setup and settings codes | 10 per user |
 
 The client address is the connecting address. Behind a reverse proxy that would always be the proxy, so set `NECROPSY_CLIENT_IP_HEADER` to the header your proxy fills with the real address, such as `X-Real-IP`. The proxy must always overwrite that header (Caddy: `header_up X-Real-IP {remote_host}`). Also set `NECROPSY_TRUSTED_PROXIES` to your proxy's address (IPs or CIDR ranges, comma-separated): the header is then believed only on connections from those addresses, so nobody who can reach the server directly can spoof it. Without it the header is believed from any connection, and the server warns at startup. Without a proxy, leave both unset: any client could otherwise choose its own address and dodge the limits. A value that is not an IP address is ignored, and for a list header such as `X-Forwarded-For` the last entry, the one your proxy appended, is used.
 
@@ -89,11 +117,11 @@ Every state-changing request must come from the site's own origin. `main.rs` rej
 
 ## Admin page
 
-`/admin` is for the generated admin only: anonymous visitors are redirected to the login page and signed-in non-admins get a 404. It shows the mail status with a test send, and lists users by username, join date, status and solve count, with disable, enable and delete (after a confirmation page). Disabling ends the user's sessions. It never shows email addresses.
+`/admin` is for the generated admin only: anonymous visitors are redirected to the login page and signed-in non-admins get a 404. It shows the mail status with a test send, and lists users by username, join date, status and solve count, with disable, enable, reset 2FA (for users who have a second step) and delete (after a confirmation page). Disabling ends the user's sessions. It never shows email addresses.
 
 ## Data
 
-SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves`. The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly.
+SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves`, and for two-step verification `recovery_codes`, `mfa_tickets` and `mfa_setup`. The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly.
 
 Requests are not logged by default. With `NECROPSY_LOG_REQUESTS=1` the log records the method, path and status of each request, never the query string, because email links carry one-time tokens there.
 

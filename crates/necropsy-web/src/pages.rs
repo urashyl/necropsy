@@ -85,8 +85,8 @@ pub async fn learn(State(state): State<Arc<AppState>>, MaybeUser(viewer): MaybeU
         section.wrap.page-head {
             h1 { "Learn" }
             p.page-lead {
-                "Four short puzzles that cover what the daily ones assume: reading a log, decoding, "
-                "deobfuscating and following a chain. Do them in order, or skip ahead."
+                "Four short puzzles on the basics: reading a log, decoding, deobfuscating, "
+                "following a chain."
             }
         }
         section.wrap.section-tight {
@@ -117,11 +117,7 @@ pub async fn library_list(
     let body = html! {
         section.wrap.page-head {
             h1 { "Library" }
-            p.page-lead {
-                "Puzzles that are not part of the daily rotation. They are always available, in any "
-                "order, and the library grows as we add to it. Some run as a server made just for you: "
-                "you need an account to start one."
-            }
+            p.page-lead { "Puzzles outside the daily rotation. Always available, in any order." }
         }
         section.wrap.section-tight {
             ul.work-list {
@@ -276,10 +272,7 @@ fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Mar
     html! {
         section #live.live-panel data-sitekey=[captcha_key] {
             h2 { "Live instance" }
-            p.muted {
-                "This puzzle is a real server, started just for you. It lives for "
-                (ttl) " minutes, and the flag it holds is yours alone."
-            }
+            p.muted { "Runs for " (ttl) " minutes." }
             @if viewer.is_none() {
                 p.notice { a href="/login" { "Sign in" } " to start an instance." }
             } @else {

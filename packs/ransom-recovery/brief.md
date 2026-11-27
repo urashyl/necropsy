@@ -1,3 +1,3 @@
-A small firm's files were locked by ransomware. The operators' payment portal promises a "recovery" to anyone who proves they can unlock one file. We recovered the encryptor as `locker.py.txt` (renamed, and cut down so that it does nothing outside a folder given on the command line), one encrypted file, and the ransom note, and rebuilt the portal on your instance. Start it below.
+A small firm's files were locked by ransomware. The operators' portal promises recovery to anyone who proves they can unlock one file. The encryptor is `locker.py.txt` (cut down so it only touches the folder you give it). You also have one encrypted file and the ransom note.
 
-Work out how the sample derives its key, unlock the file, and use the portal's recovery form (`/recover`, with the form fields the portal says it wants). The portal hands the flag to whoever it believes holds the key. Submit that flag.
+Work out how the sample derives its key, unlock the file, and use the portal's `/recover` form with the fields the note names. The portal hands the flag to whoever it believes holds the key. Submit it.

@@ -1,3 +1,3 @@
-A laptop was beaconing to a CDN-looking domain at the same time every ten minutes. We recovered the implant's Python source as `implant.py.txt` (renamed, and nothing here will run it) and rebuilt the operator's server on your instance. Start it below.
+A laptop beaconed to a CDN-looking domain every ten minutes. The implant's Python source is `implant.py.txt` (renamed so it cannot run).
 
-The implant talks to `sync.cloudfront-static.invalid`. That name does not exist anywhere, so speak to your instance's link instead, as the implant would: same paths, same headers, same order. Play the victim, take the tasking the server hands out, and do what the implant does with it. When the server acknowledges the result, it says something it should not. Submit it as the flag.
+It talks to `sync.cloudfront-static.invalid`, which does not resolve. Speak to your instance instead, as the implant would: same paths, same headers, same order. Play the victim, take the tasking, and do what the implant does with it. When the server acknowledges the result, it says something it should not. Submit that as the flag.

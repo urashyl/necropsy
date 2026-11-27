@@ -20,6 +20,7 @@ Then open <http://127.0.0.1:8080>. On first run the server creates an admin acco
 | `docs/pack-format.md` | The pack format. |
 | `docs/web.md` | Running and operating the web front end. |
 | `docs/live.md` | Live puzzles: per-player servers on a wildcard domain. |
+| `docs/design.md` | Copy, layout and documentation standards. |
 | `deploy/install-site.sh` | Installs a site (production or dev) on its own VM. |
 | `deploy/install-range.sh` | Installs the range, the VM that runs live-puzzle labs for the sites. |
 | `docs/range.md` | Container-backed live puzzles: the range VM, its sandbox, setup, and how many players it holds. |

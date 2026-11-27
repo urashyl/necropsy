@@ -298,11 +298,23 @@
     submit.disabled = false;
   });
 
-  // Time counts only while the tab is visible and the puzzle is unsolved.
+  // Time counts while the page is open and the puzzle is unsolved, in a background
+  // tab too: the work is often done in a terminal or a disassembler while this page
+  // sits in another window. Each tick adds the time since the last one, so a throttled
+  // background timer still counts in full, and a gap longer than two minutes (the
+  // machine slept) adds only two minutes.
   let ticks = 0;
+  let lastTick = Date.now();
+  let carryMs = 0;
   setInterval(() => {
-    if (solved || document.hidden) return;
-    seconds += 1;
+    const now = Date.now();
+    carryMs += Math.min(Math.max(now - lastTick, 0), 120000);
+    lastTick = now;
+    const whole = Math.floor(carryMs / 1000);
+    if (whole < 1) return;
+    carryMs -= whole * 1000;
+    if (solved) return;
+    seconds += whole;
     renderTime();
     if (++ticks % 5 === 0) persistTime();
   }, 1000);
@@ -327,7 +339,9 @@
     const logEl = document.getElementById("live-log");
     const liveMsg = document.getElementById("live-msg");
     const api = `/api/p/${encodeURIComponent(id)}/instance`;
-    let left = 0;
+    // When the instance ends, as a clock time, so the countdown is right even after
+    // the tab was in the background.
+    let deadline = 0;
 
     // Everything below is written with textContent: log lines are made of
     // whatever the player sent.
@@ -338,7 +352,7 @@
       if (!on) return;
       urlEl.textContent = v.url;
       urlEl.href = v.url;
-      left = v.seconds_left;
+      deadline = Date.now() + v.seconds_left * 1000;
       renderLeft();
       logEl.textContent = v.log
         .map((e) => `${new Date(e.t * 1000).toLocaleTimeString()}  ${e.status}  ${e.method} ${e.path}`)
@@ -346,7 +360,7 @@
     }
 
     function renderLeft() {
-      leftEl.textContent = formatTime(Math.max(left, 0));
+      leftEl.textContent = formatTime(Math.max(Math.ceil((deadline - Date.now()) / 1000), 0));
     }
 
     // Starting an instance needs a Cloudflare Turnstile token when the site
@@ -370,7 +384,7 @@
     async function startWithCaptcha() {
       if (!siteKey) return call("POST");
       liveStart.disabled = true;
-      liveMsg.textContent = "Checking you are not a robot...";
+      liveMsg.textContent = "Checking...";
       try {
         await loadTurnstile();
       } catch {
@@ -419,12 +433,16 @@
     });
 
     call("GET");
+    let polls = 0;
     setInterval(() => {
-      if (document.hidden || active.classList.contains("hidden")) return;
-      left -= 1;
+      if (active.classList.contains("hidden")) return;
       renderLeft();
-      if (left % 3 === 0) call("GET");
+      // The request log refreshes every 3 seconds while the tab is showing.
+      if (!document.hidden && ++polls % 3 === 0) call("GET");
     }, 1000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && !active.classList.contains("hidden")) call("GET");
+    });
   }
 
   // ---- share ---------------------------------------------------------------

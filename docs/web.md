@@ -38,7 +38,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 | `/archive` | Released dailies, newest first. |
 | `/format` | Renders `docs/pack-format.md`. |
 | `POST /api/p/{id}/answer` | `{"answer": "...", "seconds"?: n, "hints"?: n}` returns `{"correct": bool, "explainer_html"?: string}`. The explainer is only included for a correct answer. For a signed-in user a correct answer is also saved, with the reported time and hints clamped to sane ranges. |
-| `/register`, `/verify`, `/login`, `/logout`, `/forgot`, `/reset`, `/account`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |
+| `/register`, `/verify`, `/login`, `/login/verify`, `/logout`, `/forgot`, `/reset`, `/account`, `/account/mfa/*`, `/email/confirm` | Accounts, see [accounts.md](accounts.md). |
 | `/admin` | Admin only. |
 | `GET /api/me/progress` | The signed-in user's solves, or `{"user": null}`. |
 | `GET /api/p/{id}/explainer` | The explainer, for a signed-in user who has solved the puzzle. |
@@ -46,7 +46,7 @@ Packs are loaded and rendered once at startup. The server exits if any pack is i
 
 ## Player state
 
-Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. Time only counts while the tab is visible.
+Without an account the server stores nothing about players. `app.js` keeps solves, hints used and active time in `localStorage` under `necropsy:v1`. The streak is the number of consecutive days (in the player's own timezone), ending today or yesterday, with at least one solve. The solve timer counts while the puzzle page is open, in a background tab too, since the work is often done in other windows. It stops when the page is closed and resumes from the saved time. A gap of more than two minutes between ticks (the machine slept) adds only two minutes.
 
 A returning player's solved answer is kept locally and re-submitted on page load to bring the explainer back.
 

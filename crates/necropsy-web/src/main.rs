@@ -17,6 +17,7 @@ mod ipnet;
 mod live;
 mod mail;
 mod markdown;
+mod mfa;
 mod pages;
 mod state;
 
@@ -335,6 +336,11 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/login",
             get(accounts::login_get).post(accounts::login_post),
         )
+        .route(
+            "/login/verify",
+            get(mfa::login_verify_get).post(mfa::login_verify_post),
+        )
+        .route("/login/verify/email", post(mfa::login_verify_email_post))
         .route("/logout", post(accounts::logout_post))
         .route(
             "/forgot",
@@ -349,6 +355,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/account/username", post(accounts::account_username_post))
         .route("/account/email", post(accounts::account_email_post))
         .route("/account/delete", post(accounts::account_delete_post))
+        .route("/account/mfa/totp/start", post(mfa::totp_start_post))
+        .route("/account/mfa/totp/confirm", post(mfa::totp_confirm_post))
+        .route("/account/mfa/totp/remove", post(mfa::totp_remove_post))
+        .route("/account/mfa/email/enable", post(mfa::email_enable_post))
+        .route("/account/mfa/email/disable", post(mfa::email_disable_post))
+        .route("/account/mfa/recovery", post(mfa::recovery_post))
         .route("/email/confirm", get(accounts::email_confirm_get))
         // admin
         .route("/admin", get(admin::admin_get))

@@ -100,9 +100,7 @@ async fn admin_page(
                     }
                 }
                 p.muted {
-                    "Start one to try it, whatever its state. It is yours alone, with no captcha and no "
-                    "limit, and its flag is shown here. Puzzles that need the range are loaded only "
-                    "when NECROPSY_RANGE_URL is set."
+                    "Start one to try it. There is no captcha or limit, and its flag is shown here."
                 }
                 div.table-wrap {
                     table.table {
@@ -160,6 +158,11 @@ fn user_row(r: &AdminRow, total: usize) -> Markup {
                 div.row-actions { @if !u.is_admin {
                     form method="post" action={"/admin/users/" (u.id) "/" (if u.disabled { "enable" } else { "disable" })} {
                         button.link-button type="submit" { (if u.disabled { "Enable" } else { "Disable" }) }
+                    }
+                    @if u.mfa() {
+                        form method="post" action={"/admin/users/" (u.id) "/reset-mfa"} {
+                            button.link-button type="submit" { "Reset 2FA" }
+                        }
                     }
                     a.link-button href={"/admin/users/" (u.id) "/delete"} { "Delete" }
                 } }
@@ -250,20 +253,26 @@ pub async fn live_stop_post(
     Redirect::to("/admin").into_response()
 }
 
-/// `enable` or `disable`. Admin accounts are never touched.
+/// `enable`, `disable` or `reset-mfa` (removes the user's second step, for someone
+/// who has lost their device and recovery codes). Admin accounts are never touched.
 pub async fn user_action_post(
     State(state): State<Arc<AppState>>,
     AdminUser(_admin): AdminUser,
     Path((id, action)): Path<(i64, String)>,
 ) -> Response {
     let disable = match action.as_str() {
-        "disable" => true,
-        "enable" => false,
+        "disable" => Some(true),
+        "enable" => Some(false),
+        "reset-mfa" => None,
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
     match state.db.user_by_id(id).await {
         Ok(Some(u)) if !u.is_admin => {
-            if state.db.set_disabled(id, disable).await.is_err() {
+            let done = match disable {
+                Some(d) => state.db.set_disabled(id, d).await,
+                None => state.db.mfa_clear(id).await,
+            };
+            if done.is_err() {
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
             Redirect::to("/admin").into_response()
