@@ -254,7 +254,7 @@ pub async fn live_start_post(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     }
-    match live::create_instance(&state, admin.id, &rp.pack).await {
+    match live::create_instance(&state, admin.id, &rp.pack, None).await {
         Ok(_) => Redirect::to("/admin").into_response(),
         Err(refusal) => refusal.into_response(),
     }

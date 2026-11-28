@@ -89,6 +89,15 @@
 
   const isSolved = (id) => !!(state.solved[id] || server.solved[id]);
 
+  /** Moves a live daily's ranked-attempt notice from one state to the next. */
+  function rankedNotice(from, to, text) {
+    const el = document.querySelector(".ranked-notice");
+    if (!el || el.dataset.state !== from) return;
+    el.dataset.state = to;
+    el.textContent = text;
+    el.className = "muted ranked-notice";
+  }
+
   // ---- streak ----------------------------------------------------------------
 
   /**
@@ -481,6 +490,9 @@
     msg.classList.remove("err-text");
     try {
       const r = await postAnswer(id, answer, seconds, hintsShown);
+      if (r.attempt === "ranked") {
+        rankedNotice("running", "solved", "Your ranked attempt is done. Further attempts are on your account page only.");
+      }
       if (r.correct) {
         const ontime = releaseDay !== null && localDay() === releaseDay;
         // A signed-in player's time and hints are the ones the server recorded.
@@ -599,7 +611,13 @@
         const r = await fetch(api + path, { method, headers, credentials: "same-origin" });
         if (!r.ok) throw new Error(await r.text());
         renderInstance(await r.json());
-        if (method === "POST" && path === "") document.dispatchEvent(new Event("necropsy:instance-started"));
+        if (method === "POST" && path === "") {
+          document.dispatchEvent(new Event("necropsy:instance-started"));
+          rankedNotice("new", "running", "Your ranked attempt is running.");
+        }
+        if (method === "POST" && path === "/stop") {
+          rankedNotice("running", "failed", "Your ranked attempt has ended. Further attempts are on your account page only.");
+        }
       } catch (e) {
         liveMsg.textContent = e.message || "Something went wrong.";
         liveMsg.classList.add("err-text");

@@ -1,6 +1,6 @@
 # Live puzzles
 
-A live puzzle is a server. A signed-in player presses **Spin up instance** and gets a link like `https://k3x9q2mfa7.necropsy.urashyl.dev`. That link is a small simulated server, described by the pack, that lives for a while and answers whatever the player sends it. They attack it, emulate a client of it, or pick through what it exposes, and the flag is what it hands over.
+A live puzzle is a server. A signed-in player presses **Spin up instance** and gets a link like `https://k3x9q2mfa7.necropsy.urashyl.dev`. That link is a small simulated server, described by the pack, that lives for a while and answers whatever the player sends it. They attack it, emulate a client of it, or pick through what it exposes, and the flag is what it hands over. On a live daily, the first instance a player starts on the daily's day is their one ranked attempt ([leaderboards.md](leaderboards.md)).
 
 There are two ways to back a live puzzle:
 

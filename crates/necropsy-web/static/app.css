@@ -1745,3 +1745,90 @@ a.icon-btn {
 .discuss {
   font-weight: 600;
 }
+
+/* ---- leaderboards ---------------------------------------------------------- */
+
+.board-tabs {
+  display: flex;
+  gap: 1.25rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.board-tabs a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.board-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.board-pick select {
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--step--1);
+}
+
+.board th,
+.board td {
+  padding-right: 0.75rem;
+}
+
+.board td.num,
+.board th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.board td.player {
+  min-width: 10ch;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ranked-notice {
+  margin-bottom: 0.75rem;
+}
+
+.board-hidden td {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.board-hidden td:last-child {
+  text-decoration: none;
+}
+
+.board .inline-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0;
+}
+
+.board .inline-form input {
+  width: 9rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

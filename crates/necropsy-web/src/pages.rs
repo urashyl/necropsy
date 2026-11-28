@@ -30,6 +30,7 @@ pub enum Nav {
     Learn,
     Library,
     Archive,
+    Leaderboard,
     Search,
     Format,
     Account,
@@ -122,7 +123,16 @@ async fn puzzle_response(
     rp: &RenderedPack,
 ) -> Response {
     let (files, cookie) = viewer_files(state, viewer, headers, rp).await;
-    let page = puzzle_page(state, viewer, rp, &*state.stats().await, &files).into_response();
+    let ranked = crate::leaderboard::ranked_status_for(state, viewer, rp).await;
+    let page = puzzle_page(
+        state,
+        viewer,
+        rp,
+        &*state.stats().await,
+        &files,
+        ranked.as_deref(),
+    )
+    .into_response();
     with_cookie(page, cookie)
 }
 
@@ -487,13 +497,19 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 
 /// The controls of a live puzzle: spin up an instance, see its link, its
 /// time left and the requests it has had. Driven by app.js.
-pub(crate) fn live_panel(state: &AppState, viewer: Option<&User>, rp: &RenderedPack) -> Markup {
+pub(crate) fn live_panel(
+    state: &AppState,
+    viewer: Option<&User>,
+    rp: &RenderedPack,
+    ranked: Option<&str>,
+) -> Markup {
     let captcha_key = state.captcha.site_key();
     let ttl = rp.pack.live.as_ref().map(|s| s.ttl_minutes).unwrap_or(60);
     html! {
         section #live.live-panel data-sitekey=[captcha_key] {
             h2 { "Live instance" }
             p.muted { "Runs for " (ttl) " minutes." }
+            @if viewer.is_some() { (crate::leaderboard::live_notice(state, rp, ranked)) }
             @if viewer.is_none() {
                 p.notice { a href="/login" { "Sign in" } " to start an instance." }
             } @else {
@@ -528,6 +544,7 @@ fn puzzle_page(
     rp: &RenderedPack,
     stats: &Stats,
     files: &ViewerFiles,
+    ranked: Option<&str>,
 ) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
@@ -566,7 +583,7 @@ fn puzzle_page(
                     }
 
                     @if rp.pack.is_live() {
-                        (live_panel(state, viewer, rp))
+                        (live_panel(state, viewer, rp, ranked))
                     }
 
                     (file_figures(&m.id, files))
@@ -835,6 +852,7 @@ pub fn layout(
                                 a href="/library" aria-current=[current(Nav::Library)] { "Library" }
                             }
                             a href="/archive" aria-current=[current(Nav::Archive)] { "Archive" }
+                            a href="/leaderboard" aria-current=[current(Nav::Leaderboard)] { "Boards" }
                             a href="/format" aria-current=[current(Nav::Format)] { "Format" }
                         }
                         div.header-tools {
