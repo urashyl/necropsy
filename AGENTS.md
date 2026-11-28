@@ -13,6 +13,7 @@ Rules for AI agents and contributors. They are short on purpose: follow them.
 | Accounts, login, two-step verification, abuse limits, the database | [`docs/accounts.md`](docs/accounts.md) |
 | Puzzle packs and their format | [`docs/pack-format.md`](docs/pack-format.md) |
 | Sealed packs, keys, release | [`docs/sealing.md`](docs/sealing.md) |
+| The browser solver, `solve.browser.js` | [`docs/browser-solver.md`](docs/browser-solver.md) |
 | The workspace: pcap viewer, decoder, request console, notebook | [`docs/toolkit.md`](docs/toolkit.md) |
 | The Learn track and its practice puzzles | [`docs/learn.md`](docs/learn.md) |
 | Discord link and discussion threads | [`docs/community.md`](docs/community.md) |
@@ -48,6 +49,7 @@ node --test crates/necropsy-web/tests-js/*.test.mjs
 cargo run -q --bin pack-tool -- validate packs
 cargo run -q --bin pack-tool -- check-gen packs && cargo run -q --bin pack-tool -- gen-build --check packs
 cargo run -q --bin pack-tool -- check-sealed packs packs-sealed
+cargo build -q --bin necropsy-web && cargo run -q --bin pack-tool -- solve-browser packs && node tools/browser-solver/selftest.mjs target/debug/necropsy-web toolkit/dist
 deploy/test/common.sh && deploy/test/install-site.sh && deploy/test/install-range.sh && deploy/test/range-update.sh
 deploy/bluegreen/test/run.sh && range/local-test.sh
 ```

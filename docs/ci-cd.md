@@ -18,7 +18,7 @@ Two repository rulesets, with nobody on the bypass list, admins included:
 
 Pack submissions from other authors need an admin's approval: before accepting any, set the `main` ruleset's required approvals to 1 ([sealing.md](sealing.md#ci)).
 
-Pull request runs get no secrets: `ci.yml` is triggered by `pull_request`, never `pull_request_target`, and a test (`pull_request_workflows_never_see_a_secret`) fails the build if a workflow a pull request can trigger uses either. CI also checks sealed packs without a key (`pack-tool check-sealed`) and fails if `packs-src/`, a `.env`, a `*.key` file or a server secret is committed.
+Pull request runs get no secrets: `ci.yml` is triggered by `pull_request`, never `pull_request_target`, and a test (`pull_request_workflows_never_see_a_secret`) fails the build if a workflow a pull request can trigger uses either. A `browser` job solves every pack that has a `solve.browser.js` in Chromium, for several players each ([browser-solver.md](browser-solver.md)). CI also checks sealed packs without a key (`pack-tool check-sealed`) and fails if `packs-src/`, a `.env`, a `*.key` file or a server secret is committed.
 
 Work happens on a scratch branch, and reaches `main` by a pull request from that branch. CI runs on the pull request and on every push to the branch. A merge to `main` deploys to production.
 

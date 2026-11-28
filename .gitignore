@@ -9,3 +9,4 @@ __pycache__/
 /packs/*/generator/target/
 /packs-src/
 *.key
+node_modules/
