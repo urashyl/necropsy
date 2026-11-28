@@ -26,6 +26,7 @@ Run `toolkit/fetch.sh` once first for the workspace's tools (see [docs/toolkit.m
 | `docs/learn.md` | The Learn track: modules, tool paths, checkpoints, and writing a module. |
 | `docs/sealing.md` | Sealed packs: unreleased dailies encrypted in the repository, the keys, and when each is released. |
 | `packs-sealed/` | Sealed packs and the public wrap keys. |
+| `docs/moderation.md` | Proofs from the top of each ranked board, moderators, and the audit log. |
 | `docs/leaderboards.md` | The casual and ranked leaderboards, ranked attempts and personal records. |
 | `docs/browser-solver.md` | The browser solver: proves a daily of difficulty 1 to 3 can be solved in the workspace, for every player. |
 | `tools/browser-solver/` | The browser solver's runner and its self-test. |

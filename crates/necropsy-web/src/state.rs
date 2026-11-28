@@ -113,6 +113,9 @@ pub struct AppState {
     pub generator: crate::generated::Generator,
     /// Sealed packs: the wrap key, each loaded pack's key, and what happened to each.
     pub sealed: crate::sealed::Sealed,
+    /// How many places at the top of each ranked board need a proof
+    /// (`NECROPSY_RANKED_TOP_N`, docs/moderation.md).
+    pub top_n: usize,
     /// Highlights code files: at startup for packs, per player for generated ones.
     hl: Highlighter,
 }
@@ -169,6 +172,7 @@ impl AppState {
             community: crate::community::Community::default(),
             generator: crate::generated::Generator::default(),
             sealed: crate::sealed::Sealed::default(),
+            top_n: crate::moderation::DEFAULT_TOP_N,
             hl,
         }
     }

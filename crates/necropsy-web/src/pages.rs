@@ -131,6 +131,7 @@ async fn puzzle_response(
         &*state.stats().await,
         &files,
         ranked.as_deref(),
+        crate::moderation::due_notice(state, viewer).await,
     )
     .into_response();
     with_cookie(page, cookie)
@@ -545,6 +546,7 @@ fn puzzle_page(
     stats: &Stats,
     files: &ViewerFiles,
     ranked: Option<&str>,
+    due: Markup,
 ) -> Markup {
     let m = &rp.pack.meta;
     let (prev, next) = state.neighbors(rp);
@@ -561,6 +563,7 @@ fn puzzle_page(
             data-hints=(m.hints.len()) data-url=(puzzle_url(state, rp))
             data-label=(rp.label().to_lowercase()) data-day=(release_day(rp)) {
             section.wrap.page-head {
+                (due)
                 (crumb(state, rp))
                 h1 { (m.title) }
             }
@@ -860,6 +863,8 @@ pub fn layout(
                                 a.user-link.user-name href="/account" title=(u.username) aria-current=[current(Nav::Account)] { (u.username) }
                                 @if u.is_admin {
                                     a.user-link href="/admin" aria-current=[current(Nav::Admin)] { "Admin" }
+                                } @else if u.moderator {
+                                    a.user-link href="/mod/proofs" { "Moderate" }
                                 }
                             } @else {
                                 a.user-link href="/login" { "Log in" }

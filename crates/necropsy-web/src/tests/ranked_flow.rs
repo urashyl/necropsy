@@ -249,12 +249,14 @@ async fn the_database_refuses_to_reopen_or_retime_a_finished_attempt() {
         assert!(e.to_string().contains("only ends once"), "{sql}: {e}");
     }
     // Hiding is allowed, and leaves the attempt as it was.
+    let erin_user = s.state.db.user_by_id(id).await.unwrap().unwrap();
     assert!(s
         .state
         .db
-        .ranked_hide(id, DAILY.into(), id, Some("test".into()))
+        .board_set_removed(id, DAILY.into(), erin_user, Some("test".into()), 10)
         .await
-        .unwrap());
+        .unwrap()
+        .is_some());
     assert_eq!(attempts(&s, "erin").await.0.unwrap().0, "solved");
 }
 
@@ -290,13 +292,13 @@ async fn a_start_that_failed_leaves_no_attempt() {
 }
 
 #[tokio::test]
-async fn only_an_admin_hides_an_entry_and_it_keeps_its_time() {
+async fn only_a_moderator_removes_an_entry_and_it_keeps_its_time() {
     let s = live_site_on("2026-11-27").await;
     let (gus, label) = spin_up(&s, "gus", DAILY).await;
     let flag = pebble_flag(&s, &label).await;
     answer(&s, &gus, &flag).await;
     let id = uid(&s, "gus").await;
-    let hide = format!("/leaderboard/ranked/{DAILY}/{id}/hide");
+    let hide = format!("/mod/board/{DAILY}/{id}/remove");
 
     // A player gets a 404, a visitor the login page; nothing changes.
     let (hal, _) = spin_up(&s, "hal", DAILY).await;
@@ -341,10 +343,10 @@ async fn only_an_admin_hides_an_entry_and_it_keeps_its_time() {
         "{seen}"
     );
     let account = s.get("/account", Some(&gus)).await.body;
-    assert!(account.contains("hidden by an admin"), "{account}");
+    assert!(account.contains("removed by a moderator"), "{account}");
     assert_eq!(attempts(&s, "gus").await.0.unwrap().0, "solved");
 
-    let show = format!("/leaderboard/ranked/{DAILY}/{id}/show");
+    let show = format!("/mod/board/{DAILY}/{id}/reinstate");
     assert_eq!(
         s.post(&show, &[], Some(&admin)).await.status,
         StatusCode::SEE_OTHER
@@ -357,7 +359,7 @@ async fn only_an_admin_hides_an_entry_and_it_keeps_its_time() {
     // No such attempt.
     assert_eq!(
         s.post(
-            &format!("/leaderboard/ranked/{DAILY}/99999/hide"),
+            &format!("/mod/board/{DAILY}/99999/remove"),
             &[("reason", "x")],
             Some(&admin)
         )
@@ -379,7 +381,10 @@ async fn the_ranked_board_is_fastest_first_and_only_for_live_dailies() {
     let board = s.get("/leaderboard/ranked", None).await.body;
     let (jon, ivy) = (board.find(">jon<").unwrap(), board.find(">ivy<").unwrap());
     assert!(jon < ivy, "the faster first");
-    assert!(board.contains("2 solved of 2 ranked attempts"), "{board}");
+    assert!(
+        board.contains("2 on the board of 2 ranked attempts"),
+        "{board}"
+    );
     // A puzzle that is not a live daily has no board.
     assert_eq!(
         s.get("/leaderboard/ranked?pack=iloveyou-dropped", None)

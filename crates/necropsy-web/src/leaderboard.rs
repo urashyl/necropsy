@@ -10,14 +10,14 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use axum::extract::{Form, Path, Query, State};
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use maud::{html, Markup};
 use necropsy_pack::Track;
 use serde::Deserialize;
 
-use crate::auth::{AdminUser, MaybeUser};
+use crate::auth::MaybeUser;
 use crate::cards::streak_ending;
 use crate::pages::{clock, layout, Nav};
 use crate::state::{AppState, RenderedPack};
@@ -165,7 +165,11 @@ pub async fn ranked(
         },
         None => dailies.first().copied(),
     };
-    let admin = viewer.as_ref().is_some_and(|u| u.is_admin);
+    let moderator = viewer.as_ref().is_some_and(|u| u.can_moderate());
+    if let Some(p) = chosen {
+        crate::moderation::refresh(&state, Some(p.pack.meta.id.clone()), None).await;
+    }
+    let due = crate::moderation::due_notice(&state, viewer.as_ref()).await;
     let board = match chosen {
         Some(p) => match state.db.ranked_board(p.pack.meta.id.clone()).await {
             Ok(b) => Some(b),
@@ -183,6 +187,8 @@ pub async fn ranked(
             p.page-lead {
                 "Live dailies only. Each player gets one ranked attempt per daily: it starts with their first instance on the puzzle's day and ends when they solve it, stop the instance or it runs out. Later attempts count only on the player's own account page."
             }
+            p.muted { "The top " (state.top_n) " explain their solve to a moderator. An entry whose explanation is rejected or not sent leaves the board." }
+            (due)
         }
         section.wrap.section-tight {
             @if let (Some(p), Some((rows, total))) = (chosen, &board) {
@@ -197,10 +203,10 @@ pub async fn ranked(
                     }
                     button.button.button-quiet type="submit" { "Show" }
                 }
-                @let shown = ranked_rows(rows, admin);
+                @let shown = ranked_rows(rows, moderator);
                 p.muted {
                     a href={"/p/" (p.pack.meta.id)} { (p.pack.meta.title) } ": "
-                    (shown.iter().filter(|(_, r)| !r.hidden).count()) " solved of " (total) " ranked attempts."
+                    (shown.iter().filter(|(_, r)| !is_off(r)).count()) " on the board of " (total) " ranked attempts."
                 }
                 @if shown.is_empty() {
                     p.muted { "Nobody has solved it in a ranked attempt yet." }
@@ -208,18 +214,19 @@ pub async fn ranked(
                     div.table-wrap {
                         table.table.board {
                             thead { tr {
-                                th { "#" } th { "Player" } th.num { "Time" } th.num { "Hints" }
-                                @if admin { th { "Admin" } }
+                                th { "#" } th { "Player" } th.num { "Time" } th.num { "Hints" } th { "Proof" }
+                                @if moderator { th { "Moderate" } }
                             } }
                             tbody {
                                 @for (rank, r) in &shown {
-                                    tr.(if r.hidden { "board-hidden" } else { "" }) {
+                                    tr.(if is_off(r) { "board-hidden" } else { "" }) {
                                         td.num { @if let Some(n) = rank { (n) } @else { "–" } }
                                         td.player { (r.username) }
                                         td.num { (clock(r.seconds as f64)) }
                                         td.num { (r.hints) }
-                                        @if admin {
-                                            td { (hide_form(&p.pack.meta.id, r)) }
+                                        td { (proof_label(r)) }
+                                        @if moderator {
+                                            td { (mod_form(&p.pack.meta.id, r)) }
                                         }
                                     }
                                 }
@@ -244,17 +251,37 @@ pub async fn ranked(
     .into_response()
 }
 
-/// The rows to show with their places: hidden entries take no place, and are
-/// shown only to an admin.
+/// Whether an entry is off the board: removed by a moderator, or its proof
+/// was rejected or forfeited (docs/moderation.md).
+pub fn is_off(r: &crate::db::RankedRow) -> bool {
+    r.hidden || matches!(r.proof.as_deref(), Some("rejected" | "forfeited"))
+}
+
+/// Why an entry is off the board, for moderators.
+fn off_reason(r: &crate::db::RankedRow) -> String {
+    if r.hidden {
+        format!("Removed: {}", r.hidden_reason.as_deref().unwrap_or(""))
+    } else if r.proof.as_deref() == Some("forfeited") {
+        "Proof not sent".to_owned()
+    } else {
+        format!(
+            "Proof rejected: {}",
+            r.proof_reason.as_deref().unwrap_or("")
+        )
+    }
+}
+
+/// The rows to show with their places: entries off the board take no place,
+/// and are shown only to a moderator.
 pub fn ranked_rows(
     rows: &[crate::db::RankedRow],
-    admin: bool,
+    moderator: bool,
 ) -> Vec<(Option<usize>, &crate::db::RankedRow)> {
     let mut place = 0;
     rows.iter()
-        .filter(|r| admin || !r.hidden)
+        .filter(|r| moderator || !is_off(r))
         .map(|r| {
-            if r.hidden {
+            if is_off(r) {
                 (None, r)
             } else {
                 place += 1;
@@ -264,86 +291,32 @@ pub fn ranked_rows(
         .collect()
 }
 
-fn hide_form(pack: &str, r: &crate::db::RankedRow) -> Markup {
-    let action = format!("/leaderboard/ranked/{pack}/{}/", r.user_id);
+/// An entry's proof, as the board shows it.
+fn proof_label(r: &crate::db::RankedRow) -> &'static str {
+    match r.proof.as_deref() {
+        Some("approved") => "Verified",
+        Some("pending") => "Under review",
+        Some("open") => "Proof due",
+        _ => "",
+    }
+}
+
+fn mod_form(pack: &str, r: &crate::db::RankedRow) -> Markup {
+    let action = format!("/mod/board/{pack}/{}/", r.user_id);
     html! {
         @if r.hidden {
-            form.inline-form method="post" action={(action) "show"} {
-                span.muted { "Hidden: " (r.hidden_reason.as_deref().unwrap_or("")) " " }
+            form.inline-form method="post" action={(action) "reinstate"} {
+                span.muted { (off_reason(r)) " " }
                 button.link-button type="submit" { "Reinstate" }
             }
+        } @else if is_off(r) {
+            span.muted { (off_reason(r)) }
         } @else {
-            form.inline-form method="post" action={(action) "hide"} {
+            form.inline-form method="post" action={(action) "remove"} {
                 label.visually-hidden for={"reason-" (r.user_id)} { "Reason" }
                 input id={"reason-" (r.user_id)} name="reason" type="text" required maxlength="200" placeholder="Reason";
-                button.link-button type="submit" { "Hide" }
+                button.link-button type="submit" { "Remove" }
             }
-        }
-    }
-}
-
-#[derive(Deserialize)]
-pub struct HideForm {
-    reason: String,
-}
-
-/// `POST /leaderboard/ranked/{pack}/{user}/hide`: an admin takes an entry off
-/// the board. The attempt itself, its status and its time, are kept.
-pub async fn hide(
-    State(state): State<Arc<AppState>>,
-    AdminUser(admin): AdminUser,
-    Path((pack, user)): Path<(String, i64)>,
-    Form(f): Form<HideForm>,
-) -> Response {
-    let reason = f.reason.trim();
-    if reason.is_empty() || reason.chars().count() > 200 {
-        return (
-            StatusCode::BAD_REQUEST,
-            "Give a reason, up to 200 characters.",
-        )
-            .into_response();
-    }
-    set_hidden(&state, pack, user, admin.id, Some(reason.to_owned())).await
-}
-
-/// `POST /leaderboard/ranked/{pack}/{user}/show`: puts a hidden entry back.
-pub async fn show(
-    State(state): State<Arc<AppState>>,
-    AdminUser(admin): AdminUser,
-    Path((pack, user)): Path<(String, i64)>,
-) -> Response {
-    set_hidden(&state, pack, user, admin.id, None).await
-}
-
-async fn set_hidden(
-    state: &AppState,
-    pack: String,
-    user: i64,
-    by: i64,
-    reason: Option<String>,
-) -> Response {
-    let back = format!("/leaderboard/ranked?pack={pack}");
-    match state
-        .db
-        .ranked_hide(user, pack.clone(), by, reason.clone())
-        .await
-    {
-        Ok(true) => {
-            tracing::info!(
-                "admin {by} {} the ranked attempt of user {user} at {pack}{}",
-                if reason.is_some() {
-                    "hid"
-                } else {
-                    "reinstated"
-                },
-                reason.map(|r| format!(": {r}")).unwrap_or_default()
-            );
-            Redirect::to(&back).into_response()
-        }
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(e) => {
-            tracing::error!("hiding a ranked attempt failed: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
@@ -425,7 +398,7 @@ pub async fn attempts_section(state: &AppState, user: &crate::db::User) -> Marku
                             }
                             td {
                                 @if a.kind == crate::db::Attempt::Ranked {
-                                    "Ranked" @if a.hidden { " (hidden by an admin)" }
+                                    "Ranked" @if a.hidden { " (removed by a moderator)" }
                                 } @else { "Personal" }
                             }
                             td { (match a.status.as_str() { "solved" => "Solved", "running" => "Running", _ => "Ended" }) }
