@@ -741,6 +741,8 @@ pub async fn account_page(
                     div { dt { "Joined" } dd { (ymd(user.created_at)) } }
                     div { dt { "Solved" } dd { (solved) " of " (state.visible_count()) } }
                 }
+                (crate::leaderboard::attempts_section(state, user).await)
+
                 @if user.is_admin {
                     p.auth-links { a href="/admin" { "Admin" } }
 

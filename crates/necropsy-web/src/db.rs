@@ -14,7 +14,51 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 9;
+const SCHEMA_VERSION: i64 = 10;
+
+/// Ranked attempts (version 10): a player's one ranked attempt at a live daily,
+/// made in the same transaction as the instance that starts it, and their later
+/// attempts, which are theirs alone. See docs/leaderboards.md.
+///
+/// A ranked attempt only moves from `running` to `solved` or `failed`, once; its
+/// start and time never change. The trigger refuses anything else, whatever the
+/// code asks. Hiding it from the board (by an admin) is a separate column.
+const RANKED_SCHEMA: &str = "
+CREATE TABLE ranked_attempts (
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_id       TEXT NOT NULL,
+    started_at    INTEGER NOT NULL,
+    ended_at      INTEGER,
+    status        TEXT NOT NULL CHECK (status IN ('running', 'solved', 'failed')),
+    seconds       INTEGER,
+    hints         INTEGER,
+    hidden        INTEGER NOT NULL DEFAULT 0,
+    hidden_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    hidden_reason TEXT,
+    PRIMARY KEY (user_id, pack_id)
+);
+CREATE INDEX ranked_attempts_board ON ranked_attempts(pack_id, status, seconds);
+CREATE TRIGGER ranked_attempts_final
+BEFORE UPDATE OF user_id, pack_id, started_at, ended_at, status, seconds, hints ON ranked_attempts
+WHEN OLD.status != 'running'
+  OR NEW.user_id != OLD.user_id OR NEW.pack_id != OLD.pack_id
+  OR NEW.started_at != OLD.started_at
+  OR NEW.status NOT IN ('solved', 'failed')
+BEGIN
+    SELECT RAISE(ABORT, 'a ranked attempt only ends once');
+END;
+CREATE TABLE personal_records (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_id    TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    ended_at   INTEGER,
+    status     TEXT NOT NULL CHECK (status IN ('running', 'solved', 'failed')),
+    seconds    INTEGER,
+    hints      INTEGER
+);
+CREATE INDEX personal_records_user ON personal_records(user_id, pack_id);
+";
 
 /// Generated packs (version 9): each player's random seed per pack, and which
 /// live instances have flags keyed with the server secret (all made from now
@@ -252,6 +296,74 @@ fn row_instance(r: &rusqlite::Row<'_>) -> rusqlite::Result<Instance> {
     })
 }
 
+/// Which kind of attempt an instance start, or a solve, counted as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Attempt {
+    /// The player's one ranked attempt at this daily.
+    Ranked,
+    /// A later attempt, or one outside the daily's day: shown only to the player.
+    Personal,
+}
+
+/// A solved ranked attempt, for the board.
+#[derive(Clone, Debug)]
+pub struct RankedRow {
+    pub user_id: i64,
+    pub username: String,
+    pub seconds: i64,
+    pub hints: i64,
+    pub ended_at: i64,
+    pub hidden: bool,
+    pub hidden_reason: Option<String>,
+}
+
+/// One of a player's attempts at a live daily, for their own page.
+#[derive(Clone, Debug)]
+pub struct AttemptRow {
+    pub pack_id: String,
+    pub kind: Attempt,
+    pub status: String,
+    pub started_at: i64,
+    pub seconds: Option<i64>,
+    pub hidden: bool,
+}
+
+/// A player on the casual board: their solves of dailies (pack, solved at, tz),
+/// how many puzzles they have solved, and their Learn badges.
+#[derive(Clone, Debug)]
+pub struct CasualRow {
+    pub username: String,
+    pub solved: i64,
+    pub badges: i64,
+    pub daily_solves: Vec<(String, i64, i64)>,
+}
+
+/// Ends the running attempts (ranked and personal) of players who have no
+/// running instance of that pack: failed, ended when their last instance did.
+/// Limited to one player's pack with `only`.
+fn settle_attempts(c: &Connection, only: Option<(i64, &str)>) -> rusqlite::Result<usize> {
+    let t = now();
+    let (filter, user, pack) = match only {
+        Some((u, p)) => ("AND a.user_id = ?2 AND a.pack_id = ?3", u, p.to_owned()),
+        None => ("AND ?2 = ?2 AND ?3 = ?3", 0, String::new()),
+    };
+    let mut n = 0;
+    for table in ["ranked_attempts", "personal_records"] {
+        n += c.execute(
+            &format!(
+                "UPDATE {table} AS a SET status = 'failed',
+                     ended_at = MIN(?1, COALESCE((SELECT MAX(i.expires_at) FROM live_instances i
+                         WHERE i.user_id = a.user_id AND i.pack_id = a.pack_id), ?1))
+                 WHERE a.status = 'running' {filter}
+                   AND NOT EXISTS (SELECT 1 FROM live_instances i
+                       WHERE i.user_id = a.user_id AND i.pack_id = a.pack_id AND i.expires_at > ?1)"
+            ),
+            params![t, user, pack],
+        )?;
+    }
+    Ok(n)
+}
+
 #[derive(Debug)]
 pub struct Solve {
     pub pack_id: String,
@@ -357,6 +469,9 @@ impl Db {
         }
         if version < 9 {
             conn.execute_batch(GEN_SCHEMA)?;
+        }
+        if version < 10 {
+            conn.execute_batch(RANKED_SCHEMA)?;
         }
         if version != SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -1351,6 +1466,268 @@ impl Db {
         .await
     }
 
+    /// Starts an instance and, for a live daily (`track` is Some), the attempt it
+    /// begins, in one transaction: the ranked attempt if `track` is Some(true) and
+    /// the player has none for this pack yet, otherwise a personal record. A
+    /// running attempt whose instances have all ended is settled as failed first.
+    pub async fn live_create_attempt(
+        &self,
+        i: Instance,
+        track: Option<bool>,
+    ) -> rusqlite::Result<Option<Attempt>> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            settle_attempts(&tx, Some((i.user_id, &i.pack_id)))?;
+            tx.execute(
+                "INSERT INTO live_instances (label, user_id, pack_id, seed, created_at, expires_at, keyed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![i.label, i.user_id, i.pack_id, i.seed, i.created_at, i.expires_at, i.keyed],
+            )?;
+            let kind = match track {
+                None => None,
+                Some(ranked_ok) => {
+                    let ranked = ranked_ok
+                        && tx.execute(
+                            "INSERT OR IGNORE INTO ranked_attempts (user_id, pack_id, started_at, status)
+                             VALUES (?1, ?2, ?3, 'running')",
+                            params![i.user_id, i.pack_id, i.created_at],
+                        )? == 1;
+                    if ranked {
+                        Some(Attempt::Ranked)
+                    } else {
+                        tx.execute(
+                            "INSERT INTO personal_records (user_id, pack_id, started_at, status)
+                             VALUES (?1, ?2, ?3, 'running')",
+                            params![i.user_id, i.pack_id, i.created_at],
+                        )?;
+                        Some(Attempt::Personal)
+                    }
+                }
+            };
+            tx.commit()?;
+            Ok(kind)
+        })
+        .await
+    }
+
+    /// Undoes an instance start that failed before the player got the instance
+    /// (its container did not start): the instance and the attempt it began.
+    /// Nothing else removes an attempt.
+    pub async fn live_create_failed(&self, i: Instance) -> rusqlite::Result<()> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            tx.execute("DELETE FROM live_instances WHERE label = ?1", [&i.label])?;
+            for table in ["ranked_attempts", "personal_records"] {
+                tx.execute(
+                    &format!(
+                        "DELETE FROM {table} WHERE user_id = ?1 AND pack_id = ?2
+                         AND started_at = ?3 AND status = 'running'"
+                    ),
+                    params![i.user_id, i.pack_id, i.created_at],
+                )?;
+            }
+            tx.commit()
+        })
+        .await
+    }
+
+    /// Ends the player's running attempt at a pack as solved, if an instance is
+    /// still running: a flag sent in after the instance ended does not count.
+    pub async fn attempt_solved(
+        &self,
+        user_id: i64,
+        pack_id: String,
+        hints: i64,
+    ) -> rusqlite::Result<Option<Attempt>> {
+        self.run(move |c| {
+            let tx = c.transaction()?;
+            settle_attempts(&tx, Some((user_id, &pack_id)))?;
+            let t = now();
+            let ranked = tx.execute(
+                "UPDATE ranked_attempts SET status = 'solved', ended_at = ?3,
+                     seconds = MAX(0, ?3 - started_at), hints = ?4
+                 WHERE user_id = ?1 AND pack_id = ?2 AND status = 'running'",
+                params![user_id, pack_id, t, hints],
+            )?;
+            let kind = if ranked == 1 {
+                Some(Attempt::Ranked)
+            } else if tx.execute(
+                "UPDATE personal_records SET status = 'solved', ended_at = ?3,
+                     seconds = MAX(0, ?3 - started_at), hints = ?4
+                 WHERE id = (SELECT id FROM personal_records
+                     WHERE user_id = ?1 AND pack_id = ?2 AND status = 'running'
+                     ORDER BY started_at DESC LIMIT 1)",
+                params![user_id, pack_id, t, hints],
+            )? == 1
+            {
+                Some(Attempt::Personal)
+            } else {
+                None
+            };
+            tx.commit()?;
+            Ok(kind)
+        })
+        .await
+    }
+
+    /// Settles running attempts whose instances have ended: one player's pack, or
+    /// everyone's with `None`.
+    pub async fn attempts_settle(&self, only: Option<(i64, String)>) -> rusqlite::Result<usize> {
+        self.run(move |c| settle_attempts(c, only.as_ref().map(|(u, p)| (*u, p.as_str()))))
+            .await
+    }
+
+    /// The player's attempt at a pack that counts for the board, if any.
+    pub async fn ranked_status(
+        &self,
+        user_id: i64,
+        pack_id: String,
+    ) -> rusqlite::Result<Option<String>> {
+        self.run(move |c| {
+            settle_attempts(c, Some((user_id, &pack_id)))?;
+            c.query_row(
+                "SELECT status FROM ranked_attempts WHERE user_id = ?1 AND pack_id = ?2",
+                params![user_id, pack_id],
+                |r| r.get(0),
+            )
+            .optional()
+        })
+        .await
+    }
+
+    /// A daily's ranked board: solved attempts, fastest first, hidden ones
+    /// included (marked) so an admin can see them. Also how many ranked attempts
+    /// it has had in all.
+    pub async fn ranked_board(&self, pack_id: String) -> rusqlite::Result<(Vec<RankedRow>, i64)> {
+        self.run(move |c| {
+            settle_attempts(c, None)?;
+            let mut st = c.prepare(
+                "SELECT a.user_id, u.username, a.seconds, COALESCE(a.hints, 0), a.ended_at,
+                        a.hidden, a.hidden_reason
+                 FROM ranked_attempts a JOIN users u ON u.id = a.user_id
+                 WHERE a.pack_id = ?1 AND a.status = 'solved' AND u.disabled = 0
+                 ORDER BY a.seconds, a.ended_at, u.id",
+            )?;
+            let rows = st
+                .query_map([&pack_id], |r| {
+                    Ok(RankedRow {
+                        user_id: r.get(0)?,
+                        username: r.get(1)?,
+                        seconds: r.get(2)?,
+                        hints: r.get(3)?,
+                        ended_at: r.get(4)?,
+                        hidden: r.get(5)?,
+                        hidden_reason: r.get(6)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let total: i64 = c.query_row(
+                "SELECT COUNT(*) FROM ranked_attempts WHERE pack_id = ?1",
+                [&pack_id],
+                |r| r.get(0),
+            )?;
+            Ok((rows, total))
+        })
+        .await
+    }
+
+    /// Hides a ranked attempt from the board, or shows it again (`reason` None).
+    /// Its status and time are untouched. False if there is no such attempt.
+    pub async fn ranked_hide(
+        &self,
+        user_id: i64,
+        pack_id: String,
+        by: i64,
+        reason: Option<String>,
+    ) -> rusqlite::Result<bool> {
+        self.run(move |c| {
+            let n = match reason {
+                Some(r) => c.execute(
+                    "UPDATE ranked_attempts SET hidden = 1, hidden_by = ?3, hidden_reason = ?4
+                     WHERE user_id = ?1 AND pack_id = ?2",
+                    params![user_id, pack_id, by, r],
+                )?,
+                None => c.execute(
+                    "UPDATE ranked_attempts SET hidden = 0, hidden_by = NULL, hidden_reason = NULL
+                     WHERE user_id = ?1 AND pack_id = ?2",
+                    params![user_id, pack_id],
+                )?,
+            };
+            Ok(n == 1)
+        })
+        .await
+    }
+
+    /// Every attempt the player has made at a live daily, ranked and personal,
+    /// newest first. For the player's own page only.
+    pub async fn attempts_of(&self, user_id: i64) -> rusqlite::Result<Vec<AttemptRow>> {
+        self.run(move |c| {
+            settle_attempts(c, None)?;
+            let mut st = c.prepare(
+                "SELECT pack_id, 1, status, started_at, seconds, hidden FROM ranked_attempts WHERE user_id = ?1
+                 UNION ALL
+                 SELECT pack_id, 0, status, started_at, seconds, 0 FROM personal_records WHERE user_id = ?1
+                 ORDER BY 4 DESC LIMIT 200",
+            )?;
+            let rows = st.query_map([user_id], |r| {
+                Ok(AttemptRow {
+                    pack_id: r.get(0)?,
+                    kind: if r.get::<_, bool>(1)? {
+                        Attempt::Ranked
+                    } else {
+                        Attempt::Personal
+                    },
+                    status: r.get(2)?,
+                    started_at: r.get(3)?,
+                    seconds: r.get(4)?,
+                    hidden: r.get(5)?,
+                })
+            })?;
+            rows.collect()
+        })
+        .await
+    }
+
+    /// The casual board's raw material: every verified, enabled player with a
+    /// solve, their solve count, Learn badges and the dailies among their solves.
+    pub async fn casual_rows(&self) -> rusqlite::Result<Vec<CasualRow>> {
+        self.run(|c| {
+            let mut st = c.prepare(
+                "SELECT u.id, u.username, COUNT(s.pack_id),
+                        (SELECT COUNT(*) FROM learn_passed l WHERE l.user_id = u.id)
+                 FROM users u JOIN solves s ON s.user_id = u.id
+                 WHERE u.verified = 1 AND u.disabled = 0
+                 GROUP BY u.id",
+            )?;
+            let users = st
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<(i64, String, i64, i64)>>>()?;
+            let mut solves =
+                c.prepare("SELECT pack_id, solved_at, tz FROM solves WHERE user_id = ?1")?;
+            let mut out = Vec::with_capacity(users.len());
+            for (id, username, solved, badges) in users {
+                let daily_solves = solves
+                    .query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                out.push(CasualRow {
+                    username,
+                    solved,
+                    badges,
+                    daily_solves,
+                });
+            }
+            Ok(out)
+        })
+        .await
+    }
+
     /// The instance behind a subdomain, live or expired.
     pub async fn live_by_label(&self, label: String) -> rusqlite::Result<Option<Instance>> {
         self.run(move |c| {
@@ -1470,6 +1847,7 @@ impl Db {
     pub async fn purge_expired(&self) -> rusqlite::Result<()> {
         self.run(|c| {
             let t = now();
+            settle_attempts(c, None)?;
             c.execute("DELETE FROM sessions WHERE expires_at <= ?1", [t])?;
             c.execute("DELETE FROM email_tokens WHERE expires_at <= ?1", [t])?;
             c.execute("DELETE FROM mfa_tickets WHERE expires_at <= ?1", [t])?;

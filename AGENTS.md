@@ -13,6 +13,7 @@ Rules for AI agents and contributors. They are short on purpose: follow them.
 | Accounts, login, two-step verification, abuse limits, the database | [`docs/accounts.md`](docs/accounts.md) |
 | Puzzle packs and their format | [`docs/pack-format.md`](docs/pack-format.md) |
 | Sealed packs, keys, release | [`docs/sealing.md`](docs/sealing.md) |
+| Leaderboards, ranked attempts | [`docs/leaderboards.md`](docs/leaderboards.md) |
 | The browser solver, `solve.browser.js` | [`docs/browser-solver.md`](docs/browser-solver.md) |
 | The workspace: pcap viewer, decoder, request console, notebook | [`docs/toolkit.md`](docs/toolkit.md) |
 | The Learn track and its practice puzzles | [`docs/learn.md`](docs/learn.md) |

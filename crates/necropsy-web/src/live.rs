@@ -1038,8 +1038,15 @@ pub async fn instance_post(
         Ok(_) => {}
         Err(e) => return server_error(e),
     }
-    match create_instance(&state, uid, pack).await {
-        Ok(inst) => {
+    // A live daily's first instance on its day starts the player's ranked
+    // attempt; any other start of a live daily, a personal one.
+    let track = (pack.meta.track == necropsy_pack::Track::Daily).then(|| {
+        state
+            .get(&pack.meta.id)
+            .is_some_and(|rp| state.is_today(rp))
+    });
+    match create_instance(&state, uid, pack, track).await {
+        Ok((inst, _)) => {
             // The player's clock on this puzzle starts with their first instance.
             if let Err(e) = state.db.progress_start(uid, pack.meta.id.clone()).await {
                 tracing::error!("starting the clock failed: {e}");
@@ -1079,12 +1086,14 @@ pub fn valid_label(s: &str) -> bool {
 
 /// Starts an instance of a live pack for a user: a row, and for a container pack
 /// the container. The caller has already decided the user may have one (the
-/// player's captcha and cap, or the admin, who has neither).
+/// player's captcha and cap, or the admin, who has neither). `track` records the
+/// attempt it starts (see [`crate::db::Db::live_create_attempt`]).
 pub async fn create_instance(
     state: &AppState,
     user_id: i64,
     pack: &Pack,
-) -> Result<Instance, Refusal> {
+    track: Option<bool>,
+) -> Result<(Instance, Option<crate::db::Attempt>), Refusal> {
     let Some(scenario) = &pack.live else {
         return Err(Refusal(StatusCode::NOT_FOUND, ""));
     };
@@ -1099,17 +1108,23 @@ pub async fn create_instance(
         flags: Vec::new(),
         keyed: true,
     };
-    if let Err(e) = state.db.live_create(inst.clone()).await {
-        tracing::error!("live instance failed: {e}");
-        return Err(Refusal(StatusCode::INTERNAL_SERVER_ERROR, ""));
-    }
+    let attempt = match state.db.live_create_attempt(inst.clone(), track).await {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::error!("live instance failed: {e}");
+            return Err(Refusal(StatusCode::INTERNAL_SERVER_ERROR, ""));
+        }
+    };
     if let Some(image) = pack.container() {
         if let Err(res) = start_container(state, &inst, scenario, image).await {
-            let _ = state.db.live_delete(inst.label.clone()).await;
+            // The player never got this instance, so it is not an attempt.
+            if let Err(e) = state.db.live_create_failed(inst.clone()).await {
+                tracing::error!("undoing a failed start failed: {e}");
+            }
             return Err(res);
         }
     }
-    Ok(inst)
+    Ok((inst, attempt))
 }
 
 /// Stops the user's running instances of a pack, container and all.
@@ -1121,6 +1136,14 @@ pub async fn stop_instances(state: &AppState, user_id: i64, pack: &Pack) {
     }
     if let Err(e) = state.db.live_stop(user_id, pack.meta.id.clone()).await {
         tracing::error!("live stop failed: {e}");
+    }
+    // Stopping without a solve ends the attempt it was for.
+    if let Err(e) = state
+        .db
+        .attempts_settle(Some((user_id, pack.meta.id.clone())))
+        .await
+    {
+        tracing::error!("settling attempts failed: {e}");
     }
 }
 

@@ -17,6 +17,7 @@ mod community;
 mod db;
 mod generated;
 mod ipnet;
+mod leaderboard;
 mod learn;
 mod live;
 mod mail;
@@ -469,6 +470,16 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(|| async { axum::response::Redirect::permanent("/library") }),
         )
         .route("/archive", get(pages::archive))
+        .route("/leaderboard", get(leaderboard::casual))
+        .route("/leaderboard/ranked", get(leaderboard::ranked))
+        .route(
+            "/leaderboard/ranked/{pack}/{user}/hide",
+            post(leaderboard::hide),
+        )
+        .route(
+            "/leaderboard/ranked/{pack}/{user}/show",
+            post(leaderboard::show),
+        )
         .route("/format", get(pages::format))
         // accounts
         .route(
@@ -750,6 +761,11 @@ struct AnswerRes {
     seconds: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     hints: Option<i64>,
+    /// On a live daily: whether this solve ended the player's ranked attempt
+    /// (`ranked`) or a later one (`personal`). Absent when it ended neither, as
+    /// for a flag sent in after the instance ended.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attempt: Option<&'static str>,
 }
 
 /// Answers one account (or, signed out, one address) may post in [`ANSWER_WINDOW`].
@@ -787,6 +803,7 @@ async fn check_answer(
             explainer_html: None,
             seconds: None,
             hints: None,
+            attempt: None,
         })
         .into_response();
     }
@@ -801,6 +818,7 @@ async fn check_answer(
         p.pack.check(&req.answer)
     };
     let mut recorded = None;
+    let mut attempt = None;
     if correct {
         if let Some(user) = viewer {
             let total = p.pack.meta.hints.len() as i64;
@@ -834,6 +852,19 @@ async fn check_answer(
                 tracing::error!("recording solve failed: {e}");
             }
             state.forget_stats();
+            // The attempt this instance was for ends solved, before the instance
+            // is stopped below (which would end it as failed).
+            if p.pack.is_live() && p.pack.meta.track == necropsy_pack::Track::Daily {
+                match state.db.attempt_solved(user.id, id.clone(), hints).await {
+                    Ok(a) => {
+                        attempt = a.map(|a| match a {
+                            db::Attempt::Ranked => "ranked",
+                            db::Attempt::Personal => "personal",
+                        })
+                    }
+                    Err(e) => tracing::error!("recording the attempt failed: {e}"),
+                }
+            }
             // The puzzle is done, so its server is no longer needed: free the player's
             // instance (and its container) now rather than when its time runs out.
             if p.pack.is_live() {
@@ -854,6 +885,7 @@ async fn check_answer(
         explainer_html: correct.then(|| p.explainer_html.clone()),
         seconds: recorded.map(|r| r.0),
         hints: recorded.map(|r| r.1),
+        attempt,
     })
     .into_response()
 }
@@ -874,6 +906,7 @@ async fn explainer(
             explainer_html: Some(p.explainer_html.clone()),
             seconds: None,
             hints: None,
+            attempt: None,
         })
         .into_response(),
         _ => StatusCode::NOT_FOUND.into_response(),

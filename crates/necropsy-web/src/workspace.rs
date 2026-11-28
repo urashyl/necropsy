@@ -139,6 +139,7 @@ pub async fn page(
         ViewerFiles::Failed => &[],
     };
     let stats = state.stats().await;
+    let ranked = crate::leaderboard::ranked_status_for(&state, viewer.as_ref(), rp).await;
     let m = &rp.pack.meta;
     let live = rp.pack.is_live();
     let tk = &state.toolkit;
@@ -175,7 +176,7 @@ pub async fn page(
                         div.prose.brief { (PreEscaped(&rp.brief_html)) }
                     }
                     @if live {
-                        (live_panel(&state, viewer.as_ref(), rp))
+                        (live_panel(&state, viewer.as_ref(), rp, ranked.as_deref()))
                     }
                     div.ws-tabs role="tablist" aria-label="Tools" {
                         @for (i, (t, label)) in tabs.iter().enumerate() {
