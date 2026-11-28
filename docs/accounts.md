@@ -122,7 +122,7 @@ Every state-changing request must come from the site's own origin. `main.rs` rej
 
 ## Data
 
-SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves` (its `share` column holds the token of a shared solve card, see [web.md](web.md#solve-cards)), `progress` (a signed-in player's time and hints on a puzzle in progress, see [web.md](web.md#time-and-hints)), for two-step verification `recovery_codes`, `mfa_tickets` and `mfa_setup`, and `ranked_attempts` and `personal_records` (see [leaderboards.md](leaderboards.md)). The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly, and settles ranked attempts whose instance has ended.
+SQLite, created at `NECROPSY_DB` (default `necropsy.db`). Tables: `users`, `sessions`, `email_tokens`, `solves` (its `share` column holds the token of a shared solve card, see [web.md](web.md#solve-cards)), `progress` (a signed-in player's time and hints on a puzzle in progress, see [web.md](web.md#time-and-hints)), for two-step verification `recovery_codes`, `mfa_tickets` and `mfa_setup`, `ranked_attempts` and `personal_records` (see [leaderboards.md](leaderboards.md)), and `proofs` and `audit_log` (see [moderation.md](moderation.md)). `users.moderator` marks a moderator. The schema version is in `PRAGMA user_version`. A background task removes expired sessions, tokens and unverified accounts hourly, settles ranked attempts whose instance has ended, forfeits late proofs and asks for new ones.
 
 Requests are not logged by default. With `NECROPSY_LOG_REQUESTS=1` the log records the method, path and status of each request, never the query string, because email links carry one-time tokens there.
 

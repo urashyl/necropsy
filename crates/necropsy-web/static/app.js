@@ -98,6 +98,29 @@
     el.className = "muted ranked-notice";
   }
 
+  // ---- proof ------------------------------------------------------------------
+
+  // The proof form counts down the seconds the server gave it, and locks at
+  // zero. The server keeps the real deadline (docs/moderation.md).
+  const proofForm = document.getElementById("proof-form");
+  if (proofForm) {
+    const leftEl = document.getElementById("proof-left");
+    const text = document.getElementById("proof-text");
+    const end = Date.now() + Number(proofForm.dataset.left || 0) * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      leftEl.textContent = String(left);
+      if (left === 0) {
+        text.readOnly = true;
+        proofForm.querySelector("button[type=submit]").disabled = true;
+        leftEl.parentElement.textContent = "Time is up.";
+        clearInterval(timer);
+      }
+    };
+    const timer = setInterval(tick, 250);
+    tick();
+  }
+
   // ---- streak ----------------------------------------------------------------
 
   /**
@@ -490,6 +513,15 @@
     msg.classList.remove("err-text");
     try {
       const r = await postAnswer(id, answer, seconds, hintsShown);
+      if (r.proof_url) {
+        const due = document.createElement("p");
+        due.className = "notice proof-due";
+        const a = document.createElement("a");
+        a.href = r.proof_url;
+        a.textContent = "Write your proof";
+        due.append("Your ranked solve is in the board's top, so it needs a proof. ", a, ".");
+        form.after(due);
+      }
       if (r.attempt === "ranked") {
         rankedNotice("running", "solved", "Your ranked attempt is done. Further attempts are on your account page only.");
       }

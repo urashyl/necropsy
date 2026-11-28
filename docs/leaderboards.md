@@ -5,7 +5,7 @@ Two boards, both public:
 | Board | Route | From | Checked |
 | --- | --- | --- | --- |
 | Casual | `/leaderboard` | Every signed-in player's solves and Learn badges | No more than a solve already is |
-| Ranked | `/leaderboard/ranked` | Each player's one ranked attempt at each live daily | One attempt per player per daily; an admin can hide an entry |
+| Ranked | `/leaderboard/ranked` | Each player's one ranked attempt at each live daily | One attempt per player per daily; the top explain their solves to a moderator |
 
 Signed-out solves are kept only in the browser, so they are on neither board.
 
@@ -45,18 +45,11 @@ Attempts still marked running after their instance ended are settled as failed w
 
 ### Board order
 
-Solved ranked attempts, fastest first, then the earlier finish. The page shows the place, player, time and hints used, and how many ranked attempts the daily has had in all.
+Solved ranked attempts that are on the board, fastest first, then the earlier finish. The page shows the place, player, time, hints used and the state of the entry's proof, and how many ranked attempts the daily has had in all.
 
-### Hiding an entry
+### Removing an entry, and proofs
 
-An admin sees a **Hide** form on each row of the ranked board. Hiding needs a reason (up to 200 characters), takes the entry off the board for everyone else, and leaves the attempt as it was: status, time and place among the others' times. The admin still sees it, struck through, with the reason and a **Reinstate** button. The player's account page marks it "hidden by an admin". Each hide and reinstate is logged (`admin <id> hid the ranked attempt of user <id> at <pack>: <reason>`).
-
-| Route | |
-| --- | --- |
-| `POST /leaderboard/ranked/{pack}/{user}/hide` | Admin only, form field `reason`. `400` without a reason, `404` if there is no such attempt. Redirects to the board. |
-| `POST /leaderboard/ranked/{pack}/{user}/show` | Admin only. Shows it again. |
-
-Others get `404`, and a signed-out visitor is sent to log in.
+The top of each board explains its solves to a moderator, and moderators can take an entry off the board with a reason, or put it back. A removed, rejected or forfeited entry takes no place; its attempt, status and time are kept. The player's account page marks a removed entry "removed by a moderator". See [moderation.md](moderation.md).
 
 ## Storage
 
@@ -73,6 +66,6 @@ Both go with the account when it is deleted.
 | --- | --- |
 | A player says their ranked attempt failed though they solved it | The flag was sent after the instance ended (stopped or ran out), so it solved the puzzle but not the attempt. The answer reply has no `attempt` field in that case. Working as intended. |
 | A player's start failed and they ask for their attempt back | A failed container start already undoes it. Otherwise attempts cannot be reset: that is the point of them. |
-| An entry is clearly not fair play | Hide it with a reason. Do not edit the database: the trigger refuses it, and dropping the trigger to get round it is a change to the scoring rules, which needs a code change and its review. |
+| An entry is clearly not fair play | A moderator removes it with a reason ([moderation.md](moderation.md)). Do not edit the database: the trigger refuses it, and dropping the trigger to get round it is a change to the scoring rules, which needs a code change and its review. |
 | The ranked board is empty on a live daily's day | Nobody has solved it in a ranked attempt yet, or the site has no live domain set (`NECROPSY_LIVE_DOMAIN`), so live dailies are hidden. |
 | The server will not start: "database schema version 10 is not supported" | An older build is running against a newer database. Deploy the current build. |

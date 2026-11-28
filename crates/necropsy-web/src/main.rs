@@ -23,6 +23,7 @@ mod live;
 mod mail;
 mod markdown;
 mod mfa;
+mod moderation;
 mod pages;
 mod progress;
 mod sealed;
@@ -214,6 +215,13 @@ async fn main() {
     packs.extend(sealed_packs);
     let mut state = AppState::new(packs, config, db, mailer);
     state.generator = generator;
+    state.top_n = match std::env::var("NECROPSY_RANKED_TOP_N") {
+        Ok(v) if !v.trim().is_empty() => match v.trim().parse::<usize>() {
+            Ok(n) if (1..=1000).contains(&n) => n,
+            _ => fail("NECROPSY_RANKED_TOP_N must be a number from 1 to 1000"),
+        },
+        _ => moderation::DEFAULT_TOP_N,
+    };
     state.sealed = sealed_state;
     state.set_learn(modules);
     state.community = community::from_env().unwrap_or_else(|e| fail(&e));
@@ -432,6 +440,7 @@ fn spawn_housekeeping(state: Arc<AppState>) {
         let mut tick = tokio::time::interval(accounts::PURGE_INTERVAL);
         loop {
             tick.tick().await;
+            moderation::refresh(&state, None, None).await;
             if let Err(e) = state.db.purge_expired().await {
                 tracing::error!("purge failed: {e}");
             }
@@ -473,12 +482,15 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/leaderboard", get(leaderboard::casual))
         .route("/leaderboard/ranked", get(leaderboard::ranked))
         .route(
-            "/leaderboard/ranked/{pack}/{user}/hide",
-            post(leaderboard::hide),
+            "/proof/{pack}",
+            get(moderation::proof_page).post(moderation::proof_submit),
         )
+        .route("/proof/{pack}/start", post(moderation::proof_start))
+        .route("/mod/proofs", get(moderation::mod_proofs))
+        .route("/mod/proofs/{id}/{action}", post(moderation::mod_review))
         .route(
-            "/leaderboard/ranked/{pack}/{user}/show",
-            post(leaderboard::show),
+            "/mod/board/{pack}/{user}/{action}",
+            post(moderation::mod_board),
         )
         .route("/format", get(pages::format))
         // accounts
@@ -520,6 +532,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         // admin
         .route("/admin", get(admin::admin_get))
         .route("/admin/test-email", post(admin::test_email_post))
+        .route(
+            "/admin/moderators",
+            get(moderation::admin_moderators).post(moderation::admin_moderators_post),
+        )
+        .route("/admin/audit", get(moderation::admin_audit))
         .route(
             "/admin/users/{id}/delete",
             get(admin::delete_confirm_get).post(admin::delete_post),
@@ -766,6 +783,10 @@ struct AnswerRes {
     /// for a flag sent in after the instance ended.
     #[serde(skip_serializing_if = "Option::is_none")]
     attempt: Option<&'static str>,
+    /// Where to write the proof a ranked solve in the board's top needs
+    /// (docs/moderation.md).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_url: Option<String>,
 }
 
 /// Answers one account (or, signed out, one address) may post in [`ANSWER_WINDOW`].
@@ -804,6 +825,7 @@ async fn check_answer(
             seconds: None,
             hints: None,
             attempt: None,
+            proof_url: None,
         })
         .into_response();
     }
@@ -819,6 +841,7 @@ async fn check_answer(
     };
     let mut recorded = None;
     let mut attempt = None;
+    let mut proof_url = None;
     if correct {
         if let Some(user) = viewer {
             let total = p.pack.meta.hints.len() as i64;
@@ -865,6 +888,15 @@ async fn check_answer(
                     Err(e) => tracing::error!("recording the attempt failed: {e}"),
                 }
             }
+            // A ranked solve may enter the board's top, and need a proof.
+            if attempt == Some("ranked") {
+                moderation::refresh(&state, Some(id.clone()), Some(user.id)).await;
+                if let Ok(Some(p)) = state.db.proof_of(user.id, id.clone()).await {
+                    if p.status == "open" {
+                        proof_url = Some(format!("/proof/{id}"));
+                    }
+                }
+            }
             // The puzzle is done, so its server is no longer needed: free the player's
             // instance (and its container) now rather than when its time runs out.
             if p.pack.is_live() {
@@ -886,6 +918,7 @@ async fn check_answer(
         seconds: recorded.map(|r| r.0),
         hints: recorded.map(|r| r.1),
         attempt,
+        proof_url,
     })
     .into_response()
 }
@@ -907,6 +940,7 @@ async fn explainer(
             seconds: None,
             hints: None,
             attempt: None,
+            proof_url: None,
         })
         .into_response(),
         _ => StatusCode::NOT_FOUND.into_response(),

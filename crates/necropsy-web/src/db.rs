@@ -14,7 +14,44 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 11;
+
+/// Moderation (version 11): the moderator role, proofs from the top of each
+/// ranked board, and the audit log of every moderation and role change. See
+/// docs/moderation.md.
+///
+/// `audit_log` keeps names as they were, and no foreign keys, so an entry
+/// outlives the accounts it mentions.
+const MODERATION_SCHEMA: &str = "
+ALTER TABLE users ADD COLUMN moderator INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE proofs (
+    id           INTEGER PRIMARY KEY,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_id      TEXT NOT NULL,
+    offered_at   INTEGER NOT NULL,
+    opened_at    INTEGER,
+    deadline     INTEGER,
+    text         TEXT,
+    submitted_at INTEGER,
+    status       TEXT NOT NULL CHECK (status IN ('open', 'pending', 'approved', 'rejected', 'forfeited')),
+    reviewer_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at  INTEGER,
+    reason       TEXT,
+    UNIQUE (user_id, pack_id)
+);
+CREATE INDEX proofs_status ON proofs(status);
+CREATE TABLE audit_log (
+    id        INTEGER PRIMARY KEY,
+    at        INTEGER NOT NULL,
+    actor_id  INTEGER,
+    actor     TEXT NOT NULL,
+    action    TEXT NOT NULL,
+    target_id INTEGER,
+    target    TEXT,
+    pack_id   TEXT,
+    reason    TEXT
+);
+";
 
 /// Ranked attempts (version 10): a player's one ranked attempt at a live daily,
 /// made in the same transaction as the instance that starts it, and their later
@@ -222,9 +259,17 @@ pub struct User {
     pub totp: bool,
     /// Login codes are sent to the account's email.
     pub mfa_email: bool,
+    /// May review proofs and remove board entries (docs/moderation.md). An
+    /// admin may too, without this.
+    pub moderator: bool,
 }
 
 impl User {
+    /// A moderator or an admin.
+    pub fn can_moderate(&self) -> bool {
+        self.moderator || self.is_admin
+    }
+
     /// Whether a password login must be followed by a second step.
     pub fn mfa(&self) -> bool {
         self.totp || self.mfa_email
@@ -315,6 +360,10 @@ pub struct RankedRow {
     pub ended_at: i64,
     pub hidden: bool,
     pub hidden_reason: Option<String>,
+    /// Its proof's status, if one was asked for (docs/moderation.md), and the
+    /// reason a rejected one was rejected.
+    pub proof: Option<String>,
+    pub proof_reason: Option<String>,
 }
 
 /// One of a player's attempts at a live daily, for their own page.
@@ -424,11 +473,12 @@ fn row_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
         created_at: r.get(5)?,
         totp: r.get(6)?,
         mfa_email: r.get(7)?,
+        moderator: r.get(8)?,
     })
 }
 
 const USER_COLS: &str =
-    "id, username, is_admin, verified, disabled, created_at, totp_secret IS NOT NULL, mfa_email";
+    "id, username, is_admin, verified, disabled, created_at, totp_secret IS NOT NULL, mfa_email, moderator";
 
 impl Db {
     /// Opens (creating if needed) the database at `path`; `:memory:` works.
@@ -472,6 +522,9 @@ impl Db {
         }
         if version < 10 {
             conn.execute_batch(RANKED_SCHEMA)?;
+        }
+        if version < 11 {
+            conn.execute_batch(MODERATION_SCHEMA)?;
         }
         if version != SCHEMA_VERSION {
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -551,7 +604,7 @@ impl Db {
             c.query_row(
                 &format!("SELECT {USER_COLS}, password_hash FROM users WHERE username = ?1"),
                 [username],
-                |r| Ok((row_user(r)?, r.get(8)?)),
+                |r| Ok((row_user(r)?, r.get(9)?)),
             )
             .optional()
         })
@@ -662,14 +715,14 @@ impl Db {
         self.run(|c| {
             let mut st = c.prepare(
                 "SELECT u.id, u.username, u.is_admin, u.verified, u.disabled, u.created_at,
-                        u.totp_secret IS NOT NULL, u.mfa_email,
+                        u.totp_secret IS NOT NULL, u.mfa_email, u.moderator,
                         (SELECT COUNT(*) FROM solves s WHERE s.user_id = u.id)
                  FROM users u ORDER BY u.created_at DESC, u.id DESC",
             )?;
             let rows = st.query_map([], |r| {
                 Ok(AdminRow {
                     user: row_user(r)?,
-                    solves: r.get(8)?,
+                    solves: r.get(9)?,
                 })
             })?;
             rows.collect()
@@ -701,7 +754,7 @@ impl Db {
         self.run(move |c| {
             c.query_row(
                 "SELECT u.id, u.username, u.is_admin, u.verified, u.disabled, u.created_at,
-                        u.totp_secret IS NOT NULL, u.mfa_email
+                        u.totp_secret IS NOT NULL, u.mfa_email, u.moderator
                  FROM sessions s JOIN users u ON u.id = s.user_id
                  WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND u.disabled = 0",
                 params![token_hash, now()],
@@ -1603,8 +1656,9 @@ impl Db {
             settle_attempts(c, None)?;
             let mut st = c.prepare(
                 "SELECT a.user_id, u.username, a.seconds, COALESCE(a.hints, 0), a.ended_at,
-                        a.hidden, a.hidden_reason
+                        a.hidden, a.hidden_reason, p.status, p.reason
                  FROM ranked_attempts a JOIN users u ON u.id = a.user_id
+                 LEFT JOIN proofs p ON p.user_id = a.user_id AND p.pack_id = a.pack_id
                  WHERE a.pack_id = ?1 AND a.status = 'solved' AND u.disabled = 0
                  ORDER BY a.seconds, a.ended_at, u.id",
             )?;
@@ -1618,6 +1672,8 @@ impl Db {
                         ended_at: r.get(4)?,
                         hidden: r.get(5)?,
                         hidden_reason: r.get(6)?,
+                        proof: r.get(7)?,
+                        proof_reason: r.get(8)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1627,33 +1683,6 @@ impl Db {
                 |r| r.get(0),
             )?;
             Ok((rows, total))
-        })
-        .await
-    }
-
-    /// Hides a ranked attempt from the board, or shows it again (`reason` None).
-    /// Its status and time are untouched. False if there is no such attempt.
-    pub async fn ranked_hide(
-        &self,
-        user_id: i64,
-        pack_id: String,
-        by: i64,
-        reason: Option<String>,
-    ) -> rusqlite::Result<bool> {
-        self.run(move |c| {
-            let n = match reason {
-                Some(r) => c.execute(
-                    "UPDATE ranked_attempts SET hidden = 1, hidden_by = ?3, hidden_reason = ?4
-                     WHERE user_id = ?1 AND pack_id = ?2",
-                    params![user_id, pack_id, by, r],
-                )?,
-                None => c.execute(
-                    "UPDATE ranked_attempts SET hidden = 0, hidden_by = NULL, hidden_reason = NULL
-                     WHERE user_id = ?1 AND pack_id = ?2",
-                    params![user_id, pack_id],
-                )?,
-            };
-            Ok(n == 1)
         })
         .await
     }

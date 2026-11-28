@@ -130,6 +130,13 @@ async fn admin_page(
                 }
             }
 
+            h2.admin-h { "Moderation" }
+            p.muted {
+                a href="/mod/proofs" { "Proofs to review" } " · "
+                a href="/admin/moderators" { "Moderators" } " · "
+                a href="/admin/audit" { "Audit log" }
+            }
+
             h2.admin-h { "Users" }
             @if rows.len() <= 1 {
                 p.muted { "No other accounts yet." }
