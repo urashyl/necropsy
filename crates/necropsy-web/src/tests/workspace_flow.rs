@@ -374,3 +374,24 @@ async fn console_socket_round_trip() {
     };
     assert!(t.as_str().contains("\"error\""), "{t}");
 }
+
+/// A binary file on the puzzle page opens in the workspace, not only as a
+/// download; the workspace has a viewer for text files.
+#[tokio::test]
+async fn binary_files_open_in_the_workspace() {
+    let s = site().await;
+    let p = s.get("/p/learn-first-capture", None).await;
+    assert_eq!(p.status, StatusCode::OK);
+    assert!(
+        p.body
+            .contains(r#"href="/w/learn-first-capture#file=capture.pcap""#),
+        "no workspace link for the capture"
+    );
+    assert!(p
+        .body
+        .contains(r#"href="/p/learn-first-capture/files/capture.pcap" download"#));
+    let w = s.get("/w/learn-first-capture", None).await;
+    for want in ["id=\"file-view\"", "id=\"file-view-body\""] {
+        assert!(w.body.contains(want), "{want}");
+    }
+}

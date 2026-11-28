@@ -4,7 +4,7 @@ Every puzzle has a workspace at `/w/<id>` (the puzzle page links to it as **Open
 
 | Tab | Tool | Terminal equivalent shown |
 | --- | --- | --- |
-| Files | The puzzle's files, with buttons to open each in another tool | `curl -O <file URL>` |
+| Files | The puzzle's files. Clicking a name opens the file in the browser: text in a viewer under the list, a capture in the pcap viewer, anything else in the hex viewer. Buttons open it in another tool, and **Download** saves it | `curl -O <file URL>` |
 | Pcap | Wireshark's dissectors compiled to WebAssembly ([Wiregasm](https://github.com/good-tools/wiregasm)): packet list, display filters, protocol tree, Follow TCP and HTTP stream | `tshark -r ... -Y '<filter>'`, `tshark -q -z follow,...` |
 | Decoder | [CyberChef](https://github.com/gchq/CyberChef), served by the site | `base64 -d`, `xxd -r -p`, Python |
 | Console | A request console that sends curl commands to the player's live instance (live puzzles only) | the curl command itself |
@@ -121,7 +121,7 @@ On the player's own computer the same code is `requests.request(...)` and `open(
 
 ## Hints that open the decoder
 
-A hint can end with `{decoder: <CyberChef recipe>}` (see [pack-format.md](pack-format.md#hints)). The puzzle page shows the hint text and an **Open in the decoder** link to `/w/<id>#decoder=<recipe>`, which opens the workspace with that recipe in the decoder. The workspace also reads `#tool=<tab>` to open a tab.
+A hint can end with `{decoder: <CyberChef recipe>}` (see [pack-format.md](pack-format.md#hints)). The puzzle page shows the hint text and an **Open in the decoder** link to `/w/<id>#decoder=<recipe>`, which opens the workspace with that recipe in the decoder. The workspace also reads `#tool=<tab>` to open a tab, and `#file=<path>` to open a file as clicking its name does; the puzzle page links a binary or large file to `/w/<id>#file=<path>`, beside its download link.
 
 ## When something breaks
 

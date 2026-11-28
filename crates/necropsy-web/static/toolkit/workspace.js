@@ -135,10 +135,14 @@ function initFiles(ws, pane) {
   for (const f of files) {
     const li = document.createElement("li");
     li.className = "file-item";
+    // The name opens the file here; downloading is its own action.
     const a = document.createElement("a");
-    a.href = ws.fileUrl(f.path);
+    a.href = `#file=${encodeURIComponent(f.path)}`;
     a.textContent = f.path;
-    a.download = f.path.split("/").pop();
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      openFile(f);
+    });
     const size = document.createElement("span");
     size.className = "muted";
     size.textContent = ` ${f.size} bytes`;
@@ -152,6 +156,7 @@ function initFiles(ws, pane) {
       b.addEventListener("click", fn);
       actions.append(b);
     };
+    if (f.kind === "text") button("View", () => openFile(f));
     if (f.kind === "pcap") button("Open in the pcap viewer", () => ws.send("pcap", { path: f.path }));
     if (f.kind === "text") {
       button("Send to the decoder", async () => {
@@ -161,11 +166,40 @@ function initFiles(ws, pane) {
     }
     button("Open in the hex viewer", () => ws.send("hex", { path: f.path }));
     button("Use in the notebook", () => ws.send("notebook", { file: f.path }));
+    const dl = document.createElement("a");
+    dl.href = ws.fileUrl(f.path);
+    dl.download = f.path.split("/").pop();
+    dl.className = "link-button file-download";
+    dl.textContent = "Download";
+    actions.append(dl);
     li.append(a, size, actions);
     list.append(li);
   }
+  pane.querySelector("#file-view-close").addEventListener("click", () => {
+    pane.querySelector("#file-view").classList.add("hidden");
+  });
   const first = files[0];
   cli.textContent = first ? `curl -O ${location.origin}${ws.fileUrl(first.path)}` : "";
+}
+
+/** Opens a file in the browser: a capture in the pcap viewer, text in the files
+ * pane, anything else in the hex viewer. */
+export async function openFile(f) {
+  if (f.kind === "pcap") return ws.send("pcap", { path: f.path });
+  if (f.kind !== "text") return ws.send("hex", { path: f.path });
+  await show("files");
+  const view = document.getElementById("file-view");
+  const body = document.getElementById("file-view-body");
+  document.getElementById("file-view-name").textContent = f.path;
+  view.classList.remove("hidden");
+  body.textContent = "Loading...";
+  try {
+    body.textContent = new TextDecoder().decode(await ws.fileBytes(f.path));
+  } catch (e) {
+    body.textContent = e.message;
+  }
+  body.scrollTop = 0;
+  view.scrollIntoView({ block: "nearest" });
 }
 
 // ---- start ---------------------------------------------------------------------
@@ -176,7 +210,10 @@ ws.refreshInstance();
 // A link such as /w/<id>#decoder=<CyberChef recipe> (from a hint) opens that tool.
 function fromHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.has("decoder")) {
+  const file = h.has("file") && files.find((f) => f.path === h.get("file"));
+  if (file) {
+    openFile(file);
+  } else if (h.has("decoder")) {
     ws.send("decoder", { recipe: h.get("decoder"), input: h.get("input") || undefined });
   } else if (h.has("tool") && loaders[h.get("tool")]) {
     show(h.get("tool"));

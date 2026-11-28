@@ -1356,8 +1356,21 @@ a.icon-btn {
   overflow-wrap: anywhere;
 }
 
-.file-item a {
+.file-item > a {
   font-family: var(--mono);
+}
+
+.file-view {
+  margin-top: 1rem;
+}
+
+.file-view-name {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.file-download {
+  text-decoration: none;
 }
 
 .file-actions {

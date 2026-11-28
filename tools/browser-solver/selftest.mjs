@@ -50,6 +50,28 @@ try {
       console.log(`FAILED: ${e.message}`);
     }
   }
+  // Clicking a file's name shows it in the page; it does not download it.
+  const viewing = packWith(
+    "viewing",
+    `import real from "${join(repo, "packs/kerberoast", SCRIPT).replace(/\\/g, "/")}";
+export default async (t) => {
+  let downloads = 0;
+  t.page.on("download", () => downloads++);
+  const text = await t.view("4769.csv");
+  if (!text.startsWith("TimeCreated,")) throw new Error("the viewer shows " + JSON.stringify(text.slice(0, 40)));
+  await t.page.waitForTimeout(500);
+  if (downloads) throw new Error("clicking the file downloaded it");
+  return real(t);
+};`,
+  );
+  const v = await run({ pack: viewing, siteBin, toolkit, seeds: 1, timeout: 120 }, quiet);
+  try {
+    assert.equal(v.solved, 1, v.results[0].verdict);
+    console.log("ok: a file opens in the page, without a download");
+  } catch (e) {
+    failed++;
+    console.log(`FAILED: viewing a file: ${e.message}`);
+  }
   // One player's answer is not another's: a script that remembers the first
   // answer it found solves only the first player.
   const sticky = packWith(

@@ -48,6 +48,7 @@ print(user.split("@")[0])`);
 | `t.page` | The Playwright page, on `/w/<id>`. Use it for tools the helpers below don't cover: the pcap viewer, the decoder, the request console. Their tabs are `#tab-<tool>` and their panes `#pane-<tool>` ([toolkit.md](toolkit.md)). |
 | `await t.tool(name)` | Opens a workspace tab: `files`, `pcap`, `decoder`, `console`, `notebook` or `hex`. |
 | `await t.files()` | The file names the files pane lists. |
+| `await t.view(path)` | Clicks a text file's name in the files pane, as a player does, and returns what the viewer shows. |
 | `await t.python(code)` | Adds a notebook cell, types `code`, runs it, and returns what it printed. Throws if the cell fails. `from necropsy import file` reads a puzzle file, as for players. |
 
 Solve it the way the brief and explainer expect a player to, with the tools a player has. Don't read the answer out of something a player can't see. Keep the script general: it runs against files from many seeds, so search for what the generator varies instead of hard-coding it.
@@ -80,7 +81,7 @@ kerberoast: ok, 5 of 5 players solved it in the browser (5 different answers)
 
 To check a submission as an admin: `pack-tool open <id>`, then `pack-tool solve-browser packs-src <id>`.
 
-`node tools/browser-solver/selftest.mjs <necropsy-web> <toolkit-dir>` checks the solver itself refuses a wrong answer, a script that throws, one that never answers, an empty answer, and one player's answer given for another. CI runs it, then `solve-browser packs`, in its `browser` job.
+`node tools/browser-solver/selftest.mjs <necropsy-web> <toolkit-dir>` checks the solver itself refuses a wrong answer, a script that throws, one that never answers, an empty answer, and one player's answer given for another, and that clicking a file opens it in the page instead of downloading it. CI runs it, then `solve-browser packs`, in its `browser` job.
 
 ## When it fails
 

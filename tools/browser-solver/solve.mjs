@@ -97,6 +97,19 @@ export function helpers(page) {
       await t.tool("files");
       return page.$$eval("#files-list .file-item a", (as) => as.map((a) => a.textContent));
     },
+    /** Opens a text file in the files pane's viewer, as clicking its name does,
+     * and returns its contents. */
+    async view(path) {
+      await t.tool("files");
+      await page.locator("#files-list .file-item > a", { hasText: path }).first().click();
+      await page.waitForFunction(
+        (p) =>
+          document.querySelector("#file-view-name")?.textContent === p &&
+          document.querySelector("#file-view-body")?.textContent !== "Loading...",
+        path,
+      );
+      return page.textContent("#file-view-body");
+    },
     /** Types `code` into a new notebook cell, runs it, and returns what it printed. */
     async python(code, { timeout = 90_000 } = {}) {
       await t.tool("notebook");

@@ -84,7 +84,7 @@ The loader rejects:
 - path components other than plain names, so no `..`, no absolute paths and no backslashes
 - files over 1 MiB, packs over 8 MiB, more than 256 files, or nesting deeper than 8 levels
 
-The web site shows text files with line numbers and highlighting by file extension. Binary files are offered as downloads.
+The web site shows text files with line numbers and highlighting by file extension. Binary files, and text files over 128 KiB, link to the workspace, which opens them in the pcap or hex viewer, and to a download.
 
 ### Hints
 

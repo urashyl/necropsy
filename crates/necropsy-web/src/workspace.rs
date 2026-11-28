@@ -224,6 +224,13 @@ fn panes(live: bool) -> Markup {
     html! {
         section #pane-files.ws-pane role="tabpanel" aria-labelledby="tab-files" data-tool="files" {
             ul #files-list.files-list {}
+            div #file-view.file-view.hidden {
+                div.tool-row {
+                    span #file-view-name.file-view-name {}
+                    button #file-view-close.link-button type="button" { "Close" }
+                }
+                pre #file-view-body.raw-view tabindex="0" role="region" aria-label="File contents" {}
+            }
             (cli("cli-files", "curl -O <file URL>"))
         }
         section #pane-pcap.ws-pane.hidden role="tabpanel" aria-labelledby="tab-pcap" data-tool="pcap" {
