@@ -106,6 +106,41 @@ jobs:
 
   # Builds the real image and runs it the way production does: read-only root,
   # no capabilities, a fresh volume for the database.
+  # The browser solver (docs/browser-solver.md): every pack with a
+  # solve.browser.js is solved by several players in Chromium using only the
+  # workspace, and the solver itself refuses wrong, broken and stale answers.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Toolkit
+        uses: actions/cache@v4
+        with:
+          path: toolkit/dist
+          key: toolkit-${{ hashFiles('toolkit/sources.txt', 'toolkit/fetch.sh') }}
+
+      - name: Build
+        run: |
+          toolkit/fetch.sh
+          cargo build --locked -q --bin necropsy-web --bin pack-tool
+          (cd tools/browser-solver && npm ci && npx playwright install --with-deps chromium)
+
+      - name: The solver refuses what it must
+        run: node tools/browser-solver/selftest.mjs target/debug/necropsy-web toolkit/dist
+
+      - name: Packs solve in the browser
+        run: target/debug/pack-tool solve-browser packs
+
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 30

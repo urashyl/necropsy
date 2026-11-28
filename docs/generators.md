@@ -38,6 +38,7 @@ packs/<id>/
     src/lib.rs       the generator, and its own tests
     template/...     files with {{PLACEHOLDERS}}, if it fills a template
   generator.wasm     built from generator/ by pack-tool, committed
+  solve.browser.js   a daily of difficulty 1 to 3: solves it in the workspace (browser-solver.md)
 ```
 
 Copy `packs/kerberoast/generator/` as a start. The SDK is `crates/necropsy-gen-sdk`:
@@ -83,6 +84,7 @@ cargo run -q --bin pack-tool -- gen-build packs <id>   # build generator.wasm
 cargo run -q --bin pack-tool -- gen packs <id> alice   # files for the seed "alice", in target/gen/<id>/alice/; prints the answer
 cargo run -q --bin pack-tool -- check-gen packs        # every generator, 24 seeds each
 cargo run -q --bin pack-tool -- gen-build --check packs
+cargo run -q --bin pack-tool -- solve-browser packs <id>   # difficulty 1 to 3: see browser-solver.md
 ```
 
 `gen-build` builds with the toolchain pinned in `packs/rust-toolchain.toml` (rustup installs it and the `wasm32-unknown-unknown` target on first use; it is set explicitly, so it applies even under `cargo run`), into `target/generators`. It builds through `/tmp/necropsy-gen-src`, a symlink it points at the checkout, with that path remapped to `/necropsy`. Cargo hashes each crate's absolute path into its symbol names, and after LTO those hashes decide the order of the module's functions, so two checkouts at different paths would build the same code in a different order. Through one fixed path, the same source builds the same bytes on any machine (Linux or macOS), which `gen-build --check` (in CI) relies on: a committed `generator.wasm` must be what its source builds, so a reviewer can read the source and trust the module. After changing a generator, run `gen-build` and commit both. To move to a newer toolchain, change `packs/rust-toolchain.toml` and rebuild every generator in the same commit.

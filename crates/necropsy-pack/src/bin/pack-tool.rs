@@ -10,6 +10,9 @@
 //! pack-tool gen-build --check <packs-dir> [id...]  build, and fail if a generator.wasm differs
 //! pack-tool gen <packs-dir> <id> <seed> [dir]    write one player's files, print their answer
 //! pack-tool check-gen <packs-dir> [id...]        check generators over many seeds
+//! pack-tool solve-browser <packs-dir> [id...] [--seeds N]
+//!                                                solve packs in a browser with their
+//!                                                solve.browser.js (docs/browser-solver.md)
 //!
 //! pack-tool seal <id> [--site URL] [--fallback] [--src DIR] [--sealed DIR]
 //!                                                seal packs-src/<id> into packs-sealed/
@@ -33,7 +36,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use necropsy_pack::seal::{self, Manifest, MasterKeys};
-use necropsy_pack::{gen, load_all, site, Pack};
+use necropsy_pack::{gen, load_all, site, Pack, BROWSER_MAX_DIFFICULTY, BROWSER_SOLVER};
 
 /// The key `pack-tool gen` and `check-gen` derive seeds with. The site uses its
 /// own secret, so these files are never a player's.
@@ -49,6 +52,25 @@ fn validate(dir: &str, learn: Option<&str>) -> ExitCode {
     };
     for p in &packs {
         println!("{:>3}  {:<24} {}", p.meta.number, p.meta.id, p.pack_hash);
+    }
+    let missing: Vec<&str> = packs
+        .iter()
+        .filter(|p| p.needs_browser_solver(false))
+        .filter(|p| {
+            !Path::new(dir)
+                .join(&p.meta.id)
+                .join(BROWSER_SOLVER)
+                .is_file()
+        })
+        .map(|p| p.meta.id.as_str())
+        .collect();
+    if !missing.is_empty() {
+        eprintln!(
+            "error: a generated daily of difficulty 1 to {BROWSER_MAX_DIFFICULTY} needs a {BROWSER_SOLVER} \
+             (see docs/browser-solver.md): {}",
+            missing.join(", ")
+        );
+        return ExitCode::FAILURE;
     }
     let learn_dir = match learn {
         Some(l) => Path::new(l).to_path_buf(),
@@ -422,6 +444,93 @@ impl Args {
     }
 }
 
+/// Runs the browser solver (tools/browser-solver/solve.mjs) on each pack in
+/// `packs` named in `ids`, or on every pack there with a solve script.
+fn solve_browser(packs: &Path, ids: &[String], seeds: u32) -> Result<(), String> {
+    let repo = packs
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let runner = repo.join("tools/browser-solver/solve.mjs");
+    if !runner.is_file() {
+        return Err(format!(
+            "{} not found: run from the repository",
+            runner.display()
+        ));
+    }
+    let site_bin = match std::env::var_os("NECROPSY_WEB_BIN") {
+        Some(b) => PathBuf::from(b),
+        None => std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .with_file_name(format!("necropsy-web{}", std::env::consts::EXE_SUFFIX)),
+    };
+    if !site_bin.is_file() {
+        return Err(format!(
+            "{} not found: build it first (`cargo build --bin necropsy-web`) or set NECROPSY_WEB_BIN",
+            site_bin.display()
+        ));
+    }
+    let toolkit = std::env::var_os("NECROPSY_TOOLKIT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo.join("toolkit/dist"));
+    if !toolkit.is_dir() {
+        return Err(format!(
+            "{} not found: run toolkit/fetch.sh, or set NECROPSY_TOOLKIT",
+            toolkit.display()
+        ));
+    }
+    let dirs: Vec<PathBuf> = if ids.is_empty() {
+        let mut d: Vec<PathBuf> = std::fs::read_dir(packs)
+            .map_err(|e| format!("{}: {e}", packs.display()))?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.join(BROWSER_SOLVER).is_file())
+            .collect();
+        d.sort();
+        d
+    } else {
+        ids.iter().map(|id| packs.join(id)).collect()
+    };
+    if dirs.is_empty() {
+        return Err(format!(
+            "no pack in {} has a {BROWSER_SOLVER}",
+            packs.display()
+        ));
+    }
+    let mut failed = Vec::new();
+    for dir in &dirs {
+        let status = Command::new("node")
+            .arg(&runner)
+            .arg("--pack")
+            .arg(dir)
+            .arg("--site-bin")
+            .arg(&site_bin)
+            .arg("--toolkit")
+            .arg(&toolkit)
+            .args(["--seeds", &seeds.to_string()])
+            .status()
+            .map_err(|e| format!("cannot run node: {e}"))?;
+        if !status.success() {
+            failed.push(dir.display().to_string());
+        }
+    }
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("not solved in the browser: {}", failed.join(", ")))
+    }
+}
+
+fn solve_browser_cmd(args: &Args) -> Result<(), String> {
+    let [packs, ids @ ..] = args.positional.as_slice() else {
+        return Err("usage: pack-tool solve-browser <packs-dir> [id...] [--seeds N]".into());
+    };
+    let seeds = match args.get("seeds") {
+        Some(n) => n.parse().map_err(|_| "--seeds is a number")?,
+        None => 5,
+    };
+    solve_browser(Path::new(packs), ids, seeds)
+}
+
 fn the_site(args: &Args) -> String {
     let (site, from) = site::resolve(
         args.get("site"),
@@ -456,6 +565,17 @@ fn seal_cmd(args: &Args) -> Result<(), String> {
     if pack.is_generated() {
         let report = check_pack(&pack, &gen::plaintext(&raw))?;
         eprintln!("{id}: generator ok, {report}");
+    }
+    if pack.needs_browser_solver(true) {
+        if !src.join(BROWSER_SOLVER).is_file() {
+            return Err(format!(
+                "a daily of difficulty 1 to {BROWSER_MAX_DIFFICULTY} needs {}/{BROWSER_SOLVER} \
+                 (see docs/browser-solver.md)",
+                src.display()
+            ));
+        }
+        let parent = src.parent().unwrap_or(Path::new("."));
+        solve_browser(parent, std::slice::from_ref(id), 5)?;
     }
     let site = the_site(args);
     let key = site::fetch_wrap_key(&site)?;
@@ -652,6 +772,7 @@ fn usage() -> ExitCode {
        pack-tool gen-build [--check] <packs-dir> [id...]
        pack-tool gen <packs-dir> <id> <seed> [out-dir]
        pack-tool check-gen <packs-dir> [id...]
+       pack-tool solve-browser <packs-dir> [id...] [--seeds N]
        pack-tool seal <id> [--site URL] [--fallback] [--src DIR] [--sealed DIR]
        pack-tool open <id> [--site URL] [--sealed DIR] [--out DIR]
        pack-tool fetch-wrap-key [--site URL] [--sealed DIR]
@@ -682,6 +803,9 @@ fn main() -> ExitCode {
         ["open", rest @ ..] => done(Args::parse(rest, &[]).and_then(|a| open_cmd(&a))),
         ["fetch-wrap-key", rest @ ..] => {
             done(Args::parse(rest, &[]).and_then(|a| fetch_wrap_key_cmd(&a)))
+        }
+        ["solve-browser", rest @ ..] => {
+            done(Args::parse(rest, &[]).and_then(|a| solve_browser_cmd(&a)))
         }
         ["check-sealed", packs] => done(check_sealed(packs, None)),
         ["check-sealed", packs, sealed] => done(check_sealed(packs, Some(sealed))),
@@ -752,5 +876,48 @@ mod tests {
             d.contains("/a/path/one end") && d.contains("/b/path/one end!"),
             "{d}"
         );
+    }
+
+    /// A sealed daily of difficulty 1 to 3 is refused without its browser
+    /// solver, before any site is asked for a key.
+    #[test]
+    fn seal_refuses_an_easy_daily_without_a_browser_solver() {
+        let root =
+            std::env::temp_dir().join(format!("necropsy-seal-solver-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("src/easy-one");
+        std::fs::create_dir_all(dir.join("files")).unwrap();
+        std::fs::write(
+            dir.join("pack.toml"),
+            "id = \"easy-one\"\ntrack = \"daily\"\ndate = \"2030-01-01\"\nnumber = 900\ntitle = \"Easy\"\ndifficulty = 2\nmodes = [\"web\"]\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("brief.md"), "What is the word?").unwrap();
+        std::fs::write(dir.join("explainer.md"), "It was in the file.").unwrap();
+        std::fs::write(dir.join("files/note.txt"), "the word is plinth\n").unwrap();
+        std::fs::write(
+            dir.join("answer"),
+            format!("{}\n", necropsy_pack::hash_answer("easy-one", "plinth")),
+        )
+        .unwrap();
+        let src = root.join("src").display().to_string();
+        let sealed = root.join("sealed").display().to_string();
+        let args = Args::parse(
+            &[
+                "easy-one",
+                "--src",
+                &src,
+                "--sealed",
+                &sealed,
+                "--site",
+                "http://127.0.0.1:9",
+            ],
+            &[],
+        )
+        .unwrap();
+        let e = seal_cmd(&args).unwrap_err();
+        assert!(e.contains("solve.browser.js"), "{e}");
+        assert!(!root.join("sealed").exists(), "nothing written");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

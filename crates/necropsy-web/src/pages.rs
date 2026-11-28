@@ -658,8 +658,8 @@ fn position(list: &[&RenderedPack], rp: &RenderedPack) -> usize {
         .map_or(0, |i| i + 1)
 }
 
-/// Each file of the puzzle: text inline with line numbers, anything else as a
-/// download.
+/// Each file of the puzzle: text inline with line numbers; anything else opens
+/// in the workspace (pcap or hex viewer), or downloads.
 pub(crate) fn file_figures(id: &str, files: &ViewerFiles) -> Markup {
     html! {
         @if matches!(files, ViewerFiles::Failed) {
@@ -685,7 +685,10 @@ pub(crate) fn file_figures(id: &str, files: &ViewerFiles) -> Markup {
                 } @else {
                     p.codefile-bin {
                         "Binary or large file, " (f.size) " bytes. "
-                        a href={"/p/" (id) "/files/" (f.path)} { "Download" }
+                        a href={"/w/" (id) "#file=" (f.path)} { "Open it in the workspace" }
+                        " or "
+                        a href={"/p/" (id) "/files/" (f.path)} download { "download it" }
+                        "."
                     }
                 }
             }

@@ -22,7 +22,7 @@ packs-src/             where authors write packs: gitignored, never committed
 
 1. Write the pack in `packs-src/<id>/`, like any pack (see [pack-format.md](pack-format.md)), with `track = "daily"` and its `date`. A generated pack builds with `pack-tool gen-build packs-src <id>` and is checked with `check-gen packs-src`.
 2. **Test it on your own site.** A local site makes its own master key on first start, so it has its own wrap key. With `NECROPSY_BASE_URL=http://localhost:8080` in your `.env`, in a scratch copy of the repository, run `pack-tool fetch-wrap-key` to save your dev key, then seal and play the pack there. Production keys are never needed for this.
-3. **Seal it to production's key:** `pack-tool seal <id>`. It loads and checks the pack, fetches the site's wrap key, checks it is the committed current one, and writes `packs-sealed/<id>.sealed` and its manifest entry.
+3. **Seal it to production's key:** `pack-tool seal <id>`. It loads and checks the pack, runs its generator checks, solves it in a browser if it is difficulty 1 to 3 (with its `solve.browser.js`, which it must have: see [browser-solver.md](browser-solver.md)), fetches the site's wrap key, checks it is the committed current one, and writes `packs-sealed/<id>.sealed` and its manifest entry.
 4. **Open a pull request** with only those two files. `packs-src/` is gitignored, and CI fails if anything from it, a `.env`, a `*.key` file or a server secret is committed.
 
 `pack-tool seal` asks for the wrap key at, in order:
@@ -54,7 +54,7 @@ Pull requests run without secrets (see [ci-cd.md](ci-cd.md)). `pack-tool check-s
 - ids are unique across sealed and plaintext packs, difficulty is 1 to 5, dates and daily numbers collide with no other daily's, and each entry has a date or is a fallback;
 - each pack is sealed to the **current** committed wrap key: the newest `wrap-keys/vN.pub`, with a matching fingerprint.
 
-`main` is protected by a ruleset ([ci-cd.md](ci-cd.md#branches)): pull request required, CI required. Before accepting submissions from other authors, an admin sets the ruleset's required approvals to 1, so only an admin's review merges a pack. An admin may open a submission (`pack-tool open`) to read its generator before approving.
+`main` is protected by a ruleset ([ci-cd.md](ci-cd.md#branches)): pull request required, CI required. Before accepting submissions from other authors, an admin sets the ruleset's required approvals to 1, so only an admin's review merges a pack. An admin may open a submission (`pack-tool open`) to read its generator, and run `pack-tool solve-browser packs-src <id>`, before approving.
 
 ## On the site
 

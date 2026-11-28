@@ -26,6 +26,8 @@ Run `toolkit/fetch.sh` once first for the workspace's tools (see [docs/toolkit.m
 | `docs/learn.md` | The Learn track: modules, tool paths, checkpoints, and writing a module. |
 | `docs/sealing.md` | Sealed packs: unreleased dailies encrypted in the repository, the keys, and when each is released. |
 | `packs-sealed/` | Sealed packs and the public wrap keys. |
+| `docs/browser-solver.md` | The browser solver: proves a daily of difficulty 1 to 3 can be solved in the workspace, for every player. |
+| `tools/browser-solver/` | The browser solver's runner and its self-test. |
 | `docs/generators.md` | Generated packs: per-player files and answers, the sandbox, the server secret. |
 | `crates/necropsy-gen-sdk` | The library pack generators are written with. |
 | `docs/community.md` | Discord: the link, and discussion threads for closed dailies. |
@@ -53,7 +55,7 @@ The packs contain answer hashes and explainers, so spoilers are in this reposito
 An unreleased daily is written in `packs-src/<id>/` (never committed) and sealed into `packs-sealed/` with `pack-tool seal`: see [docs/sealing.md](docs/sealing.md). Intro, Library and released packs are plaintext in `packs/`:
 
 1. Create `packs/<id>/` with `pack.toml`, `brief.md`, `files/` and `explainer.md`. Set `track` to `intro` (a Learn practice puzzle, see [docs/learn.md](docs/learn.md)), `library`, or `daily` with a release `date` after the last daily. A daily can name the Learn modules it is a worked example for (`learn = [...]`).
-2. For a generated pack (each player gets their own files and answer), write `generator/` instead of `files/` and the answer file: see [docs/generators.md](docs/generators.md). Otherwise, generate the answer file: `cargo run -q -p necropsy-pack --bin pack-tool -- hash <id> '<answer>' > packs/<id>/answer`
+2. For a generated pack (each player gets their own files and answer), write `generator/` instead of `files/` and the answer file: see [docs/generators.md](docs/generators.md). A generated daily of difficulty 1 to 3 also needs `solve.browser.js`: see [docs/browser-solver.md](docs/browser-solver.md). Otherwise, generate the answer file: `cargo run -q -p necropsy-pack --bin pack-tool -- hash <id> '<answer>' > packs/<id>/answer`
 3. Check it loads: `cargo run -q -p necropsy-pack --bin pack-tool -- validate packs` (this also checks the Learn modules)
 4. At difficulty 1 to 3, solve it in the workspace (`/w/<id>`) with nothing installed.
 

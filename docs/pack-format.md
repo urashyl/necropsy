@@ -12,6 +12,8 @@ phone-home/
   live/           live puzzles only, files a scenario can send
   generator/      generated packs only: the generator's source, see generators.md
   generator.wasm  generated packs only: built from generator/
+  solve.browser.js  solves it in the workspace, see browser-solver.md: needed by
+                  a generated or sealed daily of difficulty 1 to 3
   explainer.md    the real finding, shown after solving
 ```
 
@@ -82,7 +84,7 @@ The loader rejects:
 - path components other than plain names, so no `..`, no absolute paths and no backslashes
 - files over 1 MiB, packs over 8 MiB, more than 256 files, or nesting deeper than 8 levels
 
-The web site shows text files with line numbers and highlighting by file extension. Binary files are offered as downloads.
+The web site shows text files with line numbers and highlighting by file extension. Binary files, and text files over 128 KiB, link to the workspace, which opens them in the pcap or hex viewer, and to a download.
 
 ### Hints
 
@@ -99,6 +101,10 @@ The recipe is everything from `{decoder:` to the hint's last `}`, in CyberChef's
 ### Files in the workspace
 
 Every file is also available in the puzzle's workspace (`/w/<id>`): `.pcap`, `.pcapng` and `.cap` files open in the pcap viewer, text files can be sent to the decoder, and any file opens in the hex viewer and the notebook. A capture for a difficulty 1 to 3 puzzle must open there: classic pcap or pcapng, Ethernet, HTTP only. `tools/learn/pcaplib.py` writes such captures.
+
+### solve.browser.js
+
+A script that solves the pack with the workspace alone, run by `pack-tool solve-browser` for several players. A generated daily of difficulty 1 to 3 must have one (`pack-tool validate` fails without it), and so must any sealed daily of difficulty 1 to 3 (`pack-tool seal` runs it). The site never runs or serves it. See [browser-solver.md](browser-solver.md).
 
 ### explainer.md and brief.md
 

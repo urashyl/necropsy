@@ -217,11 +217,27 @@ pub struct Pack {
     pub generator: Option<Vec<u8>>,
 }
 
+/// The browser solver's script in a pack directory: see docs/browser-solver.md.
+pub const BROWSER_SOLVER: &str = "solve.browser.js";
+
+/// Hardest difficulty that must be solvable with the in-browser workspace alone.
+pub const BROWSER_MAX_DIFFICULTY: u8 = 3;
+
 impl Pack {
     /// Whether `guess` is the answer. The guess is normalized first.
     pub fn check(&self, guess: &str) -> bool {
         // A live or generated pack has no fixed answer: it differs per player.
         !self.answer_hash.is_empty() && hash_answer(&self.meta.id, guess) == self.answer_hash
+    }
+
+    /// Whether this pack must come with a [`BROWSER_SOLVER`] script: a daily of
+    /// difficulty 1 to 3 that is generated or `sealed`. Players of those must be
+    /// able to solve it in the browser, and each player's answer differs, so the
+    /// script is what shows that they can.
+    pub fn needs_browser_solver(&self, sealed: bool) -> bool {
+        self.meta.track == Track::Daily
+            && self.meta.difficulty <= BROWSER_MAX_DIFFICULTY
+            && (sealed || self.is_generated())
     }
 
     /// Whether each player's files and answer come from a generator.
@@ -898,5 +914,33 @@ mod tests {
         );
         assert!(load_all(&ok).is_ok());
         let _ = fs::remove_dir_all(&ok);
+    }
+}
+
+#[cfg(test)]
+mod browser_solver_tests {
+    use super::*;
+
+    fn repo_pack(id: &str) -> Pack {
+        load_pack(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../packs")
+                .join(id),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn generated_and_sealed_dailies_up_to_difficulty_three_need_a_browser_solver() {
+        // A generated daily, difficulty 2: always.
+        assert!(repo_pack("lockfile").needs_browser_solver(false));
+        // A daily with one answer, difficulty 2: only once sealed.
+        let plain = repo_pack("iloveyou-dropped");
+        assert!(!plain.needs_browser_solver(false));
+        assert!(plain.needs_browser_solver(true));
+        // Difficulty 4, and packs that are not dailies: never.
+        assert!(!repo_pack("peanuts").needs_browser_solver(true));
+        assert!(!repo_pack("intro-log").needs_browser_solver(true));
+        assert!(!repo_pack("skimmer").needs_browser_solver(true));
     }
 }
